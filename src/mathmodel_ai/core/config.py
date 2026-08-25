@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import BaseModel, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,6 +50,13 @@ class ModelCatalogSettings(BaseModel):
             reasoning=ReasoningEffort.XHIGH,
         )
     )
+    multimodal: ModelTargetSettings = Field(
+        default_factory=lambda: ModelTargetSettings(
+            provider=ProviderName.GOOGLE,
+            model="gemini-3.7-flash",
+            reasoning=ReasoningEffort.XHIGH,
+        )
+    )
 
 
 class ModelJuryWeightSettings(BaseModel):
@@ -87,6 +95,25 @@ class Settings(BaseSettings):
     provider_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
     reasoning_max_retries: int = Field(default=2, ge=0, le=5)
     ambiguity_review_threshold: float = Field(default=0.7, ge=0, le=1)
+    storage_root: Path = Path("var/storage")
+    max_upload_bytes: int = Field(default=50 * 1024 * 1024, ge=1024)
+    max_archive_entries: int = Field(default=10_000, ge=10)
+    max_archive_uncompressed_bytes: int = Field(default=250 * 1024 * 1024, ge=1024)
+    max_archive_compression_ratio: float = Field(default=100.0, ge=1)
+    max_image_pixels: int = Field(default=50_000_000, ge=1_000_000)
+    max_pdf_pages: int = Field(default=500, ge=1, le=10_000)
+    max_pdf_page_images: int = Field(default=10, ge=0, le=100)
+    max_multimodal_inline_bytes: int = Field(default=18 * 1024 * 1024, ge=1024, le=19 * 1024 * 1024)
+
+    sandbox_image: str = "mathmodel-ai-sandbox:phase3"
+    sandbox_root: Path = Path("var/sandbox")
+    sandbox_cpu_cores: float = Field(default=1.0, gt=0, le=8)
+    sandbox_memory_mb: int = Field(default=512, ge=64, le=16_384)
+    sandbox_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
+    sandbox_pids_limit: int = Field(default=64, ge=16, le=1024)
+    sandbox_max_output_bytes: int = Field(default=1_000_000, ge=1024)
+    sandbox_max_artifacts: int = Field(default=50, ge=0, le=1000)
+    sandbox_max_artifact_bytes: int = Field(default=50 * 1024 * 1024, ge=1024)
 
     openai_api_key: SecretStr | None = None
     openai_base_url: str = "https://api.openai.com/v1"

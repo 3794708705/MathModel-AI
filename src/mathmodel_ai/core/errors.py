@@ -32,3 +32,19 @@ class QualityGateError(MathModelError):
 
 class ResourceNotFoundError(MathModelError):
     """Raised when a requested persisted project or problem does not exist."""
+
+
+class FileValidationError(MathModelError):
+    """Raised when uploaded bytes fail the guarded file contract."""
+
+
+class FileParseError(MathModelError):
+    """Raised when a validated file cannot be deterministically parsed."""
+
+
+class StorageError(MathModelError):
+    """Raised when the file-store boundary cannot preserve an artifact safely."""
+
+
+class SandboxError(MathModelError):
+    """Raised for invalid sandbox requests or local isolation failures."""

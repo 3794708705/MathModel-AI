@@ -6,7 +6,7 @@ attempts, routes, provider/model/reasoning, prompt version, token use, latency,
 errors, state versions, and mock status. Concrete agents may not bypass state
 validation or directly instantiate vendor clients.
 
-Phase 2 concrete agents are:
+Concrete reasoning/data agents are:
 
 - `ProblemAgent`: produces typed analysis, keeps assumptions proposed, and
   preserves low-confidence interpretations for human review.
@@ -15,6 +15,10 @@ Phase 2 concrete agents are:
 - `ModelJury`: obtains one qualitative assessment, then delegates weighted
   arithmetic, hard-failure enforcement, ranking, and primary/backup selection
   to deterministic Python.
+- `DataAgent`: interprets deterministic profiles and optional untrusted media;
+  it identifies semantic roles, likely units, problem alignment, and quality
+  priorities but cannot change computed counts/statistics or invent columns.
 
-All three use `structured_generate()` and package-resource prompts at version
-`2.0.0`. Free-text-to-JSON regex parsing is not part of the agent contract.
+All agents use `structured_generate()` and package-resource prompts. Phase 2
+prompts are version `2.0.0`; the DataAgent prompt is version `3.0.0`.
+Free-text-to-JSON regex parsing is not part of the agent contract.

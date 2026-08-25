@@ -26,6 +26,11 @@ def test_migrated_postgres_persists_problem_state_jsonb() -> None:
         "problem_states",
         "agent_runs",
         "model_decisions",
+        "files",
+        "artifacts",
+        "datasets",
+        "data_profiles",
+        "execution_records",
     } <= set(inspector.get_table_names())
     assert {
         "input_state_version",

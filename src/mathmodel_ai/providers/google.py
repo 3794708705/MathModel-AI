@@ -37,14 +37,28 @@ class GoogleProvider(HttpModelProvider):
             for message in request.messages
             if message.role in {"system", "developer"}
         )
-        contents = [
-            {
-                "role": "model" if message.role == "assistant" else "user",
-                "parts": [{"text": message.content}],
-            }
-            for message in request.messages
-            if message.role not in {"system", "developer"}
-        ]
+        contents = []
+        for message in request.messages:
+            if message.role in {"system", "developer"}:
+                continue
+            parts: list[JsonObject] = []
+            if message.content:
+                parts.append({"text": message.content})
+            parts.extend(
+                {
+                    "inlineData": {
+                        "mimeType": media.mime_type,
+                        "data": media.data_base64,
+                    }
+                }
+                for media in message.media
+            )
+            contents.append(
+                {
+                    "role": "model" if message.role == "assistant" else "user",
+                    "parts": parts,
+                }
+            )
         generation: JsonObject = {"maxOutputTokens": request.max_output_tokens}
         if request.temperature is not None:
             generation["temperature"] = request.temperature

@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -140,3 +141,120 @@ class ModelDecisionRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class FileRecordModel(Base):
+    __tablename__ = "files"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    original_name: Mapped[str] = mapped_column(String(255))
+    safe_name: Mapped[str] = mapped_column(String(255))
+    extension: Mapped[str] = mapped_column(String(20))
+    kind: Mapped[str] = mapped_column(String(32))
+    declared_mime_type: Mapped[str | None] = mapped_column(String(255))
+    detected_mime_type: Mapped[str] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    storage_key: Mapped[str] = mapped_column(String(1000), unique=True)
+    status: Mapped[str] = mapped_column(String(32))
+    validation_warnings: Mapped[list[str]] = mapped_column(JSON_TYPE)
+    parser_name: Mapped[str | None] = mapped_column(String(100))
+    parser_version: Mapped[str | None] = mapped_column(String(100))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ArtifactRecordModel(Base):
+    __tablename__ = "artifacts"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    source_file_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("files.id", ondelete="CASCADE"), index=True
+    )
+    execution_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("execution_records.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(255))
+    mime_type: Mapped[str] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    storage_key: Mapped[str] = mapped_column(String(1000), unique=True)
+    artifact_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DatasetRecordModel(Base):
+    __tablename__ = "datasets"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    source_file_id: Mapped[UUID] = mapped_column(
+        ForeignKey("files.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    sheet_name: Mapped[str | None] = mapped_column(String(255))
+    layer: Mapped[str] = mapped_column(String(32))
+    row_count: Mapped[int] = mapped_column(BigInteger)
+    column_count: Mapped[int]
+    columns_json: Mapped[list[str]] = mapped_column("columns", JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DataProfileRecordModel(Base):
+    __tablename__ = "data_profiles"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    dataset_id: Mapped[UUID] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"), unique=True
+    )
+    source_file_id: Mapped[UUID] = mapped_column(
+        ForeignKey("files.id", ondelete="CASCADE"), index=True
+    )
+    profile_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ExecutionRecordModel(Base):
+    __tablename__ = "execution_records"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(64), index=True)
+    image: Mapped[str] = mapped_column(String(255))
+    image_id: Mapped[str | None] = mapped_column(String(255))
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    runtime_seconds: Mapped[float]
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    exit_code: Mapped[int | None]
+    is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
+    record_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)

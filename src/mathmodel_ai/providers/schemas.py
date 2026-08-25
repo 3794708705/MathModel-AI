@@ -1,13 +1,39 @@
+import base64
+import binascii
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from mathmodel_ai.core.types import ProviderName, ReasoningEffort
 
 
+class MediaPart(BaseModel):
+    mime_type: str = Field(pattern=r"^(image/(png|jpeg|webp)|application/pdf)$")
+    data_base64: str = Field(min_length=1)
+    source_id: str = Field(min_length=1)
+
+    @field_validator("data_base64")
+    @classmethod
+    def media_must_be_valid_base64(cls, value: str) -> str:
+        try:
+            base64.b64decode(value, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("media payload is not valid base64") from exc
+        return value
+
+
 class ModelMessage(BaseModel):
     role: Literal["system", "developer", "user", "assistant"]
-    content: str = Field(min_length=1)
+    content: str = ""
+    media: list[MediaPart] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def text_or_media_is_required(self) -> "ModelMessage":
+        if not self.content and not self.media:
+            raise ValueError("a model message requires text or media")
+        if self.role in {"system", "developer", "assistant"} and self.media:
+            raise ValueError("media is supported only on user messages")
+        return self
 
 
 class GenerationRequest(BaseModel):

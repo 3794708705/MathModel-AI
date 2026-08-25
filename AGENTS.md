@@ -14,13 +14,15 @@ maintainability, performance, then complexity.
 - Provider and routing rules: `docs/MODEL_ROUTING.md`
 - Agent contracts: `docs/AGENT_CONTRACTS.md`
 - Reasoning core: `docs/REASONING_CORE.md`
+- Data and execution: `docs/DATA_EXECUTION.md`
 - Computational truth: `docs/COMPUTATIONAL_TRUTH.md`
 - Security: `docs/SECURITY.md`
 - Testing: `docs/TESTING.md`
 - Execution plans: `docs/exec-plans/`
 
-Current phase: Phase 2 — Reasoning Core (complete). Do not implement Phase 3
-data/file behavior unless the phase is explicitly advanced.
+Current phase: Phase 3 — Data and Execution Foundation (complete). Do not
+implement Phase 4 mathematical-model, generated-code, or solver behavior unless
+the phase is explicitly advanced.
 
 ## Commands
 
@@ -30,6 +32,7 @@ uv run ruff format .
 uv run ruff check .
 uv run mypy src
 uv run pytest --cov=mathmodel_ai
+docker build -t mathmodel-ai-sandbox:phase3 sandbox
 ```
 
 ## Non-negotiable rules
@@ -39,6 +42,7 @@ uv run pytest --cov=mathmodel_ai
 - Keep model SDK details behind `BaseModelProvider`.
 - Keep shared facts in `ProblemState`; agents must not maintain private truth.
 - Preserve raw inputs and use migrations for persisted schema changes.
-- Generated code may run only through the future sandbox boundary.
+- Python code may run only through `SandboxExecutor`; an `ExecutionRecord` is
+  required before any execution claim.
 - Do not commit credentials or log secret values.
 - Add tests and documentation for every completed module.

@@ -6,10 +6,18 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mathmodel_ai.agents.base import AgentRunResult
 from mathmodel_ai.core.types import Environment, ProviderName
+from mathmodel_ai.schemas.data import (
+    CrossDatasetRelationship,
+    DataProfile,
+    DatasetRecord,
+    DataUnderstanding,
+)
+from mathmodel_ai.schemas.execution import ExecutionRecord
+from mathmodel_ai.schemas.files import ArtifactRecord, ParsedFile
 from mathmodel_ai.schemas.model_selection import ModelExploration, ModelSelection
 from mathmodel_ai.schemas.problem_analysis import ProblemAnalysis
 from mathmodel_ai.schemas.problem_state import ProblemState
-from mathmodel_ai.schemas.quality import QualityGateResult
+from mathmodel_ai.schemas.quality import DataWorkflowStage, QualityGateResult
 
 
 class HealthResponse(BaseModel):
@@ -129,3 +137,45 @@ class ReasoningRunResponse(BaseModel):
     state: ProblemState
     agent_runs: list[AgentRunSummary]
     is_mock: bool
+
+
+class FileIngestResponse(BaseModel):
+    parsed_file: ParsedFile
+    datasets: list[DatasetRecord]
+    data_profiles: list[DataProfile]
+    relationships: list[CrossDatasetRelationship]
+    artifacts: list[ArtifactRecord]
+    state_version: int
+    data_stage: DataWorkflowStage
+    gate: QualityGateResult
+
+
+class DataAnalyzeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    media_file_ids: list[UUID] = Field(default_factory=list)
+    user_guidance: list[str] = Field(default_factory=list)
+
+
+class DataAnalyzeResponse(BaseModel):
+    output: DataUnderstanding
+    state_version: int
+    data_stage: DataWorkflowStage
+    gate: QualityGateResult
+    agent_run: AgentRunSummary
+    is_mock: bool
+
+
+class ExecutionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=2 * 1024 * 1024)
+    input_file_ids: list[UUID] = Field(default_factory=list)
+
+
+class ExecutionResponse(BaseModel):
+    execution: ExecutionRecord
+    artifacts: list[ArtifactRecord]
+    state_version: int
+    data_stage: DataWorkflowStage
+    gate: QualityGateResult

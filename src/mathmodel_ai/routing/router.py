@@ -20,6 +20,7 @@ TASK_MINIMUMS: dict[TaskType, EscalationLevel] = {
     TaskType.PROBLEM_UNDERSTANDING: EscalationLevel.FLAGSHIP_HIGH,
     TaskType.MODEL_EXPLORATION: EscalationLevel.FLAGSHIP_XHIGH,
     TaskType.MODEL_JURY: EscalationLevel.FLAGSHIP_XHIGH,
+    TaskType.DATA_UNDERSTANDING: EscalationLevel.FLAGSHIP_HIGH,
     TaskType.DATABASE_ARCHITECTURE: EscalationLevel.FLAGSHIP_HIGH,
     TaskType.CODE_GENERATION: EscalationLevel.FLAGSHIP_HIGH,
     TaskType.VALIDATION: EscalationLevel.FLAGSHIP_HIGH,
@@ -112,6 +113,11 @@ class ModelRouter:
             )
 
         target = self._target(level)
+        if profile.task_type is TaskType.DATA_UNDERSTANDING and (
+            profile.multimodal_requirement > 0 or profile.long_context_requirement >= 4
+        ):
+            level = max(level, EscalationLevel.FLAGSHIP_XHIGH)
+            target = self._settings.model_catalog.multimodal
         action = (
             RouteAction.MULTI_MODEL_REVIEW
             if level is EscalationLevel.MULTI_MODEL_REVIEW

@@ -15,6 +15,7 @@ class TaskType(StrEnum):
     PROBLEM_UNDERSTANDING = "problem_understanding"
     MODEL_EXPLORATION = "model_exploration"
     MODEL_JURY = "model_jury"
+    DATA_UNDERSTANDING = "data_understanding"
     DATABASE_ARCHITECTURE = "database_architecture"
     CODE_GENERATION = "code_generation"
     VALIDATION = "validation"

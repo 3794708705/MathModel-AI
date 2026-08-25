@@ -6,10 +6,11 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
+from mathmodel_ai.core.errors import ProviderError
 from mathmodel_ai.providers.anthropic import AnthropicProvider
 from mathmodel_ai.providers.google import GoogleProvider
 from mathmodel_ai.providers.openai import OpenAIProvider
-from mathmodel_ai.providers.schemas import GenerationRequest, ModelMessage
+from mathmodel_ai.providers.schemas import GenerationRequest, MediaPart, ModelMessage
 
 
 class Answer(BaseModel):
@@ -135,6 +136,91 @@ async def test_google_structured_request_and_response_contract() -> None:
     await http_client.aclose()
     assert result.parsed.value == 2
     assert result.response.finish_reason == "STOP"
+
+
+@pytest.mark.asyncio
+async def test_google_sends_inline_multimodal_bytes_with_declared_mime() -> None:
+    def handler(http_request: httpx.Request) -> httpx.Response:
+        payload: dict[str, Any] = json.loads(http_request.content)
+        parts = payload["contents"][0]["parts"]
+        assert parts[1] == {"inlineData": {"mimeType": "image/png", "data": "aW1hZ2U="}}
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [{"content": {"parts": [{"text": '{"value":2}'}]}}],
+                "usageMetadata": {},
+            },
+        )
+
+    http_client = client(handler)
+    provider = GoogleProvider(
+        api_key="test",
+        base_url="https://provider.example/v1",
+        timeout_seconds=1,
+        client=http_client,
+    )
+    media_request = request().model_copy(
+        update={
+            "messages": [
+                ModelMessage(
+                    role="user",
+                    content="Inspect the attachment.",
+                    media=[
+                        MediaPart(
+                            mime_type="image/png",
+                            data_base64="aW1hZ2U=",
+                            source_id="file-1",
+                        )
+                    ],
+                )
+            ]
+        }
+    )
+    result = await provider.structured_generate(media_request, Answer)
+    await http_client.aclose()
+    assert result.parsed.value == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_name", ["openai", "anthropic"])
+async def test_non_multimodal_provider_paths_reject_media_instead_of_dropping_it(
+    provider_name: str,
+) -> None:
+    http_client = client(lambda _request: httpx.Response(500))
+    if provider_name == "openai":
+        provider = OpenAIProvider(
+            api_key="test",
+            base_url="https://provider.example/v1",
+            timeout_seconds=1,
+            client=http_client,
+        )
+    else:
+        provider = AnthropicProvider(
+            api_key="test",
+            base_url="https://provider.example/v1",
+            api_version="2023-06-01",
+            timeout_seconds=1,
+            client=http_client,
+        )
+    media_request = request().model_copy(
+        update={
+            "messages": [
+                ModelMessage(
+                    role="user",
+                    media=[
+                        MediaPart(
+                            mime_type="image/png",
+                            data_base64="aW1hZ2U=",
+                            source_id="file-1",
+                        )
+                    ],
+                )
+            ]
+        }
+    )
+    with pytest.raises(ProviderError, match="Google provider path"):
+        await provider.generate(media_request)
+    await http_client.aclose()
 
 
 @pytest.mark.asyncio

@@ -39,3 +39,22 @@ class ReasoningStateSummary(BaseModel):
     subproblems: list[SubProblem]
     evidence_items: list[EvidenceItem]
     ambiguities: list[Ambiguity]
+
+
+class DataWorkflowStage(StrEnum):
+    PENDING = "PENDING"
+    FILES = "FILES"
+    DATA = "DATA"
+    EXECUTION = "EXECUTION"
+
+
+class DataStageHistoryEntry(BaseModel):
+    from_stage: DataWorkflowStage
+    to_stage: DataWorkflowStage
+    status: QualityGateStatus
+    input_version: int = Field(ge=0)
+    output_version: int = Field(ge=1)
+    updated_by: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    source_id: UUID | None = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))

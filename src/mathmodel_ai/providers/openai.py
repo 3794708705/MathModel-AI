@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 import httpx
 from pydantic import BaseModel
 
-from mathmodel_ai.core.errors import ProviderResponseError
+from mathmodel_ai.core.errors import ProviderError, ProviderResponseError
 from mathmodel_ai.core.types import ProviderName
 from mathmodel_ai.providers.http import HttpModelProvider
 from mathmodel_ai.providers.schemas import (
@@ -31,6 +31,8 @@ class OpenAIProvider(HttpModelProvider):
 
     @staticmethod
     def _payload(request: GenerationRequest) -> JsonObject:
+        if any(message.media for message in request.messages):
+            raise ProviderError("multimodal DataAgent requests require the Google provider path")
         instructions = "\n\n".join(
             message.content
             for message in request.messages

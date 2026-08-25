@@ -5,6 +5,14 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from mathmodel_ai.schemas.data import (
+    CrossDatasetRelationship,
+    DataProfile,
+    DatasetRecord,
+    DataUnderstanding,
+)
+from mathmodel_ai.schemas.execution import ExecutionRecord
+from mathmodel_ai.schemas.files import ArtifactRecord, RegisteredFile
 from mathmodel_ai.schemas.model_selection import (
     ModelCandidate,
     ModelDecisionEvidence,
@@ -18,7 +26,12 @@ from mathmodel_ai.schemas.problem_analysis import (
     ProblemAnalysis,
     SubProblem,
 )
-from mathmodel_ai.schemas.quality import QualityGateResult, StageHistoryEntry
+from mathmodel_ai.schemas.quality import (
+    DataStageHistoryEntry,
+    DataWorkflowStage,
+    QualityGateResult,
+    StageHistoryEntry,
+)
 
 EvidenceKind = EvidenceType
 
@@ -122,7 +135,7 @@ class ProblemState(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    schema_version: int = Field(default=2, ge=1)
+    schema_version: int = Field(default=3, ge=1)
     version: int = Field(default=0, ge=0)
     problem_id: UUID = Field(default_factory=uuid4)
     project_id: UUID
@@ -134,6 +147,8 @@ class ProblemState(BaseModel):
     remaining_hours: float | None = Field(default=None, ge=0)
 
     files: list[ArtifactRef] = Field(default_factory=list)
+    registered_files: list[RegisteredFile] = Field(default_factory=list)
+    tracked_artifacts: list[ArtifactRecord] = Field(default_factory=list)
     background: list[TraceableItem] = Field(default_factory=list)
     objectives: list[TraceableItem] = Field(default_factory=list)
     subproblems: list[SubProblem] = Field(default_factory=list)
@@ -155,6 +170,13 @@ class ProblemState(BaseModel):
     model_selection: ModelSelection | None = None
     model_selection_version: str | None = None
     decision_evidence: list[ModelDecisionEvidence] = Field(default_factory=list)
+
+    datasets: list[DatasetRecord] = Field(default_factory=list)
+    data_profiles: list[DataProfile] = Field(default_factory=list)
+    cross_dataset_relationships: list[CrossDatasetRelationship] = Field(default_factory=list)
+    data_understanding: DataUnderstanding | None = None
+    data_stage: DataWorkflowStage = DataWorkflowStage.PENDING
+    data_stage_history: list[DataStageHistoryEntry] = Field(default_factory=list)
     quality_gates: list[QualityGateResult] = Field(default_factory=list)
     stage_history: list[StageHistoryEntry] = Field(default_factory=list)
 
@@ -168,7 +190,7 @@ class ProblemState(BaseModel):
     algorithm: TraceableItem | None = None
 
     code_files: list[ArtifactRef] = Field(default_factory=list)
-    execution_records: list[ExecutionRecordRef] = Field(default_factory=list)
+    execution_records: list[ExecutionRecord] = Field(default_factory=list)
     results: list[TraceableItem] = Field(default_factory=list)
 
     validation_results: list[ReportRef] = Field(default_factory=list)

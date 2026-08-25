@@ -1,8 +1,8 @@
 # MathModel AI
 
 MathModel AI is an evidence-first automation system for mathematical modeling
-competitions. Phases 1 and 2 are implemented: the foundation plus a persisted
-reasoning chain from raw problem text to a primary and backup model candidate.
+competitions. Phases 1–3 are implemented: the foundation, persisted reasoning
+core, guarded attachment/data pipeline, and isolated execution boundary.
 
 ## Quick start
 
@@ -11,6 +11,7 @@ Copy-Item .env.example .env
 docker compose up -d postgres
 uv sync --dev
 uv run alembic upgrade head
+docker build -t mathmodel-ai-sandbox:phase3 sandbox
 uv run uvicorn mathmodel_ai.main:app --reload
 ```
 
@@ -19,6 +20,11 @@ The API exposes liveness at `/health/live`, database readiness at
 reasoning is available under `/api/v1/projects/{project_id}`; create a fixture
 project with `POST /api/v1/projects`, then call `POST
 /api/v1/projects/{project_id}/reasoning/run`.
+
+Phase 3 endpoints under the same project prefix accept files, expose file/
+dataset/profile/artifact registries, run structured data understanding, and
+execute explicitly submitted Python only after the FILES and DATA gates pass.
+See [docs/DATA_EXECUTION.md](docs/DATA_EXECUTION.md) for contracts and limits.
 
 ## Verification
 
@@ -37,5 +43,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for boundaries and
 - Mock reasoning verifies schemas, routing, workflow, and persistence only; it
   does not prove that a candidate is mathematically good.
 - Live provider calls require user-supplied keys and an explicit paid-test opt-in.
-- Sandbox, solver, attachment, evidence, and paper pipelines belong to later phases.
+- The local file store has no S3/MinIO adapter, scanned-PDF OCR, or orphan cleanup.
+- Phase 3 accepts explicit Python for boundary verification; mathematical-model
+  generation, numerical/solver image dependencies, and validated solving belong
+  to Phase 4.
+- Literature, evidence-chain completion, and paper pipelines belong to later phases.
 - FastAPI's current test client emits an upstream `httpx2` migration warning.

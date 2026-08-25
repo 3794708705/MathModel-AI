@@ -1,7 +1,10 @@
 # State model
 
-`ProblemState` v2 is the sole shared workflow state. It retains the Phase 1
-future-facing fields and adds typed `ProblemAnalysis`, evidence items,
+`ProblemState` v3 is the sole shared workflow state. It retains the Phase 2
+reasoning fields and adds registered files, tracked artifacts, datasets,
+deterministic data profiles, cross-dataset relationships, structured data
+understanding, execution records, and a separate data-stage history. Typed
+`ProblemAnalysis`, evidence items,
 subproblems, ambiguities, proposed assumptions, model candidates, score matrix,
 primary/backup selection, decision evidence, quality gates, and stage history.
 
@@ -16,6 +19,17 @@ State JSON is never overwritten in place. Project creation stores version 0 at
 `update_reason`. The relational revision number and JSON `version` must agree.
 
 The database now contains `projects`, `problems`, `problem_states`,
-`agent_runs`, and `model_decisions`. `AgentRun` captures model routing and call
-metadata. `ModelDecisionEvidence` carries the exact weights, score matrix,
-rationale, selected/backup IDs, timestamp, and originating agent run.
+`agent_runs`, `model_decisions`, `files`, `artifacts`, `datasets`,
+`data_profiles`, and `execution_records`. File and execution objects are stored
+both in relational registries and referenced by immutable state revisions.
+
+The Phase 3 sub-workflow is ordered independently of the main reasoning stage:
+
+```text
+PENDING -> FILES -> DATA -> EXECUTION
+```
+
+This prevents attachment work from rewinding a project already at `SELECT`.
+Every attempt appends a deterministic quality gate and data-stage history entry.
+A failed execution is persisted but leaves the stage at `DATA`. Adding a new
+accepted file resets semantic data understanding and the data stage to `FILES`.

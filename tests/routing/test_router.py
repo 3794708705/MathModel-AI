@@ -45,3 +45,17 @@ def test_retries_escalate_to_review_then_human() -> None:
     human = router.route(TaskProfile(task_type=TaskType.DOCUMENTATION, retry_count=6))
     assert multi.action is RouteAction.MULTI_MODEL_REVIEW
     assert human.action is RouteAction.HUMAN_REVIEW
+
+
+def test_multimodal_data_understanding_routes_to_configured_gemini_path() -> None:
+    router = ModelRouter(Settings(), available_providers={ProviderName.GOOGLE})
+    decision = router.route(
+        TaskProfile(
+            task_type=TaskType.DATA_UNDERSTANDING,
+            multimodal_requirement=4,
+        )
+    )
+    assert decision.level is EscalationLevel.FLAGSHIP_XHIGH
+    assert decision.recommended_provider is ProviderName.GOOGLE
+    assert decision.selected_provider is ProviderName.GOOGLE
+    assert decision.selected_model == "gemini-3.7-flash"

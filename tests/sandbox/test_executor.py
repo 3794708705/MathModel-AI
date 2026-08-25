@@ -1,0 +1,121 @@
+import subprocess
+from pathlib import Path
+from uuid import uuid4
+
+from mathmodel_ai.data.quality_gates import execution_quality_gate
+from mathmodel_ai.files.storage import LocalFileStore
+from mathmodel_ai.sandbox.executor import SandboxExecutor
+from mathmodel_ai.schemas.execution import ExecutionStatus, SandboxLimits
+from mathmodel_ai.schemas.quality import QualityGateStatus
+
+
+def limits(*, timeout: float = 2) -> SandboxLimits:
+    return SandboxLimits(
+        cpu_cores=0.5,
+        memory_mb=128,
+        timeout_seconds=timeout,
+        pids_limit=32,
+        max_output_bytes=1024,
+        max_artifacts=5,
+        max_artifact_bytes=4096,
+    )
+
+
+class SuccessfulRunner:
+    def __init__(self) -> None:
+        self.run_command: list[str] = []
+
+    def __call__(self, command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        if command[1:3] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(command, 0, stdout=b"sha256:image-id\n", stderr=b"")
+        if command[1] == "run":
+            self.run_command = command
+            return subprocess.CompletedProcess(command, 0, stdout=b"computed\n", stderr=b"")
+        if command[1] == "cp":
+            Path(command[-1], "result.json").write_text('{"verified":true}', encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+
+def test_executor_records_success_and_all_required_docker_boundaries(tmp_path: Path) -> None:
+    store = LocalFileStore(tmp_path / "store")
+    runner = SuccessfulRunner()
+    executor = SandboxExecutor(
+        store=store,
+        root=tmp_path / "runs",
+        image="sandbox:test",
+        limits=limits(),
+        runner=runner,
+    )
+
+    outcome = executor.execute(
+        "print('computed')",
+        project_id=uuid4(),
+        problem_id=uuid4(),
+    )
+
+    record = outcome.record
+    assert record.status is ExecutionStatus.SUCCEEDED
+    assert record.image_id == "sha256:image-id"
+    assert record.stdout == "computed\n"
+    assert record.exit_code == 0
+    assert len(record.artifacts) == 1
+    assert {"--network", "none", "--read-only", "--cap-drop", "--user"} <= set(runner.run_command)
+    assert "65532:65532" in runner.run_command
+    assert "--cpus" in runner.run_command
+    assert "--memory" in runner.run_command
+    assert "--pids-limit" in runner.run_command
+    assert "--rm" not in runner.run_command
+    assert any(item.startswith("/output:") for item in runner.run_command)
+    assert not any(",target=/output" in item for item in runner.run_command)
+    assert (
+        execution_quality_gate(record, store, outcome.artifact_records).status
+        is QualityGateStatus.PASS
+    )
+    assert not (tmp_path / "runs" / record.run_id.hex).exists()
+
+
+class TimeoutRunner:
+    def __call__(self, command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        if command[1:3] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(command, 0, stdout=b"sha256:image-id", stderr=b"")
+        if command[1:3] == ["rm", "--force"]:
+            return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+        raise subprocess.TimeoutExpired(
+            command, timeout=float(kwargs["timeout"]), output=b"partial"
+        )
+
+
+def test_executor_records_timeout_without_claiming_success(tmp_path: Path) -> None:
+    executor = SandboxExecutor(
+        store=LocalFileStore(tmp_path / "store"),
+        root=tmp_path / "runs",
+        image="sandbox:test",
+        limits=limits(timeout=0.1),
+        runner=TimeoutRunner(),
+    )
+
+    outcome = executor.execute("while True: pass", project_id=uuid4(), problem_id=uuid4())
+
+    assert outcome.record.status is ExecutionStatus.TIMEOUT
+    assert outcome.record.exit_code == 124
+    assert outcome.record.error is not None
+    assert "exceeded" in outcome.record.error
+
+
+def test_executor_records_unavailable_image(tmp_path: Path) -> None:
+    def unavailable(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"not found")
+
+    executor = SandboxExecutor(
+        store=LocalFileStore(tmp_path / "store"),
+        root=tmp_path / "runs",
+        image="missing:test",
+        limits=limits(),
+        runner=unavailable,
+    )
+
+    outcome = executor.execute("print(1)", project_id=uuid4(), problem_id=uuid4())
+
+    assert outcome.record.status is ExecutionStatus.UNAVAILABLE
+    assert outcome.record.image_id is None
+    assert outcome.record.is_mock is False
