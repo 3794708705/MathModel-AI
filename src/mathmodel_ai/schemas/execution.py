@@ -13,6 +13,12 @@ class ExecutionStatus(StrEnum):
     REJECTED = "REJECTED"
 
 
+class ExecutionOrigin(StrEnum):
+    USER_CODE = "USER_CODE"
+    DETERMINISTIC_SOLVER_ADAPTER = "DETERMINISTIC_SOLVER_ADAPTER"
+    GENERATED_PROGRAM = "GENERATED_PROGRAM"
+
+
 class SandboxLimits(BaseModel):
     cpu_cores: float = Field(gt=0, le=64)
     memory_mb: int = Field(ge=64, le=262_144)
@@ -39,7 +45,11 @@ class ExecutionRecord(BaseModel):
     project_id: UUID
     problem_id: UUID
     code_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    executed_bundle_hash: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     code_artifact_id: UUID
+    execution_origin: ExecutionOrigin = ExecutionOrigin.USER_CODE
+    model_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    generated_program_id: UUID | None = None
     image: str = Field(min_length=1)
     image_id: str | None = None
     environment: dict[str, str] = Field(default_factory=dict)
@@ -67,4 +77,11 @@ class ExecutionRecord(BaseModel):
             raise ValueError("successful execution requires exit_code=0")
         if self.is_mock and self.status is ExecutionStatus.SUCCEEDED:
             raise ValueError("mock execution cannot claim success")
+        if self.execution_origin is not ExecutionOrigin.USER_CODE and self.model_digest is None:
+            raise ValueError("mathematical execution requires model_digest")
+        if (
+            self.execution_origin is ExecutionOrigin.GENERATED_PROGRAM
+            and self.generated_program_id is None
+        ):
+            raise ValueError("generated execution requires generated_program_id")
         return self

@@ -6,9 +6,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from mathmodel_ai.db.base import Base
-from mathmodel_ai.db.models import Problem, ProblemStateRecord, Project
+from mathmodel_ai.db.models import (
+    MathematicalModelRecord,
+    Problem,
+    ProblemStateRecord,
+    Project,
+)
 from mathmodel_ai.db.session import create_session_factory, session_scope
+from mathmodel_ai.mathematical.digests import mathematical_model_digest
+from mathmodel_ai.mathematical.repository import MathematicalRepository
 from mathmodel_ai.schemas.problem_state import ProblemState
+from tests.mathematical.helpers import lp_model
 
 
 def test_phase_one_models_persist_validated_state() -> None:
@@ -74,4 +82,54 @@ def test_session_scope_commits_and_rolls_back() -> None:
     with Session(engine) as session:
         names = list(session.scalars(select(Project.name)))
         assert names == ["Committed"]
+    engine.dispose()
+
+
+def test_mathematical_model_identity_versions_without_overwriting() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = create_session_factory(engine)
+    project_id = uuid4()
+    problem_id = uuid4()
+    model_id = uuid4()
+    model = lp_model(
+        project_id=project_id,
+        problem_id=problem_id,
+        model_id=model_id,
+    )
+    with session_scope(factory) as session:
+        session.add(Project(id=project_id, name="Versioned model project"))
+        session.add(
+            Problem(
+                id=problem_id,
+                project_id=project_id,
+                title="Versioned LP",
+                raw_problem="Retain every accepted mathematical model version.",
+            )
+        )
+        session.add(
+            MathematicalModelRecord(
+                id=uuid4(),
+                project_id=project_id,
+                problem_id=problem_id,
+                model_id=model_id,
+                version=1,
+                model_digest=mathematical_model_digest(model),
+                state_version=4,
+                selected_model_id=model.source_selected_model_id,
+                status=model.status.value,
+                model_json=model.model_dump(mode="json"),
+            )
+        )
+
+    assigned_model_id, assigned_version = MathematicalRepository(factory).next_model_identity(
+        project_id
+    )
+
+    assert assigned_model_id == model_id
+    assert assigned_version == 2
+    with Session(engine) as session:
+        stored = list(session.scalars(select(MathematicalModelRecord)))
+        assert len(stored) == 1
+        assert stored[0].version == 1
     engine.dispose()

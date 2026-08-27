@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from mathmodel_ai.schemas.problem_analysis import Ambiguity, EvidenceItem, SubProblem
 
@@ -30,8 +30,15 @@ class StageHistoryEntry(BaseModel):
     output_version: int = Field(ge=1)
     updated_by: str = Field(min_length=1)
     reason: str = Field(min_length=1)
-    agent_run_id: UUID
+    agent_run_id: UUID | None = None
+    execution_run_id: UUID | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def one_run_reference_is_required(self) -> "StageHistoryEntry":
+        if (self.agent_run_id is None) == (self.execution_run_id is None):
+            raise ValueError("stage history requires exactly one agent or execution run reference")
+        return self
 
 
 class ReasoningStateSummary(BaseModel):

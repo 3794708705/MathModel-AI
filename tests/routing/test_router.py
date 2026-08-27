@@ -3,10 +3,10 @@ from mathmodel_ai.core.types import ProviderName
 from mathmodel_ai.routing import EscalationLevel, ModelRouter, RouteAction, TaskProfile, TaskType
 
 
-def test_mathematical_modeling_never_starts_below_flagship_high() -> None:
+def test_mathematical_modeling_starts_at_phase_four_xhigh_minimum() -> None:
     router = ModelRouter(Settings(), available_providers={ProviderName.OPENAI})
     decision = router.route(TaskProfile(task_type=TaskType.MATHEMATICAL_MODELING))
-    assert decision.level is EscalationLevel.FLAGSHIP_HIGH
+    assert decision.level is EscalationLevel.FLAGSHIP_XHIGH
     assert decision.recommended_model == "gpt-5.6-sol"
 
 

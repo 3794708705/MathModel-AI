@@ -9,6 +9,8 @@ def test_phase_two_transitions_are_ordered() -> None:
     ensure_transition(WorkflowStage.INGEST, WorkflowStage.UNDERSTAND)
     ensure_transition(WorkflowStage.UNDERSTAND, WorkflowStage.EXPLORE)
     ensure_transition(WorkflowStage.EXPLORE, WorkflowStage.SELECT)
+    ensure_transition(WorkflowStage.SELECT, WorkflowStage.MODEL)
+    ensure_transition(WorkflowStage.MODEL, WorkflowStage.SOLVE)
 
 
 def test_ingest_cannot_skip_directly_to_select() -> None:

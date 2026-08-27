@@ -48,3 +48,11 @@ class StorageError(MathModelError):
 
 class SandboxError(MathModelError):
     """Raised for invalid sandbox requests or local isolation failures."""
+
+
+class SolverUnavailableError(MathModelError):
+    """Raised when routing finds no installed, licensed, compatible solver."""
+
+
+class DependencyUnavailableError(MathModelError):
+    """Raised when generated code requests a dependency outside the approved runtime."""

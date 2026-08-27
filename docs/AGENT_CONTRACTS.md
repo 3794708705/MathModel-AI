@@ -18,7 +18,24 @@ Concrete reasoning/data agents are:
 - `DataAgent`: interprets deterministic profiles and optional untrusted media;
   it identifies semantic roles, likely units, problem alignment, and quality
   priorities but cannot change computed counts/statistics or invent columns.
+- `MathModeler`: converts the accepted analysis, selected candidate, and optional
+  data state into one complete `MathematicalModelDraft` via
+  `structured_generate()`. Python binds model/project/problem identity and
+  version. It may not emit results, claim execution, turn assumptions into facts,
+  or embed solver SDK code in the model.
+- `CodeAgent`: translates an already accepted mathematical model into a hashed,
+  auditable `GeneratedProgram` for the formal generated execution path. It may
+  not alter mathematics; unsupported translation becomes
+  `CODE_GENERATION_BLOCKED`. Its approved source bundle runs through the shared
+  sandbox and strict result contract. Standard LP/MILP/NLP/CP paths remain
+  deterministic-first instead of asking a model to write boilerplate.
 
 All agents use `structured_generate()` and package-resource prompts. Phase 2
-prompts are version `2.0.0`; the DataAgent prompt is version `3.0.0`.
+prompts are version `2.0.0`; the DataAgent prompt is version `3.0.0`; MathModeler
+and CodeAgent prompts are version `4.0.0`.
 Free-text-to-JSON regex parsing is not part of the agent contract.
+
+`AlgorithmSelector`, `SolverRouter`, solver adapters, registries, unit checking,
+feasibility recomputation, and quality gates are deterministic services—not
+agents and not LLM calls. One MathModeler call produces the whole draft; there is
+no per-variable or per-constraint call pattern.

@@ -31,6 +31,10 @@ def test_migrated_postgres_persists_problem_state_jsonb() -> None:
         "datasets",
         "data_profiles",
         "execution_records",
+        "mathematical_models",
+        "generated_programs",
+        "solver_runs",
+        "results",
     } <= set(inspector.get_table_names())
     assert {
         "input_state_version",
@@ -42,6 +46,20 @@ def test_migrated_postgres_persists_problem_state_jsonb() -> None:
     assert {"updated_by", "update_reason"} <= {
         column["name"] for column in inspector.get_columns("problem_states")
     }
+    assert {"model_id", "version", "model_json"} <= {
+        column["name"] for column in inspector.get_columns("mathematical_models")
+    }
+    assert {"model_version", "execution_record_id", "result_json"} <= {
+        column["name"] for column in inspector.get_columns("solver_runs")
+    }
+    result_foreign_keys = {
+        tuple(item["constrained_columns"]) for item in inspector.get_foreign_keys("results")
+    }
+    assert {
+        ("mathematical_model_record_id",),
+        ("solver_run_id",),
+        ("execution_record_id",),
+    } <= result_foreign_keys
 
     connection = engine.connect()
     transaction = connection.begin()

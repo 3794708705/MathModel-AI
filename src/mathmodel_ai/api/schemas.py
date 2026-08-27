@@ -14,10 +14,23 @@ from mathmodel_ai.schemas.data import (
 )
 from mathmodel_ai.schemas.execution import ExecutionRecord
 from mathmodel_ai.schemas.files import ArtifactRecord, ParsedFile
+from mathmodel_ai.schemas.mathematical import MathematicalModel
 from mathmodel_ai.schemas.model_selection import ModelExploration, ModelSelection
 from mathmodel_ai.schemas.problem_analysis import ProblemAnalysis
 from mathmodel_ai.schemas.problem_state import ProblemState
+from mathmodel_ai.schemas.program import (
+    ExecutionStrategy,
+    ExecutionStrategyDecision,
+    GeneratedProgram,
+)
 from mathmodel_ai.schemas.quality import DataWorkflowStage, QualityGateResult
+from mathmodel_ai.schemas.results import ResultRecord
+from mathmodel_ai.schemas.solver import (
+    AlgorithmPlan,
+    SolverOptions,
+    SolverRouteDecision,
+    SolverRun,
+)
 
 
 class HealthResponse(BaseModel):
@@ -179,3 +192,51 @@ class ExecutionResponse(BaseModel):
     state_version: int
     data_stage: DataWorkflowStage
     gate: QualityGateResult
+
+
+class ModelBuildRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_guidance: list[str] = Field(default_factory=list)
+
+
+class ModelBuildResponse(BaseModel):
+    mathematical_model: MathematicalModel
+    algorithm_plan: AlgorithmPlan
+    state_version: int
+    gate: QualityGateResult
+    agent_run: AgentRunSummary
+    is_mock: bool
+
+
+class SolveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    options: SolverOptions = Field(default_factory=SolverOptions)
+    execution_strategy: ExecutionStrategy = ExecutionStrategy.AUTO
+    user_guidance: list[str] = Field(default_factory=list)
+
+
+class SolveResponse(BaseModel):
+    result: ResultRecord
+    solver_run: SolverRun
+    generated_program: GeneratedProgram
+    execution: ExecutionRecord
+    route: SolverRouteDecision
+    execution_strategy: ExecutionStrategyDecision
+    code_agent_run: AgentRunSummary | None = None
+    state_version: int
+    gate: QualityGateResult
+
+
+class MathematicalRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_guidance: list[str] = Field(default_factory=list)
+    options: SolverOptions = Field(default_factory=SolverOptions)
+    execution_strategy: ExecutionStrategy = ExecutionStrategy.AUTO
+
+
+class MathematicalRunResponse(BaseModel):
+    model_stage: ModelBuildResponse
+    solve_stage: SolveResponse

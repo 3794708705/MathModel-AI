@@ -7,8 +7,11 @@ Pydantic v2, SQLAlchemy 2, Alembic, PostgreSQL, and HTTPX. Phase 1 established
 the infrastructure; Phase 2 adds the reasoning core. Phase 3 adds guarded file
 ingestion, immutable local object storage, deterministic data profiling,
 structured data interpretation, artifact registries, and isolated Python
-execution. SQLite is used for database-independent tests; PostgreSQL remains the
-production contract and migration target.
+execution. Phase 4 adds a typed mathematical intermediate representation,
+registries and dimensional checks, deterministic algorithm/solver selection,
+versioned generated programs, real SciPy and OR-Tools solving, optional Gurobi,
+and exact result evidence. SQLite is used for database-independent tests;
+PostgreSQL remains the production contract and migration target.
 
 ## Boundaries
 
@@ -25,6 +28,14 @@ upload API -> body limit -> validator -> immutable file store -> parser
 
 execution API -> SandboxExecutor -> Docker (no network, non-root, bounded)
                               \-> ExecutionRecord + output artifacts -> state v3
+
+SELECT -> MathModeler -> MathematicalModel -> MODEL gate -> AlgorithmSelector
+                                             -> ExecutionStrategySelector
+                                                |-> SolverRouter -> adapters
+                                                \-> CodeAgent -> GeneratedProgram
+                                                            |
+                 ResultRecord <- SOLVE gate <- SolverResult <- SandboxExecutor
+                       \-> content-valid Model/Run/Program/Execution evidence
 ```
 
 - `api`: transport concerns and health reporting only.
@@ -40,6 +51,10 @@ execution API -> SandboxExecutor -> Docker (no network, non-root, bounded)
   and persistence. LLM interpretation cannot replace computed statistics.
 - `sandbox`: Docker invocation, isolation limits, output capture, artifact
   collection, and truthful execution records.
+- `mathematical`: expression/unit/registry logic, deterministic algorithm
+  selection, MODEL/SOLVE gates, versioned persistence, and orchestration.
+- `solvers`: capability/health adapters, fallback routing, deterministic program
+  translation, canonical status mapping, and minimum feasibility recomputation.
 - `db`: persistence mapping and sessions; no reasoning logic.
 
 External model calls happen outside database transactions. A successful stage
@@ -49,7 +64,12 @@ The partial unique index on current state remains the final concurrency guard.
 
 File bytes and generated artifacts live in the file-store abstraction, not
 database JSON blobs. PostgreSQL stores identities, hashes, storage keys,
-profiles, state, evidence links, versions, and execution metadata. Phase 3 uses
+profiles, state, evidence links, versions, and execution metadata. Phase 4 adds
+coarse `mathematical_models`, `generated_programs`, `solver_runs`, and `results`
+registries. Symbols, parameters, constraints, and equations remain inside the
+versioned model JSONB because Phase 4 has no independent query requirement for
+them. Exact relational foreign keys bind every result to one model record, one
+solver run, and one execution record. Phase 3 uses
 the local immutable implementation; its generated-key contract leaves room for
 an S3-compatible implementation without changing domain schemas.
 
@@ -58,6 +78,8 @@ an S3-compatible implementation without changing domain schemas.
 Intentional debt is bounded: the local file store has no S3/MinIO adapter or
 orphan-artifact garbage collector; cross-file relationship recomputation is not
 implemented (cross-sheet discovery is); scanned-PDF OCR is represented through
-the multimodal interface rather than a local OCR engine. The Phase 3 sandbox is
-a minimal Python image; numerical/solver packages and model-derived code belong
-to Phase 4. There is still no literature, verification, or paper pipeline.
+the multimodal interface rather than a local OCR engine. Phase 4 supports
+flattened scalar deterministic adapters, not indexed expansion, general CAS,
+nonlinear global optimization, or every reserved model family. Gurobi requires a
+separate licensed runtime. There is still no Phase 5 validation/sensitivity/red
+team/model repair or literature/paper pipeline.

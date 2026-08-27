@@ -13,6 +13,7 @@ from mathmodel_ai.schemas.data import (
 )
 from mathmodel_ai.schemas.execution import ExecutionRecord
 from mathmodel_ai.schemas.files import ArtifactRecord, RegisteredFile
+from mathmodel_ai.schemas.mathematical import MathematicalModelRef
 from mathmodel_ai.schemas.model_selection import (
     ModelCandidate,
     ModelDecisionEvidence,
@@ -26,12 +27,15 @@ from mathmodel_ai.schemas.problem_analysis import (
     ProblemAnalysis,
     SubProblem,
 )
+from mathmodel_ai.schemas.program import GeneratedProgramRef
 from mathmodel_ai.schemas.quality import (
     DataStageHistoryEntry,
     DataWorkflowStage,
     QualityGateResult,
     StageHistoryEntry,
 )
+from mathmodel_ai.schemas.results import ResultRecordRef
+from mathmodel_ai.schemas.solver import AlgorithmPlan, SolverRunRef
 
 EvidenceKind = EvidenceType
 
@@ -135,7 +139,7 @@ class ProblemState(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    schema_version: int = Field(default=3, ge=1)
+    schema_version: int = Field(default=4, ge=1)
     version: int = Field(default=0, ge=0)
     problem_id: UUID = Field(default_factory=uuid4)
     project_id: UUID
@@ -188,6 +192,12 @@ class ProblemState(BaseModel):
     objective: TraceableItem | None = None
     model_constraints: list[TraceableItem] = Field(default_factory=list)
     algorithm: TraceableItem | None = None
+
+    mathematical_model: MathematicalModelRef | None = None
+    algorithm_plan: AlgorithmPlan | None = None
+    generated_programs: list[GeneratedProgramRef] = Field(default_factory=list)
+    solver_runs: list[SolverRunRef] = Field(default_factory=list)
+    result_records: list[ResultRecordRef] = Field(default_factory=list)
 
     code_files: list[ArtifactRef] = Field(default_factory=list)
     execution_records: list[ExecutionRecord] = Field(default_factory=list)

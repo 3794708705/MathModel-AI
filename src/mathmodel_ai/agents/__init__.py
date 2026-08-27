@@ -1,7 +1,9 @@
 from mathmodel_ai.agents.base import AgentExecution, AgentRunResult, AgentRunStatus, BaseAgent
+from mathmodel_ai.agents.code import CodeAgent
 from mathmodel_ai.agents.data import DataAgent
 from mathmodel_ai.agents.explorer import ModelExplorer
 from mathmodel_ai.agents.jury import ModelJury
+from mathmodel_ai.agents.math_modeler import MathModeler
 from mathmodel_ai.agents.problem import ProblemAgent
 
 __all__ = [
@@ -9,7 +11,9 @@ __all__ = [
     "AgentRunResult",
     "AgentRunStatus",
     "BaseAgent",
+    "CodeAgent",
     "DataAgent",
+    "MathModeler",
     "ModelExplorer",
     "ModelJury",
     "ProblemAgent",

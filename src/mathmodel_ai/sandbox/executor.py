@@ -1,14 +1,17 @@
 import hashlib
+import io
 import logging
 import mimetypes
 import os
+import re
 import shutil
 import stat
 import subprocess
-from collections.abc import Callable, Sequence
+import tarfile
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from time import monotonic
 from uuid import UUID, uuid4
 
@@ -16,6 +19,7 @@ from mathmodel_ai.core.errors import SandboxError
 from mathmodel_ai.files.storage import FileStore
 from mathmodel_ai.schemas.execution import (
     ExecutionArtifact,
+    ExecutionOrigin,
     ExecutionRecord,
     ExecutionStatus,
     SandboxLimits,
@@ -29,6 +33,24 @@ CommandRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 class SandboxExecution:
     record: ExecutionRecord
     artifact_records: list[ArtifactRecord]
+
+
+@dataclass(frozen=True)
+class SecretMount:
+    """Runtime-only read-only secret file; contents and host path are never audited."""
+
+    source: Path
+    target_name: str
+    environment_name: str
+
+    def __post_init__(self) -> None:
+        resolved = self.source.resolve(strict=False)
+        if not resolved.is_file():
+            raise SandboxError("sandbox secret source must be an existing regular file")
+        if re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", self.target_name) is None:
+            raise SandboxError("sandbox secret target name is invalid")
+        if re.fullmatch(r"[A-Z][A-Z0-9_]{0,99}", self.environment_name) is None:
+            raise SandboxError("sandbox secret environment name is invalid")
 
 
 class SandboxExecutor:
@@ -61,12 +83,29 @@ class SandboxExecutor:
         project_id: UUID,
         problem_id: UUID,
         input_files: Sequence[RegisteredFile] = (),
+        secret_mounts: Sequence[SecretMount] = (),
+        execution_origin: ExecutionOrigin = ExecutionOrigin.USER_CODE,
+        model_digest: str | None = None,
+        generated_program_id: UUID | None = None,
+        entrypoint: str = "main.py",
+        source_files: Mapping[str, str] | None = None,
     ) -> SandboxExecution:
+        normalized_entrypoint = self._safe_source_path(entrypoint)
+        normalized_sources = {
+            self._safe_source_path(path): content for path, content in (source_files or {}).items()
+        }
+        if normalized_entrypoint in normalized_sources:
+            raise SandboxError("supporting source files cannot replace the entrypoint")
         encoded = code.encode("utf-8")
         if not encoded:
             raise SandboxError("sandbox code cannot be empty")
         if len(encoded) > self._max_code_bytes:
             raise SandboxError("sandbox code exceeds configured size limit")
+        if (
+            sum(len(item.encode("utf-8")) for item in normalized_sources.values()) + len(encoded)
+            > self._max_code_bytes
+        ):
+            raise SandboxError("sandbox source bundle exceeds configured size limit")
 
         run_id = uuid4()
         container_name = f"mathmodel-ai-{run_id.hex}"
@@ -74,11 +113,17 @@ class SandboxExecutor:
         workspace = run_root / "workspace"
         output = run_root / "output"
         code_hash = hashlib.sha256(encoded).hexdigest()
+        bundle_hash = self._source_bundle_hash({normalized_entrypoint: code, **normalized_sources})
         try:
             workspace.mkdir(parents=True)
             output.mkdir()
-            code_path = workspace / "main.py"
+            code_path = workspace / Path(*PurePosixPath(normalized_entrypoint).parts)
+            code_path.parent.mkdir(parents=True, exist_ok=True)
             code_path.write_bytes(encoded)
+            for relative, content in normalized_sources.items():
+                source_path = workspace / Path(*PurePosixPath(relative).parts)
+                source_path.parent.mkdir(parents=True, exist_ok=True)
+                source_path.write_text(content, encoding="utf-8")
             input_directory = workspace / "inputs"
             input_directory.mkdir()
             for index, item in enumerate(input_files, start=1):
@@ -91,6 +136,7 @@ class SandboxExecutor:
                 project_id=project_id,
                 problem_id=problem_id,
                 run_id=run_id,
+                filename=PurePosixPath(normalized_entrypoint).name,
             )
         except Exception:
             self._cleanup(run_root)
@@ -105,7 +151,11 @@ class SandboxExecutor:
                 project_id=project_id,
                 problem_id=problem_id,
                 code_hash=code_hash,
+                executed_bundle_hash=bundle_hash,
                 code_artifact_id=code_record.artifact_id,
+                execution_origin=execution_origin,
+                model_digest=model_digest,
+                generated_program_id=generated_program_id,
                 image=self._image,
                 image_id=None,
                 environment={"executor": "docker"},
@@ -128,17 +178,33 @@ class SandboxExecutor:
             container_name=container_name,
             workspace=workspace,
             image_reference=image_id,
+            secret_mounts=secret_mounts,
+            entrypoint=normalized_entrypoint,
         )
         timed_out = False
         result: subprocess.CompletedProcess[bytes] | None = None
         runner_error: str | None = None
+        container_started = False
+        completion_observed = False
         try:
-            result = self._runner(
+            start_result = self._runner(
                 command,
                 capture_output=True,
                 check=False,
-                timeout=self._limits.timeout_seconds,
+                timeout=min(self._limits.timeout_seconds, 15),
             )
+            result = start_result
+            if start_result.returncode == 0:
+                container_started = True
+                wait_result = self._runner(
+                    self._completion_command(container_name),
+                    capture_output=True,
+                    check=False,
+                    timeout=self._limits.timeout_seconds,
+                )
+                completion_observed = wait_result.returncode == 0
+                if not completion_observed:
+                    runner_error = "sandbox container stopped before reporting completion"
         except subprocess.TimeoutExpired as exc:
             timed_out = True
             result = subprocess.CompletedProcess(
@@ -151,8 +217,30 @@ class SandboxExecutor:
             runner_error = f"docker execution failed: {type(exc).__name__}"
 
         copy_error: str | None = None
-        if not timed_out and runner_error is None:
+        if container_started:
+            logs = self._container_logs(container_name)
+            if logs is not None:
+                result = subprocess.CompletedProcess(
+                    command,
+                    returncode=result.returncode if result is not None else 1,
+                    stdout=logs.stdout,
+                    stderr=logs.stderr,
+                )
+            elif runner_error is None:
+                runner_error = "sandbox container logs could not be collected"
+        if completion_observed and not timed_out and runner_error is None:
             copy_error = self._copy_outputs(container_name, output)
+            if copy_error is None:
+                marker_error, process_exit_code = self._consume_completion_marker(output)
+                if marker_error is not None:
+                    copy_error = marker_error
+                elif result is not None:
+                    result = subprocess.CompletedProcess(
+                        command,
+                        returncode=process_exit_code,
+                        stdout=result.stdout,
+                        stderr=result.stderr,
+                    )
         self._force_remove(container_name)
 
         ended = datetime.now(UTC)
@@ -170,6 +258,8 @@ class SandboxExecutor:
             error = f"execution exceeded {self._limits.timeout_seconds} seconds"
         elif result is not None and result.returncode == 0:
             status = ExecutionStatus.SUCCEEDED
+        elif result is not None and error is None:
+            error = f"sandbox process exited with code {result.returncode}"
         if copy_error is not None:
             status = ExecutionStatus.REJECTED
             error = copy_error
@@ -193,13 +283,19 @@ class SandboxExecutor:
             project_id=project_id,
             problem_id=problem_id,
             code_hash=code_hash,
+            executed_bundle_hash=bundle_hash,
             code_artifact_id=code_record.artifact_id,
+            execution_origin=execution_origin,
+            model_digest=model_digest,
+            generated_program_id=generated_program_id,
             image=self._image,
             image_id=image_id,
             environment={
                 "executor": "docker",
                 "python_mode": "isolated",
                 "input_file_count": str(len(input_files)),
+                "runtime_secret_count": str(len(secret_mounts)),
+                "source_file_count": str(len(normalized_sources) + 1),
             },
             start_time=started,
             end_time=ended,
@@ -241,13 +337,16 @@ class SandboxExecutor:
         container_name: str,
         workspace: Path,
         image_reference: str,
+        secret_mounts: Sequence[SecretMount] = (),
+        entrypoint: str = "main.py",
     ) -> list[str]:
         memory = f"{self._limits.memory_mb}m"
-        return [
+        command = [
             self._docker,
             "run",
             "--name",
             container_name,
+            "--detach",
             "--network",
             "none",
             "--cpus",
@@ -280,12 +379,112 @@ class SandboxExecutor:
             "HOME=/tmp",
             "--env",
             "PYTHONDONTWRITEBYTECODE=1",
-            image_reference,
+        ]
+        for secret in secret_mounts:
+            target = f"/run/secrets/{secret.target_name}"
+            command.extend(
+                [
+                    "--mount",
+                    f"type=bind,source={secret.source.resolve()},target={target},readonly",
+                    "--env",
+                    f"{secret.environment_name}={target}",
+                ]
+            )
+        command.extend(
+            [
+                image_reference,
+                "/bin/sh",
+                "-c",
+                (
+                    f"python -I -B /workspace/{entrypoint}; "
+                    "status=$?; printf '%s' \"$status\" > /output/.mathmodel-exit; "
+                    "while :; do sleep 3600; done"
+                ),
+            ]
+        )
+        return command
+
+    def _completion_command(self, container_name: str) -> list[str]:
+        return [
+            self._docker,
+            "exec",
+            container_name,
+            "/bin/sh",
+            "-c",
+            "until [ -f /output/.mathmodel-exit ]; do sleep 0.05; done",
+        ]
+
+    def _container_logs(self, container_name: str) -> subprocess.CompletedProcess[bytes] | None:
+        try:
+            result = self._runner(
+                [self._docker, "logs", container_name],
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return result if result.returncode == 0 else None
+
+    @staticmethod
+    def _consume_completion_marker(output: Path) -> tuple[str | None, int]:
+        marker = output / ".mathmodel-exit"
+        try:
+            raw_exit_code = marker.read_text(encoding="ascii")
+            exit_code = int(raw_exit_code)
+        except (OSError, UnicodeDecodeError, ValueError):
+            return "sandbox completion marker is missing or invalid", 1
+        finally:
+            marker.unlink(missing_ok=True)
+        if not 0 <= exit_code <= 255:
+            return "sandbox completion marker contains an invalid exit code", 1
+        return None, exit_code
+
+    def image_id(self) -> str | None:
+        return self._image_id()
+
+    def probe_python_module(self, module: str) -> bool:
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,199}", module) is None:
+            raise SandboxError("invalid Python module probe")
+        image_id = self._image_id()
+        if image_id is None:
+            return False
+        command = [
+            self._docker,
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--user",
+            "65532:65532",
+            "--pids-limit",
+            str(self._limits.pids_limit),
+            "--memory",
+            f"{self._limits.memory_mb}m",
+            image_id,
             "python",
             "-I",
-            "-B",
-            "/workspace/main.py",
+            "-c",
+            (
+                "import importlib.util,sys;"
+                f"sys.exit(0 if importlib.util.find_spec({module!r}) else 1)"
+            ),
         ]
+        try:
+            result = self._runner(
+                command,
+                capture_output=True,
+                check=False,
+                timeout=min(self._limits.timeout_seconds, 15),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return result.returncode == 0
 
     def _image_id(self) -> str | None:
         try:
@@ -305,7 +504,19 @@ class SandboxExecutor:
     def _copy_outputs(self, container_name: str, output: Path) -> str | None:
         try:
             result = self._runner(
-                [self._docker, "cp", f"{container_name}:/output/.", str(output)],
+                [
+                    self._docker,
+                    "exec",
+                    container_name,
+                    "python",
+                    "-I",
+                    "-c",
+                    (
+                        "import sys,tarfile;"
+                        "archive=tarfile.open(fileobj=sys.stdout.buffer,mode='w|');"
+                        "archive.add('/output',arcname='.');archive.close()"
+                    ),
+                ],
                 capture_output=True,
                 check=False,
                 timeout=30,
@@ -314,6 +525,44 @@ class SandboxExecutor:
             return f"sandbox output collection failed: {type(exc).__name__}"
         if result.returncode != 0:
             return "sandbox output collection failed"
+        archive_limit = self._limits.max_artifact_bytes + max(
+            20 * 1024,
+            self._limits.max_artifacts * 2048,
+        )
+        if len(result.stdout) > archive_limit:
+            return "sandbox output archive exceeds configured size limit"
+        try:
+            with tarfile.open(fileobj=io.BytesIO(result.stdout), mode="r:*") as archive:
+                seen: set[Path] = set()
+                for member in archive.getmembers():
+                    if "\\" in member.name or ":" in member.name or "\x00" in member.name:
+                        return "sandbox output archive contains an unsafe path"
+                    parsed = PurePosixPath(member.name)
+                    components = [item for item in parsed.parts if item != "."]
+                    if not components:
+                        continue
+                    if parsed.is_absolute() or ".." in components:
+                        return "sandbox output archive contains an unsafe path"
+                    relative = Path(*components)
+                    destination = output / relative
+                    if member.isdir():
+                        destination.mkdir(parents=True, exist_ok=True)
+                        continue
+                    if not member.isfile():
+                        return "sandbox output archive contains a non-regular file"
+                    if relative in seen:
+                        return "sandbox output archive contains a duplicate path"
+                    seen.add(relative)
+                    source = archive.extractfile(member)
+                    if source is None:
+                        return "sandbox output archive contains an unreadable file"
+                    data = source.read(self._limits.max_artifact_bytes + 1)
+                    if len(data) > self._limits.max_artifact_bytes:
+                        return f"sandbox artifact {relative.name!r} exceeds size limit"
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    destination.write_bytes(data)
+        except (tarfile.TarError, OSError):
+            return "sandbox output archive is invalid"
         return None
 
     def _force_remove(self, container_name: str) -> None:
@@ -328,14 +577,20 @@ class SandboxExecutor:
             return
 
     def _store_code_artifact(
-        self, data: bytes, *, project_id: UUID, problem_id: UUID, run_id: UUID
+        self,
+        data: bytes,
+        *,
+        project_id: UUID,
+        problem_id: UUID,
+        run_id: UUID,
+        filename: str = "main.py",
     ) -> ArtifactRecord:
         artifact_id = uuid4()
         stored = self._store.store_artifact(
             data,
             project_id=project_id,
             artifact_id=artifact_id,
-            filename="main.py",
+            filename=filename,
         )
         return ArtifactRecord(
             artifact_id=artifact_id,
@@ -343,13 +598,33 @@ class SandboxExecutor:
             problem_id=problem_id,
             execution_run_id=run_id,
             kind=ArtifactKind.GENERATED_CODE,
-            name="main.py",
+            name=filename,
             mime_type="text/x-python",
             size_bytes=stored.size_bytes,
             sha256=stored.sha256,
             storage_key=stored.storage_key,
             metadata={"code_hash": stored.sha256},
         )
+
+    @staticmethod
+    def _source_bundle_hash(files: Mapping[str, str]) -> str:
+        digest = hashlib.sha256()
+        for path, content in sorted(files.items()):
+            digest.update(path.replace("\\", "/").encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(content.encode("utf-8"))
+            digest.update(b"\0")
+        return digest.hexdigest()
+
+    @staticmethod
+    def _safe_source_path(path: str) -> str:
+        normalized = path.replace("\\", "/")
+        parsed = PurePosixPath(normalized)
+        if parsed.is_absolute() or not parsed.parts or ".." in parsed.parts:
+            raise SandboxError("sandbox source path must be traversal-safe and relative")
+        if any(re.fullmatch(r"[A-Za-z0-9_.-]+", part) is None for part in parsed.parts):
+            raise SandboxError("sandbox source path contains unsupported characters")
+        return parsed.as_posix()
 
     def _collect_artifacts(
         self,

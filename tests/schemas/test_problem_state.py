@@ -37,8 +37,13 @@ REQUIRED_FIELDS = {
     "objective",
     "model_constraints",
     "algorithm",
+    "mathematical_model",
+    "algorithm_plan",
     "code_files",
+    "generated_programs",
     "execution_records",
+    "solver_runs",
+    "result_records",
     "results",
     "validation_results",
     "sensitivity_results",
@@ -72,6 +77,7 @@ def test_problem_state_contains_contract_fields_and_round_trips() -> None:
             )
         ],
     )
+    assert state.schema_version == 4
     assert ProblemState.model_validate_json(state.model_dump_json()) == state
 
 

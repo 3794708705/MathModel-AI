@@ -5,8 +5,9 @@ Run the local quality gate:
 ```text
 uv run ruff format --check .
 uv run ruff check .
-uv run mypy src
+uv run mypy --strict src
 docker build -t mathmodel-ai-sandbox:phase3 sandbox
+docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
 uv run pytest --cov=mathmodel_ai --cov-report=term-missing
 ```
 
@@ -30,6 +31,37 @@ marked `sandbox` require the image above and verify isolation plus timeout in a
 real container. A Mock DataAgent is only an orchestration/schema fixture and is
 never evidence that the data interpretation is correct.
 
+Phase 4 tests cover typed expression/model schemas, symbol/parameter/equation
+registries, unit PASS/FAIL/UNKNOWN behavior, MODEL and SOLVE gates, algorithm
+selection, size/deadline/requirements-aware solver routing, status
+canonicalization, feasibility/objective recomputation, immutable model digests,
+and content-integrity evidence. Tamper regression covers objective, status, key
+outputs, reciprocal result reference, model version/digest, program/executed
+hashes, exit code, and Mock execution; every case must restore to valid. Tests
+marked `solver` use the Phase 4 image and run real SciPy
+LP, MILP, NLP, infeasible, unbounded, and OR-Tools CP-SAT cases. The complete E2E
+uses Mock only for structured reasoning/MathModeler fixtures; its SciPy/HiGHS
+numerical result and `ExecutionRecord` are real and `is_mock=false`.
+
+The CodeAgent integration fixture may use a Mock provider only to return fixed
+source code; that program then executes real SciPy in the real Docker sandbox,
+emits the strict `result.json` contract, and must pass persisted evidence. The
+paid full live chain is separately gated:
+
+```text
+MM_RUN_LIVE_PROVIDER_TESTS=1
+MM_DEFAULT_PROVIDER=<non-mock provider with credential>
+MM_DEFAULT_PROVIDER_MODEL=<real structured-output model>
+uv run pytest tests/integration/test_live_mathematical_e2e.py
+```
+
+Without credentials the acceptance status is `SKIPPED_NO_CREDENTIALS`, never
+`PASS`.
+
+Gurobi integration is marked `gurobi`. It runs only with both
+`MM_GUROBI_SANDBOX_IMAGE` and `MM_GUROBI_LICENSE_FILE`; otherwise it is skipped
+with an explicit reason while unlicensed fallback remains mandatory and tested.
+
 PostgreSQL migration verification is an integration check:
 
 ```text
@@ -45,5 +77,6 @@ uv run alembic upgrade head
 Run downgrade verification only against a dedicated disposable test database;
 it intentionally removes migrated tables.
 
-Later phases add solver, mathematical validation, and real competition benchmark
-tests; Mock tests cannot satisfy mathematical or benchmark acceptance.
+Phase 5 will add full validation, sensitivity, robustness, red-team, and repair
+tests. The Phase 4 feasibility check is intentionally narrower. A real historical
+competition benchmark remains Phase 8; Mock tests cannot satisfy either claim.

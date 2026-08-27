@@ -15,7 +15,7 @@ dependencies = [
   "httpx>=0.28,<1",
   "openpyxl>=3.1,<4",
   "pillow>=11,<13",
-  "polars>=1.30,<2",
+  "polars>=1.30,<2,!=1.44.0",
   "psycopg[binary]>=3.2,<4",
   "pydantic>=2.11,<3",
   "pydantic-settings>=2.10,<3",
@@ -24,6 +24,16 @@ dependencies = [
   "python-multipart>=0.0.20,<1",
   "sqlalchemy>=2.0,<3",
   "uvicorn[standard]>=0.35,<1",
+]
+
+[project.optional-dependencies]
+solver-local = [
+  "numpy>=2.2,<3",
+  "ortools>=9.12,<10",
+  "scipy>=1.15,<2",
+]
+gurobi = [
+  "gurobipy>=12,<14",
 ]
 
 [dependency-groups]
@@ -46,6 +56,8 @@ markers = [
   "integration: tests spanning multiple application components",
   "postgres: tests requiring a migrated PostgreSQL database",
   "sandbox: tests requiring the local Docker sandbox image",
+  "solver: tests requiring the Phase 4 solver sandbox image",
+  "gurobi: optional tests requiring Gurobi and a valid runtime license",
   "schema: schema and serialization contract tests",
 ]
 

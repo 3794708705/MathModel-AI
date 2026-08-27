@@ -54,5 +54,7 @@ GET  /projects/{id}/models
 GET  /projects/{id}/model-selection
 ```
 
-Phase 2 deliberately does not parse files, retrieve literature, execute code,
-solve a model, or create a paper.
+The Phase 2 reasoning chain itself deliberately does not parse files, retrieve
+literature, execute code, solve a model, or create a paper. Phase 4 consumes its
+persisted `SelectedModel` downstream through `SELECT -> MODEL -> SOLVE`; it does
+not weaken or reinterpret Phase 2 evidence contracts.

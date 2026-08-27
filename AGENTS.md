@@ -15,14 +15,16 @@ maintainability, performance, then complexity.
 - Agent contracts: `docs/AGENT_CONTRACTS.md`
 - Reasoning core: `docs/REASONING_CORE.md`
 - Data and execution: `docs/DATA_EXECUTION.md`
+- Mathematical core: `docs/MATHEMATICAL_CORE.md`
+- Solver architecture: `docs/SOLVER_ARCHITECTURE.md`
 - Computational truth: `docs/COMPUTATIONAL_TRUTH.md`
 - Security: `docs/SECURITY.md`
 - Testing: `docs/TESTING.md`
 - Execution plans: `docs/exec-plans/`
 
-Current phase: Phase 3 — Data and Execution Foundation (complete). Do not
-implement Phase 4 mathematical-model, generated-code, or solver behavior unless
-the phase is explicitly advanced.
+Current phase: Phase 4 — Mathematical and Solver Core (complete, pending human
+acceptance). Do not implement Phase 5 validation, sensitivity, robustness, red
+team, or model-repair behavior unless the phase is explicitly advanced.
 
 ## Commands
 
@@ -30,9 +32,10 @@ the phase is explicitly advanced.
 uv sync --dev
 uv run ruff format .
 uv run ruff check .
-uv run mypy src
+uv run mypy --strict src
 uv run pytest --cov=mathmodel_ai
 docker build -t mathmodel-ai-sandbox:phase3 sandbox
+docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
 ```
 
 ## Non-negotiable rules
@@ -44,5 +47,7 @@ docker build -t mathmodel-ai-sandbox:phase3 sandbox
 - Preserve raw inputs and use migrations for persisted schema changes.
 - Python code may run only through `SandboxExecutor`; an `ExecutionRecord` is
   required before any execution claim.
+- A numerical result must link to its exact `MathematicalModel` version,
+  `SolverRun`, and non-Mock `ExecutionRecord` before it is verified.
 - Do not commit credentials or log secret values.
 - Add tests and documentation for every completed module.

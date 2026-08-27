@@ -114,6 +114,32 @@ class Settings(BaseSettings):
     sandbox_max_output_bytes: int = Field(default=1_000_000, ge=1024)
     sandbox_max_artifacts: int = Field(default=50, ge=0, le=1000)
     sandbox_max_artifact_bytes: int = Field(default=50 * 1024 * 1024, ge=1024)
+    solver_sandbox_image: str = "mathmodel-ai-solver:phase4"
+    solver_sandbox_root: Path = Path("var/solver-sandbox")
+    gurobi_sandbox_image: str | None = None
+    gurobi_license_file: Path | None = None
+    lp_solver_preference: list[str] = Field(default_factory=lambda: ["SCIPY_HIGHS", "GUROBI"])
+    milp_solver_preference: list[str] = Field(
+        default_factory=lambda: ["GUROBI", "SCIPY_MILP", "ORTOOLS_CP_SAT"]
+    )
+    integer_solver_preference: list[str] = Field(
+        default_factory=lambda: ["ORTOOLS_CP_SAT", "GUROBI", "SCIPY_MILP"]
+    )
+    nlp_solver_preference: list[str] = Field(default_factory=lambda: ["SCIPY_MINIMIZE"])
+    evidence_abs_tolerance: float = Field(default=1e-9, ge=0, le=0.1)
+    evidence_rel_tolerance: float = Field(default=1e-9, ge=0, le=0.1)
+    solver_tiny_max_variables: int = Field(default=10, ge=1)
+    solver_tiny_max_constraints: int = Field(default=10, ge=1)
+    solver_tiny_max_nonzeros: int = Field(default=100, ge=1)
+    solver_small_max_variables: int = Field(default=100, ge=1)
+    solver_small_max_constraints: int = Field(default=100, ge=1)
+    solver_small_max_nonzeros: int = Field(default=2_000, ge=1)
+    solver_medium_max_variables: int = Field(default=1_000, ge=1)
+    solver_medium_max_constraints: int = Field(default=1_000, ge=1)
+    solver_medium_max_nonzeros: int = Field(default=100_000, ge=1)
+    solver_deadline_pressure_3_seconds: float = Field(default=300, gt=0, le=3600)
+    solver_deadline_pressure_4_seconds: float = Field(default=120, gt=0, le=3600)
+    solver_deadline_pressure_5_seconds: float = Field(default=60, gt=0, le=3600)
 
     openai_api_key: SecretStr | None = None
     openai_base_url: str = "https://api.openai.com/v1"

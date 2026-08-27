@@ -12,7 +12,7 @@ from mathmodel_ai.routing.schemas import (
 
 TASK_MINIMUMS: dict[TaskType, EscalationLevel] = {
     TaskType.ARCHITECTURE_REDESIGN: EscalationLevel.FLAGSHIP_XHIGH,
-    TaskType.MATHEMATICAL_MODELING: EscalationLevel.FLAGSHIP_HIGH,
+    TaskType.MATHEMATICAL_MODELING: EscalationLevel.FLAGSHIP_XHIGH,
     TaskType.MODEL_REPAIR: EscalationLevel.FLAGSHIP_XHIGH,
     TaskType.SANDBOX_SECURITY: EscalationLevel.FLAGSHIP_XHIGH,
     TaskType.E2E_ROOT_CAUSE: EscalationLevel.FLAGSHIP_XHIGH,
