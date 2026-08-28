@@ -17,14 +17,16 @@ maintainability, performance, then complexity.
 - Data and execution: `docs/DATA_EXECUTION.md`
 - Mathematical core: `docs/MATHEMATICAL_CORE.md`
 - Solver architecture: `docs/SOLVER_ARCHITECTURE.md`
+- Verification and repair: `docs/VERIFICATION_REPAIR.md`
 - Computational truth: `docs/COMPUTATIONAL_TRUTH.md`
 - Security: `docs/SECURITY.md`
 - Testing: `docs/TESTING.md`
 - Execution plans: `docs/exec-plans/`
 
-Current phase: Phase 4 — Mathematical and Solver Core (complete, pending human
-acceptance). Do not implement Phase 5 validation, sensitivity, robustness, red
-team, or model-repair behavior unless the phase is explicitly advanced.
+Current phase: Phase 5 — Verification, Sensitivity, Robustness, Red Team, and
+Model Repair (implemented, pending human acceptance). Do not implement Phase 6
+literature, citation, figure/table, Paper IR, LaTeX, or PDF behavior unless the
+phase is explicitly advanced.
 
 ## Commands
 
@@ -49,5 +51,7 @@ docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
   required before any execution claim.
 - A numerical result must link to its exact `MathematicalModel` version,
   `SolverRun`, and non-Mock `ExecutionRecord` before it is verified.
+- Sensitivity and robustness claims require independently recorded, non-Mock
+  experiment executions; a Mock Red Team or repair can never pass its gate.
 - Do not commit credentials or log secret values.
 - Add tests and documentation for every completed module.

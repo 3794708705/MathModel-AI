@@ -1,9 +1,11 @@
 # MathModel AI
 
 MathModel AI is an evidence-first automation system for mathematical modeling
-competitions. Phases 1–4 are implemented: foundation, persisted reasoning,
+competitions. Phases 1–5 are implemented: foundation, persisted reasoning,
 guarded data ingestion, isolated execution, structured mathematical models,
-deterministic solver routing, and traceable real numerical results.
+deterministic solver routing, traceable real numerical results, independent
+validation, executed perturbation experiments, adversarial review, and bounded
+model repair.
 
 ## Quick start
 
@@ -39,6 +41,17 @@ execution/result evidence before a result is verified. See
 [docs/MATHEMATICAL_CORE.md](docs/MATHEMATICAL_CORE.md) and
 [docs/SOLVER_ARCHITECTURE.md](docs/SOLVER_ARCHITECTURE.md).
 
+Phase 5 extends an accepted `SOLVE` result through `VALIDATE`, `SENSITIVITY`,
+`ROBUSTNESS`, and `RED_TEAM`. Validation recomputes variables, constraints,
+objective, expected outputs, and declared checks without trusting the Phase 4
+feasibility record. Sensitivity and robustness perturb immutable model copies
+and require a real `ExecutionRecord` for every accepted scenario. A non-Mock
+Critical Red Team finding enters `MODEL_REPAIR`; an accepted repair creates the
+next model version and must be solved and verified again. Automatic repair is
+capped at three cycles. SOLVE leaves results `UNVERIFIED`; only the final
+deterministic gate sets `verified_result_id` for the exact accepted formal result. See
+[docs/VERIFICATION_REPAIR.md](docs/VERIFICATION_REPAIR.md).
+
 ## Verification
 
 ```powershell
@@ -62,6 +75,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for boundaries and
   extensible schema.
 - Gurobi is optional and needs a separately configured image, `gurobipy`, and a
   runtime license file; SciPy/OR-Tools remain usable without it.
-- Full validation, sensitivity, robustness, red team/model repair, literature,
-  citation, and paper pipelines belong to later phases.
+- Bootstrap robustness is explicitly blocked until a dataset resampling
+  contract binds sampled rows to model parameters; it is never approximated by
+  parameter noise.
+- Literature, citation, figure/table, Paper IR, LaTeX, PDF, and submission
+  pipelines belong to later phases.
 - FastAPI's current test client emits an upstream `httpx2` migration warning.

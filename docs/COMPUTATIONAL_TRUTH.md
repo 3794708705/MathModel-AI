@@ -41,3 +41,60 @@ success. `EvidenceIntegrityVerifier` returns structured errors such as
 `MODEL_DIGEST_MISMATCH`, `CODE_HASH_MISMATCH`, `MOCK_EXECUTION`, and
 `BROKEN_RESULT_CHAIN`. The in-memory SOLVE gate and persisted evidence endpoint
 use the same verifier; content integrity is not deferred to Phase 5 validation.
+
+Phase 5 asks a different question: whether an already truthful result remains
+mathematically credible under independent recomputation and controlled changes.
+`IndependentValidator` has a separate expression evaluator and does not trust
+the solver's feasibility summary. It reconstructs variable/domain checks, every
+declared constraint, the objective, expected key outputs, evidence integrity,
+and machine-supported validation requirements. An unknown requirement is
+`NOT_EVALUABLE`; it is not silently passed. The terminal gate repeats this
+calculation and compares every deterministic report field with persisted state.
+
+Every accepted sensitivity or robustness scenario follows:
+
+```text
+Perturbation specification
+  -> immutable MathematicalModel copy + scenario digest
+  -> real solver execution
+  -> non-Mock ExecutionRecord
+  -> independently recomputed feasibility/objective
+  -> VerificationExperiment record
+  -> aggregate report
+  -> persisted evidence re-audit
+```
+
+The re-audit reconstructs the scenario from perturbation metadata and parses the
+constant deterministic solver payload without executing or evaluating source.
+It requires the payload model, model digest, generated program, code and bundle
+hashes, ExecutionRecord relational fields, SolverResult, objective, outputs, and
+independent feasibility to agree. Metadata alone cannot prove a perturbation ran.
+
+Default sensitivity is one-at-a-time signed `±5%`, `±10%`, and `±20%`, subject
+to explicit experiment caps and eligible numeric parameters. Robustness selects
+one declared method: scenario analysis, worst-case analysis, seeded noise, or
+seeded Monte Carlo. Bootstrap returns `BLOCKED` until a real row-resampling and
+data-to-parameter binding exists.
+
+Red Team combines deterministic attacks with structured model review. A Mock
+review is always `INCONCLUSIVE`/`HUMAN_REVIEW`; no absence of findings is inferred
+from it. Unresolved Critical findings prevent progression. Model Repair must use
+the same stable model ID, increment exactly one version, change the mathematical
+digest, map actions to every Critical finding, pass the Phase 4 MODEL gate, and
+then undergo a new real solve and the entire Phase 5 chain again. Three
+unsuccessful automatic cycles end in `HUMAN_REVIEW`.
+
+Final acceptance is explicit:
+
+```text
+one formal Result
+  + independently recomputed Validation
+  + re-audited Sensitivity executions
+  + re-audited Robustness executions
+  + deterministic non-Mock Red Team pass
+  -> VERIFIED gate PASS
+  -> ProblemState.verified_result_id
+```
+
+No other result may have `VERIFIED` trace status. A latest timestamp or a
+successful SOLVE gate is never a substitute for this pointer and chain.

@@ -97,6 +97,12 @@ non-Mock successful execution, entrypoint and complete source-bundle hashes,
 required variables/objective, truthful flags, and recomputed feasibility.
 Failures are persisted as attempts and return to MODEL with `RETRY`.
 
+Phase 5 experiment runs reuse this exact router, adapter, sandbox, canonical
+status, and feasibility machinery on perturbed immutable model copies. They do
+not call a lighter in-process calculator. Each scenario has its own model digest,
+solver result, non-Mock `ExecutionRecord`, and independent Phase 5 feasibility
+check. Repair solves enter from `MODEL_REPAIR` and return there on failure.
+
 ## Persistence and API
 
 Migration `20260826_0004` adds the Phase 4 registries. Additive migration

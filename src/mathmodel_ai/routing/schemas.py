@@ -19,6 +19,7 @@ class TaskType(StrEnum):
     DATABASE_ARCHITECTURE = "database_architecture"
     CODE_GENERATION = "code_generation"
     VALIDATION = "validation"
+    RED_TEAM = "red_team"
     PAPER_IR = "paper_ir"
     CITATION_VERIFICATION = "citation_verification"
     API = "api"

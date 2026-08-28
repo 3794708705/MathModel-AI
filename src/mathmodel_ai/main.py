@@ -10,13 +10,16 @@ from mathmodel_ai.agents import (
     MathModeler,
     ModelExplorer,
     ModelJury,
+    ModelRepairAgent,
     ProblemAgent,
+    RedTeamAgent,
 )
 from mathmodel_ai.api.routes.data_execution import router as data_execution_router
 from mathmodel_ai.api.routes.health import router as health_router
 from mathmodel_ai.api.routes.mathematical import router as mathematical_router
 from mathmodel_ai.api.routes.reasoning import router as reasoning_router
 from mathmodel_ai.api.routes.system import router as system_router
+from mathmodel_ai.api.routes.verification import router as verification_router
 from mathmodel_ai.core.config import Settings, get_settings
 from mathmodel_ai.core.errors import MathModelError, ResourceNotFoundError
 from mathmodel_ai.core.logging import configure_logging
@@ -48,6 +51,14 @@ from mathmodel_ai.solvers.gurobi import GurobiSolver
 from mathmodel_ai.solvers.ortools import ORToolsSolver
 from mathmodel_ai.solvers.router import SolverRouter
 from mathmodel_ai.solvers.scipy import SciPySolver
+from mathmodel_ai.verification.experiment_integrity import ExperimentIntegrityVerifier
+from mathmodel_ai.verification.experiments import ExperimentEngine
+from mathmodel_ai.verification.red_team import RedTeamAnalyzer
+from mathmodel_ai.verification.repository import VerificationRepository
+from mathmodel_ai.verification.robustness import RobustnessAnalyzer
+from mathmodel_ai.verification.sensitivity import SensitivityAnalyzer
+from mathmodel_ai.verification.validation import IndependentValidator
+from mathmodel_ai.verification.workflow import VerificationWorkflow
 
 
 def create_app(
@@ -225,11 +236,44 @@ def create_app(
         ),
         evidence_verifier=evidence_verifier,
     )
+    validator = IndependentValidator(
+        absolute_tolerance=resolved.validation_abs_tolerance,
+        relative_tolerance=resolved.validation_rel_tolerance,
+    )
+    experiment_integrity_verifier = ExperimentIntegrityVerifier(validator)
+    experiment_engine = ExperimentEngine(
+        algorithm_selector=selector,
+        solver_router=solver_router,
+        validator=validator,
+        integrity_verifier=experiment_integrity_verifier,
+    )
+    application.state.independent_validator = validator
+    application.state.experiment_integrity_verifier = experiment_integrity_verifier
+    application.state.experiment_engine = experiment_engine
+    application.state.verification_repository = VerificationRepository(
+        application.state.session_factory
+    )
+    application.state.verification_workflow = VerificationWorkflow(
+        reasoning_repository=application.state.reasoning_repository,
+        mathematical_repository=application.state.mathematical_repository,
+        mathematical_workflow=application.state.mathematical_workflow,
+        repository=application.state.verification_repository,
+        validator=validator,
+        sensitivity_analyzer=SensitivityAnalyzer(experiment_engine),
+        robustness_analyzer=RobustnessAnalyzer(experiment_engine),
+        red_team_agent=RedTeamAgent(**shared),
+        red_team_analyzer=RedTeamAnalyzer(),
+        model_repair_agent=ModelRepairAgent(**shared),
+        algorithm_selector=selector,
+        experiment_integrity_verifier=experiment_integrity_verifier,
+        max_repair_cycles=resolved.phase5_max_repair_cycles,
+    )
     application.include_router(health_router)
     application.include_router(system_router)
     application.include_router(reasoning_router)
     application.include_router(data_execution_router)
     application.include_router(mathematical_router)
+    application.include_router(verification_router)
 
     @application.exception_handler(ResourceNotFoundError)
     async def not_found_handler(_request: Request, exc: ResourceNotFoundError) -> JSONResponse:

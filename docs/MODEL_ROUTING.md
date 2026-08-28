@@ -19,7 +19,10 @@ large-context data tasks route at `FLAGSHIP_XHIGH` through the configured Google
 target (`gemini-3.7-flash` by default). Model identifiers live in settings,
 never in agents. Code generation starts at `FLAGSHIP_HIGH`; retries and high
 blast radius can escalate it. Basic algorithm and solver selection are
-deterministic and therefore do not consume an LLM route. The
+deterministic and therefore do not consume an LLM route. Phase 5 independent
+validation and perturbation experiments are also deterministic. Red Team and
+Model Repair both start at `FLAGSHIP_XHIGH`; they cannot downgrade to a routine
+model because their review and blast-radius requirements are critical. The
 logical `FLAGSHIP_MAX` level currently maps to the provider's documented
 `xhigh` API effort while retaining `MAX` in audit metadata; the API does not
 receive an invented `max` value.

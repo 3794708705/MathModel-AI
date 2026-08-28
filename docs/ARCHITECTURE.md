@@ -10,7 +10,10 @@ structured data interpretation, artifact registries, and isolated Python
 execution. Phase 4 adds a typed mathematical intermediate representation,
 registries and dimensional checks, deterministic algorithm/solver selection,
 versioned generated programs, real SciPy and OR-Tools solving, optional Gurobi,
-and exact result evidence. SQLite is used for database-independent tests;
+and exact result evidence. Phase 5 adds independent result validation, real
+perturb-and-resolve experiments, configurable robustness methods, structured
+adversarial review, and a three-cycle immutable model-repair loop. SQLite is
+used for database-independent tests;
 PostgreSQL remains the production contract and migration target.
 
 ## Boundaries
@@ -36,6 +39,14 @@ SELECT -> MathModeler -> MathematicalModel -> MODEL gate -> AlgorithmSelector
                                                             |
                  ResultRecord <- SOLVE gate <- SolverResult <- SandboxExecutor
                        \-> content-valid Model/Run/Program/Execution evidence
+
+SOLVE -> IndependentValidator -> VALIDATE gate -> Sensitivity experiments
+      -> SENSITIVITY gate -> Robustness experiments -> ROBUSTNESS gate
+      -> RedTeamAgent + deterministic attacks -> RED_TEAM gate
+          | PASS
+          ` Critical -> ModelRepairAgent -> MODEL_REPAIR gate -> model vN+1
+                       -> SOLVE -> VALIDATE -> SENSITIVITY -> ROBUSTNESS
+                       -> RED_TEAM (maximum three automatic repair cycles)
 ```
 
 - `api`: transport concerns and health reporting only.
@@ -55,6 +66,10 @@ SELECT -> MathModeler -> MathematicalModel -> MODEL gate -> AlgorithmSelector
   selection, MODEL/SOLVE gates, versioned persistence, and orchestration.
 - `solvers`: capability/health adapters, fallback routing, deterministic program
   translation, canonical status mapping, and minimum feasibility recomputation.
+- `verification`: an independent expression evaluator, result/constraint/metric
+  validation, executed sensitivity and robustness experiments, deterministic
+  plus model-assisted Red Team analysis, quality gates, repair orchestration,
+  and Phase 5 persistence.
 - `db`: persistence mapping and sessions; no reasoning logic.
 
 External model calls happen outside database transactions. A successful stage
@@ -66,7 +81,9 @@ File bytes and generated artifacts live in the file-store abstraction, not
 database JSON blobs. PostgreSQL stores identities, hashes, storage keys,
 profiles, state, evidence links, versions, and execution metadata. Phase 4 adds
 coarse `mathematical_models`, `generated_programs`, `solver_runs`, and `results`
-registries. Symbols, parameters, constraints, and equations remain inside the
+registries. Phase 5 adds `validation_runs`, `sensitivity_runs`,
+`robustness_runs`, `verification_experiments`, `red_team_reports`, and
+`repair_cycles`. Symbols, parameters, constraints, and equations remain inside the
 versioned model JSONB because Phase 4 has no independent query requirement for
 them. Exact relational foreign keys bind every result to one model record, one
 solver run, and one execution record. Phase 3 uses
@@ -81,5 +98,5 @@ implemented (cross-sheet discovery is); scanned-PDF OCR is represented through
 the multimodal interface rather than a local OCR engine. Phase 4 supports
 flattened scalar deterministic adapters, not indexed expansion, general CAS,
 nonlinear global optimization, or every reserved model family. Gurobi requires a
-separate licensed runtime. There is still no Phase 5 validation/sensitivity/red
-team/model repair or literature/paper pipeline.
+separate licensed runtime. Bootstrap remains blocked without row-level
+data-to-parameter resampling. There is no literature/citation/paper pipeline.

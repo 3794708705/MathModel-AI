@@ -459,7 +459,7 @@ class MathematicalWorkflow:
         payload = state.model_dump()
         payload.update(
             {
-                "schema_version": 4,
+                "schema_version": 5,
                 "version": next_version,
                 "current_stage": WorkflowStage.MODEL,
                 "status": WorkflowStatus.SUCCEEDED,
@@ -492,7 +492,7 @@ class MathematicalWorkflow:
     ) -> ProblemState:
         next_version = state.version + 1
         passed = gate.status is QualityGateStatus.PASS
-        target_stage = WorkflowStage.SOLVE if passed else WorkflowStage.MODEL
+        target_stage = WorkflowStage.SOLVE if passed else state.current_stage
         code_artifact = next(
             item
             for item in execution.execution.artifact_records
@@ -517,9 +517,7 @@ class MathematicalWorkflow:
             kind=EvidenceType.RESULT,
             statement=f"Persisted canonical solver result {result.result_id}",
             source_refs=result.evidence_refs,
-            verification_status=(
-                VerificationStatus.VERIFIED if passed else VerificationStatus.UNVERIFIED
-            ),
+            verification_status=VerificationStatus.UNVERIFIED,
         )
         payload = state.model_dump()
         payload.update(
@@ -527,6 +525,7 @@ class MathematicalWorkflow:
                 "version": next_version,
                 "current_stage": target_stage,
                 "status": WorkflowStatus.SUCCEEDED if passed else WorkflowStatus.RETRY,
+                "verified_result_id": None,
                 "code_files": [
                     *state.code_files,
                     ArtifactRef(

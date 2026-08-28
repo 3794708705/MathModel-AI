@@ -27,6 +27,11 @@ def test_model_jury_weights_must_sum_to_one_hundred() -> None:
         Settings(model_jury_weights={"problem_fit": 24})
 
 
+def test_automatic_model_repair_never_exceeds_three_iterations() -> None:
+    with pytest.raises(ValidationError):
+        Settings(phase5_max_repair_cycles=4)
+
+
 @pytest.mark.asyncio
 async def test_production_registry_does_not_expose_mock_provider() -> None:
     settings = Settings(

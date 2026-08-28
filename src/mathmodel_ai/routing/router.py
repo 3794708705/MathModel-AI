@@ -24,6 +24,7 @@ TASK_MINIMUMS: dict[TaskType, EscalationLevel] = {
     TaskType.DATABASE_ARCHITECTURE: EscalationLevel.FLAGSHIP_HIGH,
     TaskType.CODE_GENERATION: EscalationLevel.FLAGSHIP_HIGH,
     TaskType.VALIDATION: EscalationLevel.FLAGSHIP_HIGH,
+    TaskType.RED_TEAM: EscalationLevel.FLAGSHIP_XHIGH,
     TaskType.PAPER_IR: EscalationLevel.FLAGSHIP_HIGH,
     TaskType.CITATION_VERIFICATION: EscalationLevel.FLAGSHIP_HIGH,
     TaskType.API: EscalationLevel.BALANCED,

@@ -36,6 +36,13 @@ from mathmodel_ai.schemas.quality import (
 )
 from mathmodel_ai.schemas.results import ResultRecordRef
 from mathmodel_ai.schemas.solver import AlgorithmPlan, SolverRunRef
+from mathmodel_ai.schemas.verification import (
+    RedTeamReportRef,
+    RepairCycleRef,
+    RobustnessReportRef,
+    SensitivityReportRef,
+    ValidationReportRef,
+)
 
 EvidenceKind = EvidenceType
 
@@ -59,6 +66,7 @@ class WorkflowStage(StrEnum):
     SENSITIVITY = "SENSITIVITY"
     ROBUSTNESS = "ROBUSTNESS"
     RED_TEAM = "RED_TEAM"
+    MODEL_REPAIR = "MODEL_REPAIR"
     PAPER = "PAPER"
     FINAL_JURY = "FINAL_JURY"
     SUBMISSION = "SUBMISSION"
@@ -139,7 +147,7 @@ class ProblemState(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    schema_version: int = Field(default=4, ge=1)
+    schema_version: int = Field(default=5, ge=1)
     version: int = Field(default=0, ge=0)
     problem_id: UUID = Field(default_factory=uuid4)
     project_id: UUID
@@ -198,19 +206,20 @@ class ProblemState(BaseModel):
     generated_programs: list[GeneratedProgramRef] = Field(default_factory=list)
     solver_runs: list[SolverRunRef] = Field(default_factory=list)
     result_records: list[ResultRecordRef] = Field(default_factory=list)
+    verified_result_id: UUID | None = None
 
     code_files: list[ArtifactRef] = Field(default_factory=list)
     execution_records: list[ExecutionRecord] = Field(default_factory=list)
     results: list[TraceableItem] = Field(default_factory=list)
 
-    validation_results: list[ReportRef] = Field(default_factory=list)
-    sensitivity_results: list[ReportRef] = Field(default_factory=list)
-    robustness_results: list[ReportRef] = Field(default_factory=list)
+    validation_results: list[ValidationReportRef] = Field(default_factory=list)
+    sensitivity_results: list[SensitivityReportRef] = Field(default_factory=list)
+    robustness_results: list[RobustnessReportRef] = Field(default_factory=list)
 
     literature: list[TraceableItem] = Field(default_factory=list)
     citations: list[TraceableItem] = Field(default_factory=list)
-    red_team_reports: list[ReportRef] = Field(default_factory=list)
-    revisions: list[ReportRef] = Field(default_factory=list)
+    red_team_reports: list[RedTeamReportRef] = Field(default_factory=list)
+    revisions: list[RepairCycleRef] = Field(default_factory=list)
 
     figures: list[ArtifactRef] = Field(default_factory=list)
     tables: list[ArtifactRef] = Field(default_factory=list)
@@ -245,4 +254,27 @@ class ProblemState(BaseModel):
             items: list[TraceableItem] = getattr(self, field_name)
             if any(item.kind is not kind for item in items):
                 raise ValueError(f"{field_name} entries must have kind={kind.value}")
+        if self.schema_version >= 5:
+            verified_items = [
+                item
+                for item in self.results
+                if item.verification_status is VerificationStatus.VERIFIED
+            ]
+            if self.verified_result_id is None and verified_items:
+                raise ValueError("VERIFIED result entries require verified_result_id")
+            if self.verified_result_id is not None:
+                if not any(
+                    item.result_id == self.verified_result_id for item in self.result_records
+                ):
+                    raise ValueError("verified_result_id must reference a persisted result")
+                expected_item_id = f"RESULT-{self.verified_result_id}"
+                if [item.item_id for item in verified_items] != [expected_item_id]:
+                    raise ValueError("exactly the verified_result_id result entry may be VERIFIED")
+                if not any(
+                    gate.gate == "VERIFIED"
+                    and gate.status.value == "PASS"
+                    and gate.subject_ref == f"result:{self.verified_result_id}"
+                    for gate in self.quality_gates
+                ):
+                    raise ValueError("verified_result_id requires a passing VERIFIED gate")
         return self

@@ -31,8 +31,15 @@
 - An optional Gurobi license is an existing validated file mounted read-only at
   runtime. Its contents and host path are absent from `ExecutionRecord` and
   application logs; the default solver image contains no license or `gurobipy`.
+- Sensitivity and robustness never execute model-authored shell commands. They
+  clone only validated mathematical fields, serialize through the existing
+  deterministic solver path, retain the same network-disabled/non-root sandbox,
+  cap scenario counts, and require a distinct `ExecutionRecord` per scenario.
+- Uploaded data or Red Team guidance remains untrusted context. Repair output
+  must pass Pydantic, stable-identity/version checks, the deterministic MODEL
+  gate, and another sandboxed solve before it can affect accepted results.
 
-Phase 3–4 tests exercise traversal, MIME mismatch, oversized multipart input,
+Phase 3–5 tests exercise traversal, MIME mismatch, oversized multipart input,
 image decompression limits, network denial, non-root identity, read-only mounts,
 timeout, unsafe output archives, and invalid secret mounts. Residual risk: local Docker is a security boundary dependency and
 must be patched/hardened by deployment; antivirus/content disarm, S3 policies,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ValidationError
@@ -34,6 +35,17 @@ from mathmodel_ai.schemas.results import (
     ResultRecord,
 )
 from mathmodel_ai.schemas.solver import SolverRun
+
+
+@dataclass(frozen=True)
+class ResultContext:
+    mathematical_model_record_id: UUID
+    model: MathematicalModel
+    result: ResultRecord
+    solver_run: SolverRun
+    execution: ExecutionRecord
+    program: GeneratedProgram | None
+    evidence: EvidenceChainReport
 
 
 class MathematicalRepository:
@@ -234,6 +246,53 @@ class MathematicalRepository:
                 )
             )
             return [GeneratedProgram.model_validate(row.program_json) for row in rows]
+
+    def get_result_context(
+        self,
+        project_id: UUID,
+        result_id: UUID | None = None,
+    ) -> ResultContext:
+        with session_scope(self._session_factory) as session:
+            statement = select(ResultRecordModel).where(ResultRecordModel.project_id == project_id)
+            if result_id is not None:
+                statement = statement.where(ResultRecordModel.id == result_id)
+            else:
+                statement = statement.order_by(ResultRecordModel.created_at.desc()).limit(1)
+            result_row = session.scalar(statement)
+            if result_row is None:
+                raise ResourceNotFoundError("result was not found")
+            solver_row = session.get(SolverRunRecord, result_row.solver_run_id)
+            model_row = session.get(
+                MathematicalModelRecord,
+                result_row.mathematical_model_record_id,
+            )
+            execution_row = session.get(ExecutionRecordModel, result_row.execution_record_id)
+            if solver_row is None or model_row is None or execution_row is None:
+                raise ResourceNotFoundError("result evidence context is incomplete")
+            program_row = (
+                session.get(GeneratedProgramRecord, solver_row.generated_program_id)
+                if solver_row.generated_program_id is not None
+                else None
+            )
+            result = ResultRecord.model_validate(result_row.record_json)
+            solver = SolverRun.model_validate(solver_row.result_json)
+            model = MathematicalModel.model_validate(model_row.model_json)
+            execution = ExecutionRecord.model_validate(execution_row.record_json)
+            program = (
+                GeneratedProgram.model_validate(program_row.program_json)
+                if program_row is not None
+                else None
+            )
+            record_id = model_row.id
+        return ResultContext(
+            mathematical_model_record_id=record_id,
+            model=model,
+            result=result,
+            solver_run=solver,
+            execution=execution,
+            program=program,
+            evidence=self.verify_result_evidence(project_id, result.result_id),
+        )
 
     def verify_result_evidence(self, project_id: UUID, result_id: UUID) -> EvidenceChainReport:
         with session_scope(self._session_factory) as session:

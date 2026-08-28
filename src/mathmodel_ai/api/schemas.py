@@ -31,6 +31,16 @@ from mathmodel_ai.schemas.solver import (
     SolverRouteDecision,
     SolverRun,
 )
+from mathmodel_ai.schemas.verification import (
+    ModelRepairOutput,
+    RedTeamReport,
+    RepairCycleRecord,
+    RobustnessConfig,
+    RobustnessReport,
+    SensitivityConfig,
+    SensitivityReport,
+    ValidationReport,
+)
 
 
 class HealthResponse(BaseModel):
@@ -240,3 +250,100 @@ class MathematicalRunRequest(BaseModel):
 class MathematicalRunResponse(BaseModel):
     model_stage: ModelBuildResponse
     solve_stage: SolveResponse
+
+
+class ValidationRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_id: UUID | None = None
+
+
+class ValidationRunResponse(BaseModel):
+    report: ValidationReport
+    state_version: int
+    gate: QualityGateResult
+
+
+class SensitivityRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    config: SensitivityConfig = Field(default_factory=SensitivityConfig)
+
+
+class SensitivityRunResponse(BaseModel):
+    report: SensitivityReport
+    state_version: int
+    gate: QualityGateResult
+
+
+class RobustnessRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    config: RobustnessConfig = Field(default_factory=RobustnessConfig)
+
+
+class RobustnessRunResponse(BaseModel):
+    report: RobustnessReport
+    state_version: int
+    gate: QualityGateResult
+
+
+class RedTeamRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_guidance: list[str] = Field(default_factory=list)
+
+
+class RedTeamRunResponse(BaseModel):
+    report: RedTeamReport
+    state_version: int
+    gate: QualityGateResult
+    verified_gate: QualityGateResult
+    verified_result_id: UUID | None
+    agent_run: AgentRunSummary
+
+
+class ModelRepairRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_guidance: list[str] = Field(default_factory=list)
+
+
+class ModelRepairRunResponse(BaseModel):
+    output: ModelRepairOutput
+    cycle: RepairCycleRecord
+    state_version: int
+    model_gate: QualityGateResult
+    repair_gate: QualityGateResult
+    agent_run: AgentRunSummary
+
+
+class RepairLoopRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sensitivity: SensitivityConfig = Field(default_factory=SensitivityConfig)
+    robustness: RobustnessConfig = Field(default_factory=RobustnessConfig)
+    user_guidance: list[str] = Field(default_factory=list)
+
+
+class RepairLoopRunResponse(BaseModel):
+    state: ProblemState
+    cycles: list[RepairCycleRecord]
+    final_red_team: RedTeamReport
+    resolved: bool
+    exhausted: bool
+
+
+class VerificationRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sensitivity: SensitivityConfig = Field(default_factory=SensitivityConfig)
+    robustness: RobustnessConfig = Field(default_factory=RobustnessConfig)
+    user_guidance: list[str] = Field(default_factory=list)
+
+
+class VerificationRunResponse(BaseModel):
+    validation: ValidationRunResponse
+    sensitivity: SensitivityRunResponse
+    robustness: RobustnessRunResponse
+    red_team: RedTeamRunResponse

@@ -89,10 +89,11 @@ SOLVE is blocked unless deterministic checks confirm:
 An unknown unit is a visible warning; a known conflict is a failure. Rejected
 agent output is audited but cannot create a successful MODEL revision.
 
-## Version and Phase 5 boundary
+## Version and Phase 5 integration
 
-Accepted models are immutable records. A future repair reuses `model_id` and
-creates `version=2`; results always reference the exact version they solved.
-Phase 4 exposes constraints, parameters, equations, and result evidence needed
-by Phase 5, but does not implement ValidationAgent, sensitivity, robustness,
-red-team, or model repair.
+Accepted models are immutable records. Phase 5 repair reuses `model_id`, creates
+`version=2`, recomputes the executable digest, and leaves `v1` and its results
+unchanged. A repaired model is accepted only when Red Team Critical findings are
+mapped to explicit repair actions and both MODEL and MODEL_REPAIR gates pass.
+It then re-enters the Phase 4 solve path; new results always reference the exact
+version they solved. See `docs/VERIFICATION_REPAIR.md`.

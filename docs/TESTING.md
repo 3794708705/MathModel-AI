@@ -77,6 +77,26 @@ uv run alembic upgrade head
 Run downgrade verification only against a dedicated disposable test database;
 it intentionally removes migrated tables.
 
-Phase 5 will add full validation, sensitivity, robustness, red-team, and repair
-tests. The Phase 4 feasibility check is intentionally narrower. A real historical
-competition benchmark remains Phase 8; Mock tests cannot satisfy either claim.
+Phase 5 unit tests cover independent expression evaluation, variable/domain and
+constraint rechecks, objective/key-output tampering, experiment provenance,
+signed sensitivity, seeded robustness, blocked Bootstrap, deterministic Red
+Team attacks, Mock review rejection, and scoped repair gates. The integration
+E2E runs a real Phase 4 Docker solve followed by VALIDATE, real perturbation
+executions, ROBUSTNESS, and Red Team persistence. A second E2E uses a non-Mock
+Critical finding, creates model v2 under the same stable ID, performs another
+real Docker solve, and repeats verification until Red Team passes.
+
+The independent acceptance suite adds adversarial cases A-J: unresolved Critical
+findings, `NOT_EVALUABLE`, SolverResult objective tampering, sensitivity baseline
+replay, robustness input replay, persisted severity-count tampering, model-only
+repair plus immutable v1/v2 evidence, three-cycle exhaustion, exact formal-result
+selection, and Mock/`BLOCKED` rejection. The terminal gate also re-runs
+independent validation and re-audits persisted experiment payloads and relational
+execution fields before setting `verified_result_id`.
+
+Migration `20260828_0006` is checked against PostgreSQL, including the six Phase
+5 tables and critical foreign keys. The current complete suite has 175 passing,
+4 explicitly skipped optional/environment-gated tests, and 87.47% statement/
+branch coverage under the configured 85% floor. The dedicated PostgreSQL test
+also passes when `MM_TEST_DATABASE_URL` is supplied. A real historical
+competition benchmark remains Phase 8; Mock tests cannot satisfy that claim.

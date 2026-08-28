@@ -623,7 +623,8 @@ def test_problem_to_real_solver_result_has_complete_persisted_evidence_chain(
         assert restored.solver_runs[0].execution_ref == UUID(execution["run_id"])
         assert restored.result_records[0].result_id == UUID(result_id)
         assert restored.execution_records[0].is_mock is False
-        assert restored.results[0].verification_status.value == "VERIFIED"
+        assert restored.results[0].verification_status.value == "UNVERIFIED"
+        assert restored.verified_result_id is None
 
         with Session(app.state.engine) as session:
             assert session.scalar(select(func.count()).select_from(AgentRunRecord)) == 4

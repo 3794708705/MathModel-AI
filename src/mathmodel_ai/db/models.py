@@ -385,3 +385,208 @@ class ResultRecordModel(Base):
     objective: Mapped[float | None] = mapped_column(Float)
     record_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ValidationRunRecord(Base):
+    __tablename__ = "validation_runs"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    mathematical_model_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mathematical_models.id", ondelete="RESTRICT"), index=True
+    )
+    model_id: Mapped[UUID] = mapped_column(index=True)
+    model_version: Mapped[int]
+    model_digest: Mapped[str] = mapped_column(String(64), index=True)
+    result_id: Mapped[UUID] = mapped_column(
+        ForeignKey("results.id", ondelete="RESTRICT"), index=True
+    )
+    solver_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("solver_runs.id", ondelete="RESTRICT"), index=True
+    )
+    execution_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("execution_records.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    report_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SensitivityRunRecord(Base):
+    __tablename__ = "sensitivity_runs"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    mathematical_model_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mathematical_models.id", ondelete="RESTRICT"), index=True
+    )
+    model_id: Mapped[UUID] = mapped_column(index=True)
+    model_version: Mapped[int]
+    model_digest: Mapped[str] = mapped_column(String(64), index=True)
+    result_id: Mapped[UUID] = mapped_column(
+        ForeignKey("results.id", ondelete="RESTRICT"), index=True
+    )
+    validation_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("validation_runs.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    config_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    report_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class RobustnessRunRecord(Base):
+    __tablename__ = "robustness_runs"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    mathematical_model_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mathematical_models.id", ondelete="RESTRICT"), index=True
+    )
+    model_id: Mapped[UUID] = mapped_column(index=True)
+    model_version: Mapped[int]
+    model_digest: Mapped[str] = mapped_column(String(64), index=True)
+    result_id: Mapped[UUID] = mapped_column(
+        ForeignKey("results.id", ondelete="RESTRICT"), index=True
+    )
+    validation_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("validation_runs.id", ondelete="RESTRICT"), index=True
+    )
+    sensitivity_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("sensitivity_runs.id", ondelete="RESTRICT"), index=True
+    )
+    method: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    config_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    report_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class VerificationExperimentRecord(Base):
+    __tablename__ = "verification_experiments"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    mathematical_model_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mathematical_models.id", ondelete="RESTRICT"), index=True
+    )
+    sensitivity_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("sensitivity_runs.id", ondelete="CASCADE"), index=True
+    )
+    robustness_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("robustness_runs.id", ondelete="CASCADE"), index=True
+    )
+    execution_record_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("execution_records.id", ondelete="RESTRICT"), unique=True
+    )
+    experiment_type: Mapped[str] = mapped_column(String(64), index=True)
+    base_model_digest: Mapped[str] = mapped_column(String(64), index=True)
+    scenario_model_digest: Mapped[str] = mapped_column(String(64), index=True)
+    solver: Mapped[str | None] = mapped_column(String(32), index=True)
+    solver_status: Mapped[str | None] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    objective: Mapped[float | None] = mapped_column(Float)
+    perturbation_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON_TYPE)
+    program_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE)
+    solver_result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE)
+    record_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class RedTeamReportRecord(Base):
+    __tablename__ = "red_team_reports"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    mathematical_model_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mathematical_models.id", ondelete="RESTRICT"), index=True
+    )
+    model_id: Mapped[UUID] = mapped_column(index=True)
+    model_version: Mapped[int]
+    model_digest: Mapped[str] = mapped_column(String(64), index=True)
+    result_id: Mapped[UUID] = mapped_column(
+        ForeignKey("results.id", ondelete="RESTRICT"), index=True
+    )
+    validation_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("validation_runs.id", ondelete="RESTRICT"), index=True
+    )
+    sensitivity_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("sensitivity_runs.id", ondelete="RESTRICT"), index=True
+    )
+    robustness_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("robustness_runs.id", ondelete="RESTRICT"), index=True
+    )
+    reviewer_agent_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    critical_count: Mapped[int]
+    major_count: Mapped[int]
+    minor_count: Mapped[int]
+    review_is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
+    report_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class RepairCycleRecordModel(Base):
+    __tablename__ = "repair_cycles"
+    __table_args__ = (
+        UniqueConstraint(
+            "stable_model_id",
+            "repair_cycle",
+            name="uq_repair_cycles_model_cycle",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    stable_model_id: Mapped[UUID] = mapped_column(index=True)
+    source_model_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mathematical_models.id", ondelete="RESTRICT"), index=True
+    )
+    target_model_record_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("mathematical_models.id", ondelete="RESTRICT"), index=True
+    )
+    red_team_report_id: Mapped[UUID] = mapped_column(
+        ForeignKey("red_team_reports.id", ondelete="RESTRICT"), index=True
+    )
+    agent_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"), index=True
+    )
+    repair_cycle: Mapped[int]
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
+    record_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

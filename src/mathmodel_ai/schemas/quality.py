@@ -17,6 +17,7 @@ class QualityGateStatus(StrEnum):
 class QualityGateResult(BaseModel):
     gate: str
     status: QualityGateStatus
+    subject_ref: str | None = None
     checks: dict[str, bool]
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
