@@ -38,11 +38,24 @@ Concrete reasoning/data agents are:
   plus scoped actions that cite finding IDs. It cannot change stable model
   identity, claim a result, or bypass MODEL/SOLVE/verification gates. Mock
   output is retained for orchestration evidence but requires human review.
+- `LiteratureAgent`: proposes typed search needs from verified problem/model
+  context. It cannot emit titles, authors, venues, years, URLs, or DOI metadata;
+  those fields come only from a `LiteratureSource` adapter or manual evidence.
+- `CitationAgent`: reviews whether a trusted excerpt supports one claim. It does
+  not verify metadata and its structured review is independently constrained by
+  exact excerpt presence. Mock review cannot satisfy a final paper gate.
+- `PaperAgent`: organizes evidence-backed blocks and emits Paper IR plus Claim
+  records. It cannot emit TeX, invent references, rewrite registry equations,
+  calculate comparison percentages, or provide figure/table data.
+- `PaperFactualAuditAgent`: independently reviews all Critical and Major claims
+  after deterministic checks. Every such claim ID must be accounted for and a
+  Mock audit always requires human review.
 
 All agents use `structured_generate()` and package-resource prompts. Phase 2
 prompts are version `2.0.0`; the DataAgent prompt is version `3.0.0`; MathModeler
 and CodeAgent prompts are version `4.0.0`; Red Team and Model Repair prompts are
-version `5.0.0`.
+version `5.0.0`; literature, citation, PaperAgent, and factual-audit prompts are
+version `6.0.0`.
 Free-text-to-JSON regex parsing is not part of the agent contract.
 
 `AlgorithmSelector`, `SolverRouter`, solver adapters, registries, unit checking,
@@ -51,3 +64,6 @@ agents and not LLM calls. One MathModeler call produces the whole draft; there i
 no per-variable or per-constraint call pattern. Independent validation and all
 perturbation statistics are also deterministic Python/solver work, not agent
 claims.
+Evidence resolution, comparison arithmetic, registry numbering, cross-reference
+checks, hash verification, LaTeX escaping, compilation status, and final paper
+quality decisions are likewise deterministic services—not PaperAgent claims.

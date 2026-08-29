@@ -131,6 +131,10 @@ class Settings(BaseSettings):
     validation_abs_tolerance: float = Field(default=1e-7, gt=0, le=0.1)
     validation_rel_tolerance: float = Field(default=1e-7, ge=0, le=0.1)
     phase5_max_repair_cycles: int = Field(default=3, ge=1, le=3)
+    paper_compiler_image: str = "mathmodel-ai-paper:phase6"
+    paper_compile_timeout_seconds: float = Field(default=90.0, gt=0, le=600)
+    crossref_base_url: str = "https://api.crossref.org"
+    crossref_mailto: str | None = None
     solver_tiny_max_variables: int = Field(default=10, ge=1)
     solver_tiny_max_constraints: int = Field(default=10, ge=1)
     solver_tiny_max_nonzeros: int = Field(default=100, ge=1)

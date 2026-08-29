@@ -1,11 +1,12 @@
 # MathModel AI
 
 MathModel AI is an evidence-first automation system for mathematical modeling
-competitions. Phases 1–5 are implemented: foundation, persisted reasoning,
+competitions. Phases 1–6 are implemented: foundation, persisted reasoning,
 guarded data ingestion, isolated execution, structured mathematical models,
 deterministic solver routing, traceable real numerical results, independent
 validation, executed perturbation experiments, adversarial review, and bounded
-model repair.
+model repair, verified literature, evidence-linked Paper IR, reproducible
+figures/tables, and sandboxed LaTeX/PDF rendering.
 
 ## Quick start
 
@@ -16,6 +17,7 @@ uv sync --dev
 uv run alembic upgrade head
 docker build -t mathmodel-ai-sandbox:phase3 sandbox
 docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
+docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 sandbox
 uv run uvicorn mathmodel_ai.main:app --reload
 ```
 
@@ -52,6 +54,15 @@ capped at three cycles. SOLVE leaves results `UNVERIFIED`; only the final
 deterministic gate sets `verified_result_id` for the exact accepted formal result. See
 [docs/VERIFICATION_REPAIR.md](docs/VERIFICATION_REPAIR.md).
 
+Phase 6 consumes only the explicit Phase 5 `verified_result_id`. `POST
+/api/v1/projects/{project_id}/paper/run` builds an immutable evidence snapshot,
+retrieves and verifies reference metadata, links structured claims to evidence,
+generates reproducible figures/tables, renders deterministic LaTeX/BibTeX, and
+compiles a real PDF in a network-disabled non-root container. Paper records and
+artifacts are available from the `/literature`, `/paper`, and
+`/paper/artifacts` project routes. See
+[docs/PAPER_PIPELINE.md](docs/PAPER_PIPELINE.md).
+
 ## Verification
 
 ```powershell
@@ -78,6 +89,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for boundaries and
 - Bootstrap robustness is explicitly blocked until a dataset resampling
   contract binds sampled rows to model parameters; it is never approximated by
   parameter noise.
-- Literature, citation, figure/table, Paper IR, LaTeX, PDF, and submission
-  pipelines belong to later phases.
+- Live literature and PaperAgent checks remain explicit opt-ins; their default
+  skip statuses are not evidence of success.
+- Final Jury, competition-format enforcement, submission checks, and the final
+  submission package belong to Phase 7.
 - FastAPI's current test client emits an upstream `httpx2` migration warning.

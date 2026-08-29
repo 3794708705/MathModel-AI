@@ -16,6 +16,16 @@ from mathmodel_ai.schemas.execution import ExecutionRecord
 from mathmodel_ai.schemas.files import ArtifactRecord, ParsedFile
 from mathmodel_ai.schemas.mathematical import MathematicalModel
 from mathmodel_ai.schemas.model_selection import ModelExploration, ModelSelection
+from mathmodel_ai.schemas.paper import (
+    CitationMetadataCheck,
+    CompetitionProfile,
+    LiteraturePlan,
+    PaperArtifact,
+    PaperCompileRecord,
+    PaperQualityReport,
+    PaperVersion,
+    ReferenceRecord,
+)
 from mathmodel_ai.schemas.problem_analysis import ProblemAnalysis
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.program import (
@@ -347,3 +357,22 @@ class VerificationRunResponse(BaseModel):
     sensitivity: SensitivityRunResponse
     robustness: RobustnessRunResponse
     red_team: RedTeamRunResponse
+
+
+class LiteratureSearchResponse(BaseModel):
+    references: list[ReferenceRecord]
+    metadata_checks: list[CitationMetadataCheck]
+    plan: LiteraturePlan
+
+
+class PaperRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    competition_profile: CompetitionProfile = Field(default_factory=CompetitionProfile)
+
+
+class PaperRunResponse(BaseModel):
+    paper: PaperVersion
+    quality: PaperQualityReport
+    compile_record: PaperCompileRecord
+    artifacts: list[PaperArtifact]

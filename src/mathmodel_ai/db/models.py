@@ -590,3 +590,229 @@ class RepairCycleRecordModel(Base):
     is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
     record_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PaperVersionRecord(Base):
+    __tablename__ = "paper_versions"
+    __table_args__ = (
+        UniqueConstraint("paper_id", "version", name="uq_paper_versions_paper_version"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    paper_id: Mapped[UUID] = mapped_column(index=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int]
+    parent_version: Mapped[int | None]
+    verified_result_id: Mapped[UUID] = mapped_column(
+        ForeignKey("results.id", ondelete="RESTRICT"), index=True
+    )
+    evidence_snapshot_id: Mapped[UUID] = mapped_column(unique=True, index=True)
+    evidence_snapshot_hash: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    manifest_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    paper_agent_run_id: Mapped[UUID | None] = mapped_column(index=True)
+    paper_agent_is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
+    version_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    quality_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE)
+    compile_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class EvidenceRecordModel(Base):
+    __tablename__ = "evidence_records"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="CASCADE"), index=True
+    )
+    evidence_type: Mapped[str] = mapped_column(String(40), index=True)
+    source_type: Mapped[str] = mapped_column(String(64), index=True)
+    source_id: Mapped[str] = mapped_column(String(255), index=True)
+    source_version: Mapped[str] = mapped_column(String(100))
+    source_hash: Mapped[str] = mapped_column(String(64), index=True)
+    verified: Mapped[bool] = mapped_column(Boolean, index=True)
+    verification_status: Mapped[str] = mapped_column(String(32), index=True)
+    record_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ClaimRecord(Base):
+    __tablename__ = "claims"
+    __table_args__ = (
+        UniqueConstraint("paper_version_record_id", "claim_id", name="uq_claims_paper_claim"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="CASCADE"), index=True
+    )
+    claim_id: Mapped[str] = mapped_column(String(100), index=True)
+    claim_type: Mapped[str] = mapped_column(String(32), index=True)
+    importance: Mapped[str] = mapped_column(String(16), index=True)
+    verification_status: Mapped[str] = mapped_column(String(32), index=True)
+    claim_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class ClaimEvidenceLinkRecord(Base):
+    __tablename__ = "claim_evidence_links"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    claim_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("claims.id", ondelete="CASCADE"), index=True
+    )
+    evidence_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("evidence_records.id", ondelete="RESTRICT"), index=True
+    )
+    support: Mapped[str] = mapped_column(String(32), index=True)
+    source_field: Mapped[str | None] = mapped_column(String(255))
+    link_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class LiteratureSearchRecord(Base):
+    __tablename__ = "literature_searches"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    problem_id: Mapped[UUID] = mapped_column(
+        ForeignKey("problems.id", ondelete="CASCADE"), index=True
+    )
+    paper_version_record_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="CASCADE"), index=True
+    )
+    source: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    plan_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ReferenceRecordModel(Base):
+    __tablename__ = "literature_references"
+    __table_args__ = (
+        UniqueConstraint("project_id", "reference_id", name="uq_references_project_ref"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    reference_id: Mapped[str] = mapped_column(String(100), index=True)
+    doi: Mapped[str | None] = mapped_column(String(255), index=True)
+    source: Mapped[str] = mapped_column(String(40), index=True)
+    source_id: Mapped[str] = mapped_column(String(255), index=True)
+    metadata_status: Mapped[str] = mapped_column(String(32), index=True)
+    reference_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class CitationSupportRecord(Base):
+    __tablename__ = "citation_support_checks"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="CASCADE"), index=True
+    )
+    claim_id: Mapped[str] = mapped_column(String(100), index=True)
+    reference_id: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    reviewer_is_mock: Mapped[bool] = mapped_column(Boolean, index=True)
+    check_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class PaperSectionRecord(Base):
+    __tablename__ = "paper_sections"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="CASCADE"), index=True
+    )
+    section_id: Mapped[str] = mapped_column(String(100), index=True)
+    section_type: Mapped[str] = mapped_column(String(40), index=True)
+    order: Mapped[int]
+    section_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class FigureRecordModel(Base):
+    __tablename__ = "figures"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="CASCADE"), index=True
+    )
+    figure_id: Mapped[str] = mapped_column(String(100), index=True)
+    data_hash: Mapped[str] = mapped_column(String(64), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), index=True)
+    image_hash: Mapped[str] = mapped_column(String(64), index=True)
+    figure_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class TableRecordModel(Base):
+    __tablename__ = "tables"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="CASCADE"), index=True
+    )
+    table_id: Mapped[str] = mapped_column(String(100), index=True)
+    data_hash: Mapped[str] = mapped_column(String(64), index=True)
+    table_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class DocumentRegistryRecord(Base):
+    __tablename__ = "document_registry"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="CASCADE"), index=True
+    )
+    object_id: Mapped[str] = mapped_column(String(100), index=True)
+    object_type: Mapped[str] = mapped_column(String(32), index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    entry_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class PaperArtifactRecord(Base):
+    __tablename__ = "paper_artifacts"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    mime_type: Mapped[str] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    storage_key: Mapped[str] = mapped_column(String(1024), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

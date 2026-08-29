@@ -98,3 +98,30 @@ one formal Result
 
 No other result may have `VERIFIED` trace status. A latest timestamp or a
 successful SOLVE gate is never a substitute for this pointer and chain.
+
+Phase 6 preserves that truth rather than copying it into prose:
+
+```text
+ProblemState.verified_result_id
+  -> exact persisted Phase 5 verification chain
+  -> immutable EvidenceRecord payloads and provenance hashes
+  -> ClaimEvidenceLink structured source fields
+  -> deterministic claim/citation/document gates
+  -> Paper IR evidence snapshot
+  -> rendered artifacts and manifest hashes
+```
+
+Numeric and comparison claims are checked against structured evidence; prose is
+never parsed as the authoritative number. Solver/optimality assertions are
+checked against the formal result. Formal assumptions must already be accepted
+and supported. Retrieved bibliographic metadata and trusted source text are
+separate from model-generated support review; both metadata and support must
+pass for a critical literature claim.
+
+Figure records bind canonical data, generation code, and image hashes. Table
+records bind canonical rows and values. The renderer consumes registry IDs and
+escapes all prose; it does not recover state from TeX. PDF compilation is a real
+Docker execution with network disabled, a non-root user, read-only root,
+bounded CPU/RAM/PIDs/time, and shell escape disabled. A successful compile alone
+cannot satisfy the paper gate: deterministic evidence checks and a non-Mock
+independent factual audit must also pass.

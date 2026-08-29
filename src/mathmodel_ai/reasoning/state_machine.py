@@ -11,8 +11,9 @@ _WORKFLOW_TRANSITIONS: dict[WorkflowStage, frozenset[WorkflowStage]] = {
     WorkflowStage.VALIDATE: frozenset({WorkflowStage.SENSITIVITY}),
     WorkflowStage.SENSITIVITY: frozenset({WorkflowStage.ROBUSTNESS}),
     WorkflowStage.ROBUSTNESS: frozenset({WorkflowStage.RED_TEAM}),
-    WorkflowStage.RED_TEAM: frozenset({WorkflowStage.MODEL_REPAIR}),
+    WorkflowStage.RED_TEAM: frozenset({WorkflowStage.MODEL_REPAIR, WorkflowStage.PAPER}),
     WorkflowStage.MODEL_REPAIR: frozenset({WorkflowStage.SOLVE}),
+    WorkflowStage.PAPER: frozenset({WorkflowStage.PAPER}),
 }
 
 

@@ -52,6 +52,17 @@ class VerificationRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
+    def load_current(self, project_id: UUID) -> ProblemState:
+        with session_scope(self._session_factory) as session:
+            row = session.scalar(
+                select(ProblemStateRecord)
+                .join(Problem, Problem.id == ProblemStateRecord.problem_id)
+                .where(Problem.project_id == project_id, ProblemStateRecord.is_current.is_(True))
+            )
+            if row is None:
+                raise ResourceNotFoundError(f"project {project_id} was not found")
+            return ProblemState.model_validate(row.state_json)
+
     def persist_validation(self, report: ValidationReport, state: ProblemState) -> None:
         with session_scope(self._session_factory) as session:
             current = self._lock_current(session, state.project_id)

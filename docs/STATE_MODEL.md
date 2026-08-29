@@ -1,12 +1,14 @@
 # State model
 
-`ProblemState` v5 is the sole shared workflow state. It retains registered files,
+`ProblemState` v6 is the sole shared workflow state. It retains registered files,
 artifacts, datasets, deterministic profiles, data understanding, execution
 records, and reasoning fields, then adds compact references to the accepted
 `MathematicalModel`, `AlgorithmPlan`, generated programs, solver runs, and result
 records. Phase 5 adds typed references to validation, sensitivity, robustness,
-Red Team, and repair-cycle records. Large full payloads remain in independent registries;
-state carries identities and exact versions. Typed `ProblemAnalysis`, evidence items,
+Red Team, and repair-cycle records. Phase 6 adds immutable `PaperVersionRef`
+entries whose snapshots pin the exact verified model, formal result, validation,
+sensitivity, robustness, Red Team, and citation set. Large full payloads remain
+in independent registries; state carries identities and exact versions. Typed `ProblemAnalysis`, evidence items,
 subproblems, ambiguities, proposed assumptions, model candidates, score matrix,
 primary/backup selection, decision evidence, quality gates, and stage history.
 
@@ -28,6 +30,7 @@ INGEST -> UNDERSTAND -> EXPLORE -> SELECT -> MODEL -> SOLVE
        -> VALIDATE -> SENSITIVITY -> ROBUSTNESS -> RED_TEAM
                                                    | PASS
                                                    ` MODEL_REPAIR -> SOLVE -> ...
+RED_TEAM -> PAPER
 ```
 
 The MODEL revision stores a model record ID plus stable `model_id` and `version`.
@@ -49,12 +52,18 @@ and optional accepted target model version/digest. Failed gates do not permit a
 later stage to claim success; Mock Red Team/repair output moves to
 `HUMAN_REVIEW`.
 
-`verified_result_id` is the sole final-result pointer. A v5 state may set it only
+`verified_result_id` is the sole final-result pointer. A v5+ state may set it only
 when it references a persisted `ResultRecordRef`, the matching `RESULT-{id}` is
 the only trace item marked `VERIFIED`, and a passing `VERIFIED` quality gate has
 `subject_ref=result:{id}`. SOLVE and intermediate verification revisions clear
 the pointer. This prevents selecting a sensitivity, robustness, stale, repaired,
 or merely latest result as the accepted formal result.
+
+A state can enter `PAPER` only through a matching persisted Phase 5 terminal
+gate. In schema v6, any paper marked `READY_FOR_FINAL_JURY` must reference the
+same `verified_result_id` held by the state. Paper versions append; they never
+replace prior evidence snapshots or artifacts. Phase 6 does not set submission
+state and cannot mark a paper `SUBMISSION_READY`.
 
 The database now contains `projects`, `problems`, `problem_states`,
 `agent_runs`, `model_decisions`, `files`, `artifacts`, `datasets`,
@@ -63,6 +72,9 @@ The database now contains `projects`, `problems`, `problem_states`,
 `sensitivity_runs`, `robustness_runs`, `verification_experiments`,
 `red_team_reports`, and `repair_cycles`. File and execution objects are stored
 both in relational registries and referenced by immutable state revisions.
+The Phase 6 database registries preserve evidence/claim links, retrieved
+literature and citation checks, paper versions, document IDs, figure/table
+hashes, and paper artifact manifests.
 
 The Phase 3 sub-workflow is ordered independently of the main reasoning stage:
 

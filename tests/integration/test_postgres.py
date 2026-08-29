@@ -41,6 +41,18 @@ def test_migrated_postgres_persists_problem_state_jsonb() -> None:
         "verification_experiments",
         "red_team_reports",
         "repair_cycles",
+        "paper_versions",
+        "evidence_records",
+        "claims",
+        "claim_evidence_links",
+        "literature_searches",
+        "literature_references",
+        "citation_support_checks",
+        "paper_sections",
+        "figures",
+        "tables",
+        "document_registry",
+        "paper_artifacts",
     } <= set(inspector.get_table_names())
     assert {
         "input_state_version",
@@ -84,6 +96,32 @@ def test_migrated_postgres_persists_problem_state_jsonb() -> None:
         ("red_team_report_id",),
         ("agent_run_id",),
     } <= repair_foreign_keys
+    paper_foreign_keys = {
+        tuple(item["constrained_columns"]) for item in inspector.get_foreign_keys("paper_versions")
+    }
+    assert {
+        ("project_id",),
+        ("problem_id",),
+        ("verified_result_id",),
+    } <= paper_foreign_keys
+    evidence_foreign_keys = {
+        tuple(item["constrained_columns"])
+        for item in inspector.get_foreign_keys("evidence_records")
+    }
+    assert {
+        ("project_id",),
+        ("problem_id",),
+        ("paper_version_record_id",),
+    } <= evidence_foreign_keys
+    claim_link_foreign_keys = {
+        tuple(item["constrained_columns"])
+        for item in inspector.get_foreign_keys("claim_evidence_links")
+    }
+    assert {
+        ("project_id",),
+        ("claim_record_id",),
+        ("evidence_record_id",),
+    } <= claim_link_foreign_keys
 
     connection = engine.connect()
     transaction = connection.begin()

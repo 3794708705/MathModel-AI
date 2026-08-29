@@ -18,15 +18,16 @@ maintainability, performance, then complexity.
 - Mathematical core: `docs/MATHEMATICAL_CORE.md`
 - Solver architecture: `docs/SOLVER_ARCHITECTURE.md`
 - Verification and repair: `docs/VERIFICATION_REPAIR.md`
+- Evidence and paper production: `docs/PAPER_PIPELINE.md`
 - Computational truth: `docs/COMPUTATIONAL_TRUTH.md`
 - Security: `docs/SECURITY.md`
 - Testing: `docs/TESTING.md`
 - Execution plans: `docs/exec-plans/`
 
-Current phase: Phase 5 — Verification, Sensitivity, Robustness, Red Team, and
-Model Repair (implemented, pending human acceptance). Do not implement Phase 6
-literature, citation, figure/table, Paper IR, LaTeX, or PDF behavior unless the
-phase is explicitly advanced.
+Current phase: Phase 6 — evidence-grounded paper production (implemented,
+pending independent acceptance). Do not implement Phase 7 Final Jury,
+competition submission checks, or submission packaging unless explicitly
+advanced.
 
 ## Commands
 
@@ -38,6 +39,7 @@ uv run mypy --strict src
 uv run pytest --cov=mathmodel_ai
 docker build -t mathmodel-ai-sandbox:phase3 sandbox
 docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
+docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 sandbox
 ```
 
 ## Non-negotiable rules
@@ -53,5 +55,8 @@ docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
   `SolverRun`, and non-Mock `ExecutionRecord` before it is verified.
 - Sensitivity and robustness claims require independently recorded, non-Mock
   experiment executions; a Mock Red Team or repair can never pass its gate.
+- Paper claims must resolve through the exact `verified_result_id` evidence
+  snapshot; PaperAgent prose, unverified references, and Mock review are never
+  factual authority.
 - Do not commit credentials or log secret values.
 - Add tests and documentation for every completed module.

@@ -5,18 +5,23 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from mathmodel_ai.agents import (
+    CitationAgent,
     CodeAgent,
     DataAgent,
+    LiteratureAgent,
     MathModeler,
     ModelExplorer,
     ModelJury,
     ModelRepairAgent,
+    PaperAgent,
+    PaperFactualAuditAgent,
     ProblemAgent,
     RedTeamAgent,
 )
 from mathmodel_ai.api.routes.data_execution import router as data_execution_router
 from mathmodel_ai.api.routes.health import router as health_router
 from mathmodel_ai.api.routes.mathematical import router as mathematical_router
+from mathmodel_ai.api.routes.paper import router as paper_router
 from mathmodel_ai.api.routes.reasoning import router as reasoning_router
 from mathmodel_ai.api.routes.system import router as system_router
 from mathmodel_ai.api.routes.verification import router as verification_router
@@ -37,6 +42,14 @@ from mathmodel_ai.mathematical.evidence import EvidenceIntegrityVerifier
 from mathmodel_ai.mathematical.repository import MathematicalRepository
 from mathmodel_ai.mathematical.strategy import ExecutionStrategySelector
 from mathmodel_ai.mathematical.workflow import MathematicalWorkflow
+from mathmodel_ai.paper.assets import FigureAgent, TableAgent
+from mathmodel_ai.paper.bundle import PaperBundleBuilder
+from mathmodel_ai.paper.compiler import PDFCompiler
+from mathmodel_ai.paper.evidence import VerifiedEvidenceBuilder
+from mathmodel_ai.paper.literature import CrossrefLiteratureSource
+from mathmodel_ai.paper.rendering import LaTeXRenderer
+from mathmodel_ai.paper.repository import PaperRepository
+from mathmodel_ai.paper.workflow import PaperWorkflow
 from mathmodel_ai.providers.factory import ProviderRegistry, build_provider_registry
 from mathmodel_ai.reasoning.prompts import PromptRegistry
 from mathmodel_ai.reasoning.repository import ReasoningRepository
@@ -73,6 +86,7 @@ def create_app(
         try:
             yield
         finally:
+            await application.state.literature_source.aclose()
             await application.state.providers.aclose()
             application.state.engine.dispose()
 
@@ -268,12 +282,41 @@ def create_app(
         experiment_integrity_verifier=experiment_integrity_verifier,
         max_repair_cycles=resolved.phase5_max_repair_cycles,
     )
+    application.state.paper_repository = PaperRepository(application.state.session_factory)
+    literature_source = CrossrefLiteratureSource(
+        base_url=resolved.crossref_base_url,
+        mailto=resolved.crossref_mailto,
+    )
+    application.state.literature_source = literature_source
+    application.state.paper_workflow = PaperWorkflow(
+        repository=application.state.paper_repository,
+        evidence_builder=VerifiedEvidenceBuilder(
+            mathematical_repository=application.state.mathematical_repository,
+            verification_repository=application.state.verification_repository,
+        ),
+        literature_agent=LiteratureAgent(**shared),
+        literature_source=literature_source,
+        citation_agent=CitationAgent(**shared),
+        paper_agent=PaperAgent(**shared),
+        audit_agent=PaperFactualAuditAgent(**shared),
+        figure_agent=FigureAgent(file_store),
+        table_agent=TableAgent(file_store),
+        renderer=LaTeXRenderer(),
+        compiler=PDFCompiler(
+            store=file_store,
+            image=resolved.paper_compiler_image,
+            timeout_seconds=resolved.paper_compile_timeout_seconds,
+        ),
+        bundle_builder=PaperBundleBuilder(file_store),
+        store=file_store,
+    )
     application.include_router(health_router)
     application.include_router(system_router)
     application.include_router(reasoning_router)
     application.include_router(data_execution_router)
     application.include_router(mathematical_router)
     application.include_router(verification_router)
+    application.include_router(paper_router)
 
     @application.exception_handler(ResourceNotFoundError)
     async def not_found_handler(_request: Request, exc: ResourceNotFoundError) -> JSONResponse:

@@ -249,6 +249,10 @@ class SymbolRegistry:
     def report(self) -> RegistryReport:
         return RegistryReport(issues=list(self._issues))
 
+    @property
+    def definitions(self) -> list[SymbolDefinition]:
+        return sorted(self._symbols.values(), key=lambda item: item.symbol)
+
 
 class ParameterRegistry:
     def __init__(self, model_id: UUID, version: int) -> None:

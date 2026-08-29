@@ -8,6 +8,7 @@ uv run ruff check .
 uv run mypy --strict src
 docker build -t mathmodel-ai-sandbox:phase3 sandbox
 docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
+docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 sandbox
 uv run pytest --cov=mathmodel_ai --cov-report=term-missing
 ```
 
@@ -100,3 +101,33 @@ Migration `20260828_0006` is checked against PostgreSQL, including the six Phase
 branch coverage under the configured 85% floor. The dedicated PostgreSQL test
 also passes when `MM_TEST_DATABASE_URL` is supplied. A real historical
 competition benchmark remains Phase 8; Mock tests cannot satisfy that claim.
+
+Phase 6 tests cover EvidenceBuilder selection of the exact
+`verified_result_id`, verified-chain and Mock rejection, supported-assumption
+filtering, structured numeric/comparison/unit claims, metadata and citation
+support separation, Paper IR and registry identities, cross-references,
+symbol/equation integration, figure/table hashes, LaTeX injection and path
+traversal, manifest integrity, and deterministic paper quality gates. Acceptance
+cases A-Z include numeric text/value drift, objective/solver/optimality/unit
+tampering, stale or unsupported citation decisions, equation-render drift,
+figure/table source swaps, Critical Red Team findings, missing subproblem and
+abstract coverage, unsupported robustness/significance claims, LaTeX injection,
+PDF/manifest byte replacement, immutable version snapshots, missing document
+objects, and Mock evidence promotion.
+
+The Paper E2E performs a real Phase 4 solve and Phase 5 verification chain,
+builds Phase 6 evidence and Paper IR, generates real assets, compiles with
+XeLaTeX/BibTeX in `mathmodel-ai-paper:phase6`, validates the produced PDF and
+manifest, and persists the complete paper version. Live tests remain gated:
+
+```text
+MM_RUN_LIVE_LITERATURE_TESTS=1  # otherwise SKIPPED_NO_NETWORK
+MM_RUN_LIVE_PROVIDER_TESTS=1    # otherwise SKIPPED_NO_CREDENTIALS
+```
+
+Migration `20260828_0007` must be upgraded, downgraded to `20260828_0006`,
+re-upgraded, and checked against PostgreSQL. The dedicated PostgreSQL test
+asserts Phase 6 tables and critical foreign keys. The independent acceptance run
+completed with 230 passing tests, 5 explicitly skipped optional/environment-
+gated tests, and 87.65% statement/branch coverage under the configured 85%
+floor.

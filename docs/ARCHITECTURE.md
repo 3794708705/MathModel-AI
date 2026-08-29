@@ -12,8 +12,10 @@ registries and dimensional checks, deterministic algorithm/solver selection,
 versioned generated programs, real SciPy and OR-Tools solving, optional Gurobi,
 and exact result evidence. Phase 5 adds independent result validation, real
 perturb-and-resolve experiments, configurable robustness methods, structured
-adversarial review, and a three-cycle immutable model-repair loop. SQLite is
-used for database-independent tests;
+adversarial review, and a three-cycle immutable model-repair loop. Phase 6 adds
+verified-evidence snapshots, claim/evidence graphs, retrieved literature and
+two-stage citation checks, Paper IR, document/asset registries, deterministic
+LaTeX/BibTeX rendering, and sandboxed real PDF compilation. SQLite is used for database-independent tests;
 PostgreSQL remains the production contract and migration target.
 
 ## Boundaries
@@ -47,6 +49,11 @@ SOLVE -> IndependentValidator -> VALIDATE gate -> Sensitivity experiments
           ` Critical -> ModelRepairAgent -> MODEL_REPAIR gate -> model vN+1
                        -> SOLVE -> VALIDATE -> SENSITIVITY -> ROBUSTNESS
                        -> RED_TEAM (maximum three automatic repair cycles)
+
+verified_result_id -> EvidenceBuilder -> Claim/Evidence graph -> PaperAgent
+                  -> Paper IR + registries -> deterministic factual gates
+                  -> LaTeX/BibTeX -> restricted PDFCompiler -> manifest
+                  -> READY_FOR_FINAL_JURY (never SUBMISSION_READY)
 ```
 
 - `api`: transport concerns and health reporting only.
@@ -70,6 +77,10 @@ SOLVE -> IndependentValidator -> VALIDATE gate -> Sensitivity experiments
   validation, executed sensitivity and robustness experiments, deterministic
   plus model-assisted Red Team analysis, quality gates, repair orchestration,
   and Phase 5 persistence.
+- `paper`: exact verified-chain evidence resolution, claims, literature and
+  citation verification, Paper IR registries, assets, deterministic validators,
+  renderers, restricted compilation, manifest generation, orchestration, and
+  Phase 6 persistence.
 - `db`: persistence mapping and sessions; no reasoning logic.
 
 External model calls happen outside database transactions. A successful stage
@@ -89,6 +100,11 @@ them. Exact relational foreign keys bind every result to one model record, one
 solver run, and one execution record. Phase 3 uses
 the local immutable implementation; its generated-key contract leaves room for
 an S3-compatible implementation without changing domain schemas.
+Phase 6 adds `evidence_records`, `claims`, `claim_evidence_links`,
+`literature_searches`, `literature`, `citation_metadata_checks`,
+`citation_support_checks`, `paper_versions`, `document_registry`, `figures`,
+`tables`, and `paper_artifacts`. Paper section structure stays in immutable
+Paper IR JSON; artifact bytes remain in the file store.
 
 ## Technical debt
 
@@ -99,4 +115,6 @@ the multimodal interface rather than a local OCR engine. Phase 4 supports
 flattened scalar deterministic adapters, not indexed expansion, general CAS,
 nonlinear global optimization, or every reserved model family. Gurobi requires a
 separate licensed runtime. Bootstrap remains blocked without row-level
-data-to-parameter resampling. There is no literature/citation/paper pipeline.
+data-to-parameter resampling. Crossref is the first live literature adapter;
+additional scholarly sources and orphaned file-artifact cleanup remain future
+work. Phase 6 does not implement Final Jury or submission packaging.

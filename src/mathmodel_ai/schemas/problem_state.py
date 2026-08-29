@@ -20,6 +20,7 @@ from mathmodel_ai.schemas.model_selection import (
     ModelScore,
     ModelSelection,
 )
+from mathmodel_ai.schemas.paper import PaperQualityStatus, PaperVersionRef
 from mathmodel_ai.schemas.problem_analysis import (
     Ambiguity,
     EvidenceItem,
@@ -224,6 +225,7 @@ class ProblemState(BaseModel):
     figures: list[ArtifactRef] = Field(default_factory=list)
     tables: list[ArtifactRef] = Field(default_factory=list)
     paper_state: dict[str, Any] = Field(default_factory=dict)
+    paper_versions: list[PaperVersionRef] = Field(default_factory=list)
     submission_state: dict[str, Any] = Field(default_factory=dict)
 
     current_stage: WorkflowStage = WorkflowStage.INGEST
@@ -277,4 +279,17 @@ class ProblemState(BaseModel):
                     for gate in self.quality_gates
                 ):
                     raise ValueError("verified_result_id requires a passing VERIFIED gate")
+        if self.schema_version >= 6:
+            identities = [(item.paper_id, item.version) for item in self.paper_versions]
+            if len(identities) != len(set(identities)):
+                raise ValueError("paper version identities must be unique")
+            ready = [
+                item
+                for item in self.paper_versions
+                if item.status is PaperQualityStatus.READY_FOR_FINAL_JURY
+            ]
+            if ready and self.verified_result_id is None:
+                raise ValueError("ready paper requires verified_result_id")
+            if any(item.verified_result_id != self.verified_result_id for item in ready):
+                raise ValueError("ready paper must use the explicit verified_result_id")
         return self
