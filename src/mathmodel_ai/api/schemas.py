@@ -41,6 +41,15 @@ from mathmodel_ai.schemas.solver import (
     SolverRouteDecision,
     SolverRun,
 )
+from mathmodel_ai.schemas.submission import (
+    FinalJuryReport,
+    RequirementCoverage,
+    RuleResult,
+    SubmissionArtifact,
+    SubmissionCheckResult,
+    SubmissionManifest,
+    SubmissionSnapshot,
+)
 from mathmodel_ai.schemas.verification import (
     ModelRepairOutput,
     RedTeamReport,
@@ -376,3 +385,24 @@ class PaperRunResponse(BaseModel):
     quality: PaperQualityReport
     compile_record: PaperCompileRecord
     artifacts: list[PaperArtifact]
+
+
+class FinalRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile_id: UUID
+    profile_version: int = Field(ge=1)
+    paper_id: UUID
+    paper_version: int = Field(ge=1)
+    freeze_on_pass: bool = False
+
+
+class FinalRunResponse(BaseModel):
+    jury: FinalJuryReport
+    requirements: list[RequirementCoverage]
+    rules: list[RuleResult]
+    submission_check: SubmissionCheckResult
+    snapshot: SubmissionSnapshot | None = None
+    manifest: SubmissionManifest | None = None
+    artifacts: list[SubmissionArtifact] = Field(default_factory=list)
+    state: ProblemState

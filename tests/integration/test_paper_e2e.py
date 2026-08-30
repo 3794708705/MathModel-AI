@@ -19,11 +19,17 @@ from mathmodel_ai.db.models import (
     DocumentRegistryRecord,
     EvidenceRecordModel,
     FigureRecordModel,
+    FinalJuryReportRecord,
     LiteratureSearchRecord,
     PaperArtifactRecord,
     PaperSectionRecord,
     PaperVersionRecord,
     ReferenceRecordModel,
+    RequirementCoverageRecordModel,
+    SubmissionArtifactRecordModel,
+    SubmissionCheckRecord,
+    SubmissionManifestRecord,
+    SubmissionSnapshotRecord,
     TableRecordModel,
 )
 from mathmodel_ai.main import create_app
@@ -65,7 +71,16 @@ from mathmodel_ai.schemas.paper import (
     PaperSectionType,
     SubproblemCoverageRecord,
 )
+from mathmodel_ai.schemas.submission import (
+    FinalJuryDraft,
+    FinalJuryInput,
+    JuryDimensionScore,
+    SubmissionArtifactRole,
+)
 from mathmodel_ai.schemas.verification import RedTeamDraft, RedTeamInput
+from mathmodel_ai.submission.package import SubmissionPackageBuilder
+from mathmodel_ai.submission.rules import RuleEngine
+from mathmodel_ai.submission.workflow import FinalSubmissionWorkflow
 from mathmodel_ai.verification.experiment_integrity import ExperimentIntegrityVerifier
 from mathmodel_ai.verification.red_team import RedTeamAnalyzer
 from mathmodel_ai.verification.robustness import RobustnessAnalyzer
@@ -312,6 +327,9 @@ class _PaperAgent:
                     required_outputs=item.required_outputs,
                     section_ids=["SEC-results"],
                     claim_refs=[result_claim.claim_id],
+                    output_claim_refs={
+                        output: [result_claim.claim_id] for output in item.required_outputs
+                    },
                 )
                 for item in input_data.required_subproblems
             ],
@@ -332,6 +350,28 @@ class _AuditAgent:
             ),
             state,
             is_mock=False,
+        )
+
+
+class _FinalJuryAgent:
+    async def run(self, input_data: FinalJuryInput, state, profile):
+        del profile
+        return _agent_result(
+            "final_jury_agent",
+            FinalJuryDraft(
+                dimensions=[
+                    JuryDimensionScore(
+                        dimension=name,
+                        score=maximum,
+                        maximum=maximum,
+                        rationale="All deterministic Phase 5-7 fixture gates passed.",
+                    )
+                    for name, maximum in input_data.profile.jury_weights.items()
+                ],
+                summary="Mock structured jury fixture; deterministic gates remain real.",
+            ),
+            state,
+            is_mock=True,
         )
 
 
@@ -358,7 +398,7 @@ def _paper_workflow(app, project_id: UUID) -> PaperWorkflow:
     )
 
 
-def test_verified_phase5_to_real_pdf_paper_api_and_persistence(tmp_path: Path) -> None:
+def test_verified_phase5_to_real_pdf_and_frozen_submission_e2e(tmp_path: Path) -> None:
     template = phase5_model()
     draft = MathematicalModelDraft.model_validate(
         template.model_dump(
@@ -503,3 +543,88 @@ def test_verified_phase5_to_real_pdf_paper_api_and_persistence(tmp_path: Path) -
             assert persisted.verified_result_id == UUID(verified_result_id)
             assert persisted.status == PaperQualityStatus.READY_FOR_FINAL_JURY.value
             assert persisted.compile_json["status"] == PaperCompileStatus.SUCCEEDED.value
+
+        app.state.final_submission_workflow = FinalSubmissionWorkflow(
+            reasoning_repository=app.state.reasoning_repository,
+            paper_repository=app.state.paper_repository,
+            repository=app.state.submission_repository,
+            profiles=app.state.competition_profile_registry,
+            jury_agent=_FinalJuryAgent(),  # type: ignore[arg-type]
+            rule_engine=RuleEngine(app.state.file_store),
+            package_builder=SubmissionPackageBuilder(app.state.file_store),
+            store=app.state.file_store,
+        )
+        profile = app.state.competition_profile_registry.list()[0]
+        final_response = client.post(
+            f"/api/v1/projects/{project_id}/final/run",
+            json={
+                "profile_id": str(profile.profile_id),
+                "profile_version": profile.version,
+                "paper_id": payload["paper"]["paper_id"],
+                "paper_version": payload["paper"]["version"],
+                "freeze_on_pass": True,
+            },
+        )
+        assert final_response.status_code == 200, final_response.text
+        final = final_response.json()
+        assert final["jury"]["decision"] == "PASS"
+        assert final["jury"]["reviewer_is_mock"] is True
+        assert final["submission_check"]["status"] == "PASS"
+        assert final["snapshot"]["status"] == "FROZEN"
+        assert final["state"]["current_stage"] == "FINAL"
+        assert final["state"]["submission_state"]["status"] == "FROZEN"
+        assert final["manifest"]["paper_version"] == payload["paper"]["version"]
+        assert final["manifest"]["verified_result_id"] == verified_result_id
+
+        package_record = next(
+            item
+            for item in final["artifacts"]
+            if item["role"] == SubmissionArtifactRole.PACKAGE.value
+        )
+        package_bytes = app.state.file_store.read_bytes(package_record["storage_key"])
+        from io import BytesIO
+        from zipfile import ZipFile
+
+        with ZipFile(BytesIO(package_bytes)) as archive:
+            assert "paper.pdf" in archive.namelist()
+            assert "submission_manifest.json" in archive.namelist()
+            assert archive.read("paper.pdf").startswith(b"%PDF-")
+        frozen_response = client.get(f"/api/v1/projects/{project_id}/submission")
+        assert frozen_response.json()["status"] == "FROZEN"
+        assert client.get(f"/api/v1/projects/{project_id}/submission/artifacts").status_code == 200
+
+        with Session(app.state.engine) as session:
+            jury_row = session.scalar(select(FinalJuryReportRecord))
+            assert jury_row is not None
+            original_report = dict(jury_row.report_json)
+            jury_row.report_json = {**original_report, "claimed_score": 0}
+            session.commit()
+        jury_dirty = client.get(f"/api/v1/projects/{project_id}/submission")
+        assert jury_dirty.json()["status"] == "DIRTY"
+        with Session(app.state.engine) as session:
+            jury_row = session.scalar(select(FinalJuryReportRecord))
+            assert jury_row is not None
+            jury_row.report_json = original_report
+            session.commit()
+        restored = client.get(f"/api/v1/projects/{project_id}/submission")
+        assert restored.json()["status"] == "FROZEN"
+
+        with Session(app.state.engine) as session:
+            assert session.scalar(select(func.count()).select_from(FinalJuryReportRecord)) == 1
+            assert (
+                session.scalar(select(func.count()).select_from(RequirementCoverageRecordModel))
+                == 3
+            )
+            assert session.scalar(select(func.count()).select_from(SubmissionCheckRecord)) == 1
+            assert session.scalar(select(func.count()).select_from(SubmissionSnapshotRecord)) == 1
+            assert session.scalar(select(func.count()).select_from(SubmissionManifestRecord)) == 1
+            assert (
+                session.scalar(select(func.count()).select_from(SubmissionArtifactRecordModel)) >= 5
+            )
+
+        app.state.file_store.resolve(package_record["storage_key"]).write_bytes(
+            package_bytes + b"tampered"
+        )
+        dirty_response = client.get(f"/api/v1/projects/{project_id}/submission")
+        assert dirty_response.status_code == 200
+        assert dirty_response.json()["status"] == "DIRTY"

@@ -13,7 +13,16 @@ _WORKFLOW_TRANSITIONS: dict[WorkflowStage, frozenset[WorkflowStage]] = {
     WorkflowStage.ROBUSTNESS: frozenset({WorkflowStage.RED_TEAM}),
     WorkflowStage.RED_TEAM: frozenset({WorkflowStage.MODEL_REPAIR, WorkflowStage.PAPER}),
     WorkflowStage.MODEL_REPAIR: frozenset({WorkflowStage.SOLVE}),
-    WorkflowStage.PAPER: frozenset({WorkflowStage.PAPER}),
+    WorkflowStage.PAPER: frozenset({WorkflowStage.PAPER, WorkflowStage.FINAL_JURY}),
+    WorkflowStage.FINAL_JURY: frozenset(
+        {WorkflowStage.FINAL_JURY, WorkflowStage.SUBMISSION, WorkflowStage.PAPER}
+    ),
+    WorkflowStage.SUBMISSION: frozenset(
+        {WorkflowStage.SUBMISSION, WorkflowStage.FINAL, WorkflowStage.PAPER}
+    ),
+    WorkflowStage.FINAL: frozenset(
+        {WorkflowStage.FINAL, WorkflowStage.SUBMISSION, WorkflowStage.PAPER}
+    ),
 }
 
 

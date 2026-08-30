@@ -53,6 +53,16 @@ def test_migrated_postgres_persists_problem_state_jsonb() -> None:
         "tables",
         "document_registry",
         "paper_artifacts",
+        "competition_profiles",
+        "competition_rules",
+        "requirement_coverage",
+        "final_jury_reports",
+        "jury_findings",
+        "submission_checks",
+        "submission_snapshots",
+        "submission_artifacts",
+        "submission_manifests",
+        "correction_plans",
     } <= set(inspector.get_table_names())
     assert {
         "input_state_version",
@@ -122,6 +132,22 @@ def test_migrated_postgres_persists_problem_state_jsonb() -> None:
         ("claim_record_id",),
         ("evidence_record_id",),
     } <= claim_link_foreign_keys
+    snapshot_foreign_keys = {
+        tuple(item["constrained_columns"])
+        for item in inspector.get_foreign_keys("submission_snapshots")
+    }
+    assert {
+        ("project_id",),
+        ("paper_version_record_id",),
+        ("verified_result_id",),
+        ("profile_record_id",),
+        ("submission_check_id",),
+    } <= snapshot_foreign_keys
+    artifact_foreign_keys = {
+        tuple(item["constrained_columns"])
+        for item in inspector.get_foreign_keys("submission_artifacts")
+    }
+    assert {("project_id",), ("submission_id",)} <= artifact_foreign_keys
 
     connection = engine.connect()
     transaction = connection.begin()

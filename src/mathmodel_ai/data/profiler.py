@@ -37,9 +37,9 @@ def _missing(value: Any) -> bool:
 
 
 def _safe_sample(value: Any) -> Any:
-    if isinstance(value, (datetime, date)):
+    if isinstance(value, datetime | date):
         return value.isoformat()
-    if isinstance(value, (str, int, float, bool)) or value is None:
+    if isinstance(value, str | int | float | bool) or value is None:
         return value
     return str(value)
 
@@ -169,7 +169,7 @@ class DataProfiler:
         numeric = [
             float(value)
             for value in present
-            if isinstance(value, (int, float)) and not isinstance(value, bool)
+            if isinstance(value, int | float) and not isinstance(value, bool)
         ]
         numeric_statistics = self._numeric_statistics(numeric)
         outliers = self._outliers(numeric)
@@ -201,13 +201,13 @@ class DataProfiler:
         lowered = name.casefold()
         if all(isinstance(value, bool) for value in values):
             return DataSemanticType.BOOLEAN
-        if all(isinstance(value, (datetime, date)) for value in values):
+        if all(isinstance(value, datetime | date) for value in values):
             return DataSemanticType.DATETIME
         if all(isinstance(value, int) and not isinstance(value, bool) for value in values):
             if (lowered == "id" or lowered.endswith("_id")) and unique_count == len(values):
                 return DataSemanticType.IDENTIFIER
             return DataSemanticType.INTEGER
-        if all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in values):
+        if all(isinstance(value, int | float) and not isinstance(value, bool) for value in values):
             return DataSemanticType.CONTINUOUS
         if (
             unique_count == len(values)

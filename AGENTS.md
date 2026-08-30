@@ -19,15 +19,17 @@ maintainability, performance, then complexity.
 - Solver architecture: `docs/SOLVER_ARCHITECTURE.md`
 - Verification and repair: `docs/VERIFICATION_REPAIR.md`
 - Evidence and paper production: `docs/PAPER_PIPELINE.md`
+- Competition profiles: `docs/COMPETITION_PROFILE.md`
+- Final Jury: `docs/FINAL_JURY.md`
+- Submission pipeline: `docs/SUBMISSION_PIPELINE.md`
 - Computational truth: `docs/COMPUTATIONAL_TRUTH.md`
 - Security: `docs/SECURITY.md`
 - Testing: `docs/TESTING.md`
 - Execution plans: `docs/exec-plans/`
 
-Current phase: Phase 6 — evidence-grounded paper production (implemented,
-pending independent acceptance). Do not implement Phase 7 Final Jury,
-competition submission checks, or submission packaging unless explicitly
-advanced.
+Current phase: Phase 7 — Final Jury and submission freeze (implemented, pending
+independent acceptance). Do not start the Phase 8 historical competition
+benchmark unless explicitly advanced.
 
 ## Commands
 
@@ -58,5 +60,8 @@ docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 sandbox
 - Paper claims must resolve through the exact `verified_result_id` evidence
   snapshot; PaperAgent prose, unverified references, and Mock review are never
   factual authority.
+- Submission readiness must bind an exact profile version, paper version,
+  verified result, manifest, and package hash. Unknown blocking rules require
+  human review; a persisted jury/check summary is never deterministic authority.
 - Do not commit credentials or log secret values.
 - Add tests and documentation for every completed module.

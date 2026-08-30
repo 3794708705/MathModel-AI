@@ -816,3 +816,190 @@ class PaperArtifactRecord(Base):
     sha256: Mapped[str] = mapped_column(String(64), index=True)
     storage_key: Mapped[str] = mapped_column(String(1024), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CompetitionProfileRecord(Base):
+    __tablename__ = "competition_profiles"
+    __table_args__ = (
+        UniqueConstraint("profile_id", "version", name="uq_competition_profiles_identity"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    profile_id: Mapped[UUID] = mapped_column(index=True)
+    version: Mapped[int]
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    verification_status: Mapped[str] = mapped_column(String(32), index=True)
+    profile_digest: Mapped[str] = mapped_column(String(64), index=True)
+    profile_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CompetitionRuleRecord(Base):
+    __tablename__ = "competition_rules"
+    __table_args__ = (
+        UniqueConstraint("profile_record_id", "rule_id", name="uq_competition_rules_profile_rule"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    profile_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("competition_profiles.id", ondelete="CASCADE"), index=True
+    )
+    rule_id: Mapped[str] = mapped_column(String(100), index=True)
+    rule_type: Mapped[str] = mapped_column(String(40), index=True)
+    severity: Mapped[str] = mapped_column(String(16), index=True)
+    verification_status: Mapped[str] = mapped_column(String(32), index=True)
+    rule_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class RequirementCoverageRecordModel(Base):
+    __tablename__ = "requirement_coverage"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="CASCADE"), index=True
+    )
+    requirement_id: Mapped[str] = mapped_column(String(100), index=True)
+    subproblem_id: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    coverage_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class FinalJuryReportRecord(Base):
+    __tablename__ = "final_jury_reports"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="RESTRICT"), index=True
+    )
+    verified_result_id: Mapped[UUID] = mapped_column(
+        ForeignKey("results.id", ondelete="RESTRICT"), index=True
+    )
+    profile_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("competition_profiles.id", ondelete="RESTRICT"), index=True
+    )
+    decision: Mapped[str] = mapped_column(String(32), index=True)
+    claimed_score: Mapped[float] = mapped_column(Float)
+    reviewer_is_mock: Mapped[bool] = mapped_column(Boolean, index=True)
+    report_digest: Mapped[str] = mapped_column(String(64), index=True)
+    agent_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="SET NULL"), index=True
+    )
+    report_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class JuryFindingRecord(Base):
+    __tablename__ = "jury_findings"
+    __table_args__ = (
+        UniqueConstraint("jury_report_id", "finding_id", name="uq_jury_findings_report_finding"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    jury_report_id: Mapped[UUID] = mapped_column(
+        ForeignKey("final_jury_reports.id", ondelete="CASCADE"), index=True
+    )
+    finding_id: Mapped[str] = mapped_column(String(100), index=True)
+    severity: Mapped[str] = mapped_column(String(16), index=True)
+    resolved: Mapped[bool] = mapped_column(Boolean, index=True)
+    finding_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class SubmissionCheckRecord(Base):
+    __tablename__ = "submission_checks"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    jury_report_id: Mapped[UUID] = mapped_column(
+        ForeignKey("final_jury_reports.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    check_digest: Mapped[str] = mapped_column(String(64), index=True)
+    check_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SubmissionSnapshotRecord(Base):
+    __tablename__ = "submission_snapshots"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    paper_version_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("paper_versions.id", ondelete="RESTRICT"), index=True
+    )
+    verified_result_id: Mapped[UUID] = mapped_column(
+        ForeignKey("results.id", ondelete="RESTRICT"), index=True
+    )
+    profile_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("competition_profiles.id", ondelete="RESTRICT"), index=True
+    )
+    submission_check_id: Mapped[UUID] = mapped_column(
+        ForeignKey("submission_checks.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    manifest_hash: Mapped[str] = mapped_column(String(64), index=True)
+    package_hash: Mapped[str] = mapped_column(String(64), index=True)
+    artifact_set_digest: Mapped[str] = mapped_column(String(64), index=True)
+    snapshot_digest: Mapped[str] = mapped_column(String(64), index=True)
+    snapshot_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SubmissionArtifactRecordModel(Base):
+    __tablename__ = "submission_artifacts"
+    __table_args__ = (
+        UniqueConstraint("submission_id", "relative_path", name="uq_submission_artifacts_path"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    submission_id: Mapped[UUID] = mapped_column(
+        ForeignKey("submission_snapshots.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(32), index=True)
+    relative_path: Mapped[str] = mapped_column(String(1024))
+    mime_type: Mapped[str] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    storage_key: Mapped[str] = mapped_column(String(1024))
+    artifact_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class SubmissionManifestRecord(Base):
+    __tablename__ = "submission_manifests"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    submission_id: Mapped[UUID] = mapped_column(
+        ForeignKey("submission_snapshots.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    manifest_hash: Mapped[str] = mapped_column(String(64), index=True)
+    package_hash: Mapped[str] = mapped_column(String(64), index=True)
+    manifest_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class CorrectionPlanRecord(Base):
+    __tablename__ = "correction_plans"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    submission_check_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("submission_checks.id", ondelete="SET NULL"), index=True
+    )
+    scope: Mapped[str] = mapped_column(String(32), index=True)
+    priority: Mapped[int]
+    plan_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)

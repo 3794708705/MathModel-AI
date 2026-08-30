@@ -1,6 +1,6 @@
 # State model
 
-`ProblemState` v6 is the sole shared workflow state. It retains registered files,
+`ProblemState` v7 is the sole shared workflow state. It retains registered files,
 artifacts, datasets, deterministic profiles, data understanding, execution
 records, and reasoning fields, then adds compact references to the accepted
 `MathematicalModel`, `AlgorithmPlan`, generated programs, solver runs, and result
@@ -11,6 +11,9 @@ sensitivity, robustness, Red Team, and citation set. Large full payloads remain
 in independent registries; state carries identities and exact versions. Typed `ProblemAnalysis`, evidence items,
 subproblems, ambiguities, proposed assumptions, model candidates, score matrix,
 primary/backup selection, decision evidence, quality gates, and stage history.
+Phase 7 appends compact `SubmissionSummaryRef` values that pin the profile
+version, approved paper version, formal verified result, manifest hash, package
+hash, and status. Full jury/check/package records stay in their registries.
 
 Every traceable statement is classified as `FACT`, `DATA`, `ASSUMPTION`,
 `DERIVATION`, `RESULT`, or `EXTERNAL_EVIDENCE`. Verification status defaults to
@@ -31,6 +34,9 @@ INGEST -> UNDERSTAND -> EXPLORE -> SELECT -> MODEL -> SOLVE
                                                    | PASS
                                                    ` MODEL_REPAIR -> SOLVE -> ...
 RED_TEAM -> PAPER
+PAPER -> FINAL_JURY -> SUBMISSION -> FINAL
+                    | correction/recheck
+                    `------------> PAPER
 ```
 
 The MODEL revision stores a model record ID plus stable `model_id` and `version`.
@@ -65,6 +71,19 @@ same `verified_result_id` held by the state. Paper versions append; they never
 replace prior evidence snapshots or artifacts. Phase 6 does not set submission
 state and cannot mark a paper `SUBMISSION_READY`.
 
+Schema v7 permits `FROZEN` only when a submission uses the state's exact
+`verified_result_id`, references a `READY_FOR_FINAL_JURY` paper version, and has
+both manifest and package hashes. A correction or rerun first marks current
+readiness `DIRTY`/`RECHECK_REQUIRED`; it never mutates a historical snapshot.
+`FINAL` means the local package is frozen and ready to submit, not that an
+external competition platform accepted an upload.
+
+The frozen snapshot additionally binds canonical digests for the profile,
+current requirement coverage, candidate/Paper IR, Jury report, SubmissionCheck,
+and exact source artifact set. The read path does not trust `status=FROZEN`: it
+revalidates those records against the current official `verified_result_id`,
+paper reference and problem requirements before reopening the physical package.
+
 The database now contains `projects`, `problems`, `problem_states`,
 `agent_runs`, `model_decisions`, `files`, `artifacts`, `datasets`,
 `data_profiles`, `execution_records`, `mathematical_models`,
@@ -74,7 +93,10 @@ The database now contains `projects`, `problems`, `problem_states`,
 both in relational registries and referenced by immutable state revisions.
 The Phase 6 database registries preserve evidence/claim links, retrieved
 literature and citation checks, paper versions, document IDs, figure/table
-hashes, and paper artifact manifests.
+hashes, and paper artifact manifests. Phase 7 registries preserve versioned rule
+provenance, requirement mappings, jury findings, deterministic check inputs,
+frozen snapshots, source artifact hashes, manifests, packages, and correction
+scopes.
 
 The Phase 3 sub-workflow is ordered independently of the main reasoning stage:
 

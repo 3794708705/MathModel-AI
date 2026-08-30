@@ -50,12 +50,17 @@ Concrete reasoning/data agents are:
 - `PaperFactualAuditAgent`: independently reviews all Critical and Major claims
   after deterministic checks. Every such claim ID must be accounted for and a
   Mock audit always requires human review.
+- `FinalJuryAgent`: reviews the exact accepted Paper IR, requirement coverage,
+  rule results, and submission candidate at flagship-xhigh routing. It emits only
+  a structured scorecard and findings. It cannot change artifacts or override
+  deterministic rule, evidence, requirement, manifest, or freeze gates. Mock
+  output is retained as `reviewer_is_mock=true` and is not a live-jury claim.
 
 All agents use `structured_generate()` and package-resource prompts. Phase 2
 prompts are version `2.0.0`; the DataAgent prompt is version `3.0.0`; MathModeler
 and CodeAgent prompts are version `4.0.0`; Red Team and Model Repair prompts are
 version `5.0.0`; literature, citation, PaperAgent, and factual-audit prompts are
-version `6.0.0`.
+version `6.0.0`. The FinalJuryAgent prompt is version `7.0.0`.
 Free-text-to-JSON regex parsing is not part of the agent contract.
 
 `AlgorithmSelector`, `SolverRouter`, solver adapters, registries, unit checking,
@@ -67,3 +72,6 @@ claims.
 Evidence resolution, comparison arithmetic, registry numbering, cross-reference
 checks, hash verification, LaTeX escaping, compilation status, and final paper
 quality decisions are likewise deterministic services—not PaperAgent claims.
+Competition rule evaluation, requirement coverage, jury score arithmetic,
+submission status, artifact hashing, ZIP safety, and dirty detection are also
+deterministic services—not FinalJuryAgent claims.

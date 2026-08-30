@@ -333,25 +333,42 @@ class PaperRepository:
             )
             return [ReferenceRecord.model_validate(row.reference_json) for row in rows]
 
-    def get_quality(self, project_id: UUID, paper_id: UUID | None = None) -> PaperQualityReport:
-        row = self._get_paper_row(project_id, paper_id)
+    def get_quality(
+        self,
+        project_id: UUID,
+        paper_id: UUID | None = None,
+        version: int | None = None,
+    ) -> PaperQualityReport:
+        row = self._get_paper_row(project_id, paper_id, version)
         if row.quality_json is None:
             raise ResourceNotFoundError("paper quality report was not found")
         return PaperQualityReport.model_validate(row.quality_json)
 
-    def get_compile(self, project_id: UUID, paper_id: UUID | None = None) -> PaperCompileRecord:
-        row = self._get_paper_row(project_id, paper_id)
+    def get_compile(
+        self,
+        project_id: UUID,
+        paper_id: UUID | None = None,
+        version: int | None = None,
+    ) -> PaperCompileRecord:
+        row = self._get_paper_row(project_id, paper_id, version)
         if row.compile_json is None:
             raise ResourceNotFoundError("paper compile record was not found")
         return PaperCompileRecord.model_validate(row.compile_json)
 
-    def _get_paper_row(self, project_id: UUID, paper_id: UUID | None) -> PaperVersionRecord:
+    def _get_paper_row(
+        self,
+        project_id: UUID,
+        paper_id: UUID | None,
+        version: int | None = None,
+    ) -> PaperVersionRecord:
         with session_scope(self._session_factory) as session:
             statement = select(PaperVersionRecord).where(
                 PaperVersionRecord.project_id == project_id
             )
             if paper_id is not None:
                 statement = statement.where(PaperVersionRecord.paper_id == paper_id)
+            if version is not None:
+                statement = statement.where(PaperVersionRecord.version == version)
             row = session.scalar(
                 statement.order_by(
                     PaperVersionRecord.created_at.desc(), PaperVersionRecord.version.desc()
@@ -361,6 +378,49 @@ class PaperRepository:
                 raise ResourceNotFoundError("paper version was not found")
             session.expunge(row)
             return row
+
+    def list_version_artifacts(
+        self,
+        project_id: UUID,
+        paper_id: UUID,
+        version: int,
+    ) -> list[PaperArtifact]:
+        """Load artifacts for one explicit paper version; never substitute latest."""
+
+        with session_scope(self._session_factory) as session:
+            paper_row = session.scalar(
+                select(PaperVersionRecord).where(
+                    PaperVersionRecord.project_id == project_id,
+                    PaperVersionRecord.paper_id == paper_id,
+                    PaperVersionRecord.version == version,
+                )
+            )
+            if paper_row is None:
+                raise ResourceNotFoundError("paper version was not found")
+            rows = list(
+                session.scalars(
+                    select(PaperArtifactRecord)
+                    .where(PaperArtifactRecord.paper_version_record_id == paper_row.id)
+                    .order_by(PaperArtifactRecord.created_at, PaperArtifactRecord.id)
+                )
+            )
+            return [
+                PaperArtifact(
+                    artifact_id=row.id,
+                    project_id=row.project_id,
+                    problem_id=paper_row.problem_id,
+                    paper_id=paper_row.paper_id,
+                    paper_version=paper_row.version,
+                    kind=row.kind,
+                    name=row.name,
+                    mime_type=row.mime_type,
+                    size_bytes=row.size_bytes,
+                    sha256=row.sha256,
+                    storage_key=row.storage_key,
+                    created_at=row.created_at,
+                )
+                for row in rows
+            ]
 
     def list_artifacts(self, project_id: UUID, paper_id: UUID) -> list[PaperArtifact]:
         with session_scope(self._session_factory) as session:

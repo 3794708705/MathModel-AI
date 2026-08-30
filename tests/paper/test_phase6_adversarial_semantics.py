@@ -469,6 +469,7 @@ def test_n_required_subproblem_coverage_is_deterministic() -> None:
                     required_outputs=["answer"],
                     section_ids=[paper.sections[0].section_id],
                     claim_refs=[claim.claim_id],
+                    output_claim_refs={"answer": [claim.claim_id]},
                 )
             ],
         }

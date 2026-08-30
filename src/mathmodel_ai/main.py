@@ -8,6 +8,7 @@ from mathmodel_ai.agents import (
     CitationAgent,
     CodeAgent,
     DataAgent,
+    FinalJuryAgent,
     LiteratureAgent,
     MathModeler,
     ModelExplorer,
@@ -19,6 +20,7 @@ from mathmodel_ai.agents import (
     RedTeamAgent,
 )
 from mathmodel_ai.api.routes.data_execution import router as data_execution_router
+from mathmodel_ai.api.routes.final_submission import router as final_submission_router
 from mathmodel_ai.api.routes.health import router as health_router
 from mathmodel_ai.api.routes.mathematical import router as mathematical_router
 from mathmodel_ai.api.routes.paper import router as paper_router
@@ -64,6 +66,14 @@ from mathmodel_ai.solvers.gurobi import GurobiSolver
 from mathmodel_ai.solvers.ortools import ORToolsSolver
 from mathmodel_ai.solvers.router import SolverRouter
 from mathmodel_ai.solvers.scipy import SciPySolver
+from mathmodel_ai.submission.package import SubmissionIntegrityVerifier, SubmissionPackageBuilder
+from mathmodel_ai.submission.profiles import (
+    CompetitionProfileRegistry,
+    generic_modeling_test_profile,
+)
+from mathmodel_ai.submission.repository import SubmissionRepository
+from mathmodel_ai.submission.rules import RuleEngine
+from mathmodel_ai.submission.workflow import FinalSubmissionWorkflow
 from mathmodel_ai.verification.experiment_integrity import ExperimentIntegrityVerifier
 from mathmodel_ai.verification.experiments import ExperimentEngine
 from mathmodel_ai.verification.red_team import RedTeamAnalyzer
@@ -310,6 +320,23 @@ def create_app(
         bundle_builder=PaperBundleBuilder(file_store),
         store=file_store,
     )
+    application.state.competition_profile_registry = CompetitionProfileRegistry(
+        [generic_modeling_test_profile()]
+    )
+    application.state.submission_repository = SubmissionRepository(
+        application.state.session_factory
+    )
+    application.state.submission_integrity_verifier = SubmissionIntegrityVerifier(file_store)
+    application.state.final_submission_workflow = FinalSubmissionWorkflow(
+        reasoning_repository=application.state.reasoning_repository,
+        paper_repository=application.state.paper_repository,
+        repository=application.state.submission_repository,
+        profiles=application.state.competition_profile_registry,
+        jury_agent=FinalJuryAgent(**shared),
+        rule_engine=RuleEngine(file_store),
+        package_builder=SubmissionPackageBuilder(file_store),
+        store=file_store,
+    )
     application.include_router(health_router)
     application.include_router(system_router)
     application.include_router(reasoning_router)
@@ -317,6 +344,7 @@ def create_app(
     application.include_router(mathematical_router)
     application.include_router(verification_router)
     application.include_router(paper_router)
+    application.include_router(final_submission_router)
 
     @application.exception_handler(ResourceNotFoundError)
     async def not_found_handler(_request: Request, exc: ResourceNotFoundError) -> JSONResponse:

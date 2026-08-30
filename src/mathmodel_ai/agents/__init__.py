@@ -3,6 +3,7 @@ from mathmodel_ai.agents.citation import CitationAgent
 from mathmodel_ai.agents.code import CodeAgent
 from mathmodel_ai.agents.data import DataAgent
 from mathmodel_ai.agents.explorer import ModelExplorer
+from mathmodel_ai.agents.final_jury import FinalJuryAgent
 from mathmodel_ai.agents.jury import ModelJury
 from mathmodel_ai.agents.literature import LiteratureAgent
 from mathmodel_ai.agents.math_modeler import MathModeler
@@ -19,6 +20,7 @@ __all__ = [
     "CitationAgent",
     "CodeAgent",
     "DataAgent",
+    "FinalJuryAgent",
     "LiteratureAgent",
     "MathModeler",
     "ModelExplorer",

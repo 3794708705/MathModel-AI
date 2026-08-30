@@ -44,3 +44,14 @@ image decompression limits, network denial, non-root identity, read-only mounts,
 timeout, unsafe output archives, and invalid secret mounts. Residual risk: local Docker is a security boundary dependency and
 must be patched/hardened by deployment; antivirus/content disarm, S3 policies,
 and a production reverse-proxy request cap remain deployment work.
+
+Phase 7 package construction is allow-list based. Source symlinks and Windows
+reparse points are rejected; ZIP verification rejects traversal/absolute paths,
+symlink entries, duplicates, case/NFC collisions, nested archives, excessive
+entry count, expanded bytes, and compression ratios. Final package bytes are
+independently reopened and rescanned. Unicode-normalized text, PDF text/
+metadata/attachments, and supported image metadata are checked for identity,
+local path, credential, database URL, private-key, internal-audit, fixture, and
+Mock markers. Unsupported OCR/steganographic content remains a human-review/
+deployment scanning risk; Phase 7 does not claim complete malware or steganography
+detection.

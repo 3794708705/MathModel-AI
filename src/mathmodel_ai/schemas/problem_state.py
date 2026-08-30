@@ -37,6 +37,7 @@ from mathmodel_ai.schemas.quality import (
 )
 from mathmodel_ai.schemas.results import ResultRecordRef
 from mathmodel_ai.schemas.solver import AlgorithmPlan, SolverRunRef
+from mathmodel_ai.schemas.submission import SubmissionStatus, SubmissionSummaryRef
 from mathmodel_ai.schemas.verification import (
     RedTeamReportRef,
     RepairCycleRef,
@@ -227,6 +228,7 @@ class ProblemState(BaseModel):
     paper_state: dict[str, Any] = Field(default_factory=dict)
     paper_versions: list[PaperVersionRef] = Field(default_factory=list)
     submission_state: dict[str, Any] = Field(default_factory=dict)
+    submission_snapshots: list[SubmissionSummaryRef] = Field(default_factory=list)
 
     current_stage: WorkflowStage = WorkflowStage.INGEST
     status: WorkflowStatus = WorkflowStatus.PENDING
@@ -292,4 +294,22 @@ class ProblemState(BaseModel):
                 raise ValueError("ready paper requires verified_result_id")
             if any(item.verified_result_id != self.verified_result_id for item in ready):
                 raise ValueError("ready paper must use the explicit verified_result_id")
+        if self.schema_version >= 7:
+            submission_ids = [item.submission_id for item in self.submission_snapshots]
+            if len(submission_ids) != len(set(submission_ids)):
+                raise ValueError("submission snapshot identifiers must be unique")
+            frozen = [
+                item for item in self.submission_snapshots if item.status is SubmissionStatus.FROZEN
+            ]
+            ready_papers = {
+                (item.paper_id, item.version)
+                for item in self.paper_versions
+                if item.status is PaperQualityStatus.READY_FOR_FINAL_JURY
+            }
+            if any(item.verified_result_id != self.verified_result_id for item in frozen):
+                raise ValueError("frozen submission must use the explicit verified_result_id")
+            if any((item.paper_id, item.paper_version) not in ready_papers for item in frozen):
+                raise ValueError("frozen submission must bind a ready paper version")
+            if any(item.manifest_hash is None or item.package_hash is None for item in frozen):
+                raise ValueError("frozen submission requires manifest and package hashes")
         return self

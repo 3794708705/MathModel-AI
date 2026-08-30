@@ -1,12 +1,13 @@
 # MathModel AI
 
 MathModel AI is an evidence-first automation system for mathematical modeling
-competitions. Phases 1–6 are implemented: foundation, persisted reasoning,
+competitions. Phases 1–7 are implemented: foundation, persisted reasoning,
 guarded data ingestion, isolated execution, structured mathematical models,
 deterministic solver routing, traceable real numerical results, independent
 validation, executed perturbation experiments, adversarial review, and bounded
 model repair, verified literature, evidence-linked Paper IR, reproducible
-figures/tables, and sandboxed LaTeX/PDF rendering.
+figures/tables, sandboxed LaTeX/PDF rendering, versioned competition rules,
+deterministic final checks, and hash-frozen submission packages.
 
 ## Quick start
 
@@ -63,6 +64,16 @@ artifacts are available from the `/literature`, `/paper`, and
 `/paper/artifacts` project routes. See
 [docs/PAPER_PIPELINE.md](docs/PAPER_PIPELINE.md).
 
+Phase 7 binds an explicit accepted paper and verified result to one immutable
+`CompetitionProfile` version. `POST /api/v1/projects/{project_id}/final/run`
+recomputes requirement coverage and competition rules, runs structured Final
+Jury review behind deterministic gates, performs submission checks, and can
+freeze a real manifest/ZIP when `freeze_on_pass=true`. Frozen artifacts are
+rehash-verified on read; modification returns `DIRTY`, never silently ready.
+See [docs/COMPETITION_PROFILE.md](docs/COMPETITION_PROFILE.md),
+[docs/FINAL_JURY.md](docs/FINAL_JURY.md), and
+[docs/SUBMISSION_PIPELINE.md](docs/SUBMISSION_PIPELINE.md).
+
 ## Verification
 
 ```powershell
@@ -91,6 +102,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for boundaries and
   parameter noise.
 - Live literature and PaperAgent checks remain explicit opt-ins; their default
   skip statuses are not evidence of success.
-- Final Jury, competition-format enforcement, submission checks, and the final
-  submission package belong to Phase 7.
+- The built-in competition profile is a deterministic test fixture, not a claim
+  of compliance with any real MCM/CUMCM ruleset. Real profiles and the historical
+  benchmark belong to Phase 8.
 - FastAPI's current test client emits an upstream `httpx2` migration warning.

@@ -131,3 +131,37 @@ asserts Phase 6 tables and critical foreign keys. The independent acceptance run
 completed with 230 passing tests, 5 explicitly skipped optional/environment-
 gated tests, and 87.65% statement/branch coverage under the configured 85%
 floor.
+
+Phase 7 adds named adversarial cases A-Z for missing/fake requirement coverage,
+page/filename/MIME/anonymity/secret/code-policy failures, unverified rules,
+Critical and score tampering, freeze success, paper/figure/code/data/manifest/ZIP
+tampering, package swap, forbidden files, absolute paths, safe roundtrip, exact
+paper-version selection, correction invalidation, and a clean frozen package.
+Additional tests reject ZIP slip, symlinks, compression bombs, persisted count
+tampering, and deadline-mode bypass. The final E2E extends a real Phase 5 solve
+and Phase 6 Docker-compiled PDF through deterministic Phase 7 gates, a Mock
+structured FinalJury fixture, real filesystem manifest/ZIP, re-open validation,
+PostgreSQL persistence, and post-freeze DIRTY detection.
+
+Migration `20260829_0008` must be upgraded from `20260828_0007`, downgraded,
+re-upgraded, and checked against PostgreSQL. The built-in profile remains
+`TEST_FIXTURE`; live competition-rule conformance is not tested in Phase 7.
+The Phase 7 self-test run completed with 306 passing tests, 6 explicitly skipped
+environment-gated tests, and 88.49% statement/branch coverage under the
+configured 85% floor. Dedicated Phase 7 coverage reached 100% for submission
+checks, corrections, freeze, profiles, and package construction; 99% for Final
+Jury, 98% for requirement coverage, 98% for package integrity, and 94% for the
+competition RuleEngine. PostgreSQL migration check and integration also passed
+against migration head `20260829_0008`.
+
+The Phase 7 independent acceptance suite adds profile JSON/child-rule tampering,
+fixture promotion, exact v1/v2 snapshots, required-output claim-role checks,
+required `NOT_APPLICABLE` rejection, stale Paper/Jury/finding invalidation,
+Freeze-time coverage recomputation, PDF metadata/attachment attacks,
+Unicode-obfuscated identities, Windows/Unix/UNC/file-URL path variants, Bearer/
+database/private-key patterns, internal fixture/Mock leaks, deterministic and
+concurrent-idempotent package builds, snapshot/status tampering, NFC/case archive
+collisions, nested archives, dynamic deadline rechecks, fail-closed reproduction,
+and correction-classification tampering. The real E2E additionally reopens the
+physical ZIP after source context, detects persisted Jury tampering, proves exact
+record restoration policy, and detects final package byte replacement.

@@ -193,7 +193,7 @@ class NumericClaimValidator:
         linked_evidence: list[tuple[ClaimEvidenceLink, EvidenceRecord]],
     ) -> list[PaperValidationIssue]:
         value = claim.structured_value
-        if not isinstance(value, (NumericClaimValue, ComparisonClaimValue)):
+        if not isinstance(value, NumericClaimValue | ComparisonClaimValue):
             return []
         issues: list[PaperValidationIssue] = []
         if not self._formatting.text_matches(claim):

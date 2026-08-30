@@ -240,6 +240,6 @@ class GeneratedProgramExecutor:
 
     @staticmethod
     def _optional_float(value: object) -> float | None:
-        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+        if isinstance(value, int | float) and not isinstance(value, bool) and value >= 0:
             return float(value)
         return None

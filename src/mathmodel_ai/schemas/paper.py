@@ -502,6 +502,7 @@ class SubproblemCoverageRecord(BaseModel):
     required_outputs: list[str] = Field(min_length=1)
     section_ids: list[str] = Field(min_length=1)
     claim_refs: list[str] = Field(min_length=1)
+    output_claim_refs: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class CompetitionProfile(BaseModel):

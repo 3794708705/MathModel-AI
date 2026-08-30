@@ -54,6 +54,12 @@ verified_result_id -> EvidenceBuilder -> Claim/Evidence graph -> PaperAgent
                   -> Paper IR + registries -> deterministic factual gates
                   -> LaTeX/BibTeX -> restricted PDFCompiler -> manifest
                   -> READY_FOR_FINAL_JURY (never SUBMISSION_READY)
+
+explicit paper/profile versions -> RuleEngine + RequirementCoverageValidator
+                  -> FinalJuryAgent -> deterministic FinalJuryGate
+                  -> SubmissionCheck -> SubmissionFreeze
+                  -> canonical manifest + deterministic ZIP -> FROZEN
+                  -> rehash/re-open verification; changed bytes -> DIRTY
 ```
 
 - `api`: transport concerns and health reporting only.
@@ -81,6 +87,11 @@ verified_result_id -> EvidenceBuilder -> Claim/Evidence graph -> PaperAgent
   citation verification, Paper IR registries, assets, deterministic validators,
   renderers, restricted compilation, manifest generation, orchestration, and
   Phase 6 persistence.
+- `submission`: versioned rule profiles, deterministic rule and requirement
+  checks, structured Final Jury review, correction invalidation, freeze gating,
+  artifact allow-listing, canonical digest-linked manifests, deterministic ZIP
+  construction, archive/security rechecks, idempotent freeze coordination, and
+  current-chain plus post-freeze integrity verification.
 - `db`: persistence mapping and sessions; no reasoning logic.
 
 External model calls happen outside database transactions. A successful stage
@@ -105,6 +116,13 @@ Phase 6 adds `evidence_records`, `claims`, `claim_evidence_links`,
 `citation_support_checks`, `paper_versions`, `document_registry`, `figures`,
 `tables`, and `paper_artifacts`. Paper section structure stays in immutable
 Paper IR JSON; artifact bytes remain in the file store.
+Phase 7 adds `competition_profiles`, `competition_rules`,
+`requirement_coverage`, `final_jury_reports`, `jury_findings`,
+`submission_checks`, `submission_snapshots`, `submission_artifacts`,
+`submission_manifests`, and `correction_plans`. Exact version/hash bindings are
+relationally retained while immutable package bytes remain in the file store.
+Profile, Jury, check, artifact-set, and snapshot digests are also stored in
+separate indexed columns so JSON/scalar disagreement is detected on read.
 
 ## Technical debt
 
@@ -117,4 +135,8 @@ nonlinear global optimization, or every reserved model family. Gurobi requires a
 separate licensed runtime. Bootstrap remains blocked without row-level
 data-to-parameter resampling. Crossref is the first live literature adapter;
 additional scholarly sources and orphaned file-artifact cleanup remain future
-work. Phase 6 does not implement Final Jury or submission packaging.
+work. The generic Phase 7 profile is test-only; no real competition ruleset has
+yet been verified. Historical competition profiles and benchmarking are Phase 8.
+Phase 7 also intentionally lacks an automatic code-reproduction executor; a
+profile requiring it is fail-closed to human review rather than accepted from
+README claims or a Mock run.
