@@ -108,6 +108,7 @@ export function ErrorBanner({ error }: { error: unknown }) {
     CORS_BLOCKED: "Browser blocked backend access",
     REQUEST_TIMEOUT: "Backend request timed out",
     NETWORK_ERROR: "Network request failed",
+    DATABASE_UNAVAILABLE: "数据库不可用 / Database unavailable",
   }[code] ?? "Request failed";
   return (
     <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">

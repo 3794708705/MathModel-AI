@@ -18,6 +18,9 @@ def readiness(request: Request) -> ReadinessResponse:
     if not database_is_ready(engine):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="database is unavailable",
+            detail={
+                "code": "DATABASE_UNAVAILABLE",
+                "message": "Database is unavailable. Check PostgreSQL and MM_DATABASE_URL.",
+            },
         )
     return ReadinessResponse(status="ready", database="ready")

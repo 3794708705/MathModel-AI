@@ -35,7 +35,7 @@ instead of an unbounded silent wait.
 
 Start the UI in another terminal with `.\scripts\dev-frontend.ps1`; it also
 remains in the foreground until `Ctrl+C`. If
-`frontend/node_modules` does not exist, run `npm install` in `frontend` first;
+`frontend/node_modules` does not exist, run `npm ci` in `frontend` first;
 the script intentionally does not install packages. The launcher probes
 `/health/live` before Vite starts and prints a non-blocking warning with the
 exact backend command when port 8000 is unavailable.
@@ -61,6 +61,14 @@ reports only process liveness; `/health/ready` independently reports database
 readiness. Startup does not require OpenAI, Google, Anthropic, DeepSeek, or Qwen
 credentials.
 
+When the database is unavailable, readiness returns HTTP 503 with the stable
+`DATABASE_UNAVAILABLE` code. The UI uses a fixed, credential-safe troubleshooting
+message rather than displaying raw connection errors. System keeps backend
+liveness separate, marks failed/unknown facts explicitly (including credential
+store configuration), and never presents cached healthy values as current after
+a failed refresh. **重新检查 / Recheck** refreshes all three read-only endpoints;
+it does not mutate configuration, start services, or issue provider requests.
+
 For a local integrated build, create an untracked `.env` (optionally including
 `MM_SECRET_MASTER_KEY`) and run `docker compose up --build`. Compose starts
 PostgreSQL, applies migrations, serves FastAPI on port 8000, and serves the
@@ -73,6 +81,7 @@ static UI on port 5173. The frontend image accepts a build-time
 regenerates `src/api/schema.d.ts`. All component traffic is centralized in
 `src/api/client.ts`. Use `npm run typecheck`, `npm run lint`,
 `npm run test:coverage`, and `npm run build` before delivery.
+The frontend CI job enforces these checks and rejects generated API type drift.
 
 ## Models and API
 

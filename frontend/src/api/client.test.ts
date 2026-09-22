@@ -103,4 +103,19 @@ describe("api client", () => {
     expect(String(error)).not.toContain("TEST_SECRET_MUST_NOT_ECHO");
     expect(String(error)).not.toContain("submitted-secret-value");
   });
+
+  it("recognizes database outages without echoing server-provided details", async () => {
+    installFetch(() => jsonResponse({
+      detail: { code: "DATABASE_UNAVAILABLE", message: "postgres://user:TEST_SECRET_MUST_NOT_ECHO@host/db" },
+    }, 503));
+    const error = await api.ready().catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ status: 503, code: "DATABASE_UNAVAILABLE" });
+    expect(String(error)).toContain("PostgreSQL");
+    expect(String(error)).not.toContain("TEST_SECRET_MUST_NOT_ECHO");
+  });
+
+  it("does not misclassify an arbitrary 503 as a database outage", async () => {
+    installFetch(() => jsonResponse({ detail: "proxy unavailable" }, 503));
+    await expect(api.ready()).rejects.toMatchObject({ status: 503, code: "HTTP_503" });
+  });
 });

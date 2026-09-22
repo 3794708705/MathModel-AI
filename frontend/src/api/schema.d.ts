@@ -2707,6 +2707,42 @@ export interface components {
             source_id: string;
         };
         /**
+         * DynamicReplaySpec
+         * @description Explicit ODE binding; never infer derivative meaning from symbol spelling.
+         */
+        DynamicReplaySpec: {
+            /**
+             * Atol
+             * @default 1e-10
+             */
+            atol: number;
+            /** Equation By State */
+            equation_by_state: {
+                [key: string]: string;
+            };
+            /** Initial State */
+            initial_state: {
+                [key: string]: number;
+            };
+            /**
+             * Rtol
+             * @default 1e-8
+             */
+            rtol: number;
+            /**
+             * Samples
+             * @default 101
+             */
+            samples: number;
+            /**
+             * Start
+             * @default 0
+             */
+            start: number;
+            /** Stop */
+            stop: number;
+        };
+        /**
          * EndpointTrustLevel
          * @enum {string}
          */
@@ -3539,6 +3575,7 @@ export interface components {
             attempt_id: string;
             /** Blockers */
             blockers?: string[];
+            plan?: components["schemas"]["VerificationPlan"] | null;
             /** Plan Id */
             plan_id?: string | null;
             report?: components["schemas"]["IndependentVerificationReport"] | null;
@@ -3823,7 +3860,7 @@ export interface components {
          * MetricKey
          * @enum {string}
          */
-        MetricKey: "mae" | "rmse" | "r2" | "max_error" | "mean" | "minimum" | "maximum" | "final_value" | "objective" | "constraint_max_violation" | "feasible" | "mip_gap";
+        MetricKey: "mae" | "rmse" | "r2" | "max_error" | "mean" | "minimum" | "maximum" | "final_value" | "objective" | "constraint_max_violation" | "feasible" | "mip_gap" | "algebraic_scalar";
         /** MetricRecalculation */
         MetricRecalculation: {
             /** Absolute Error */
@@ -3844,6 +3881,61 @@ export interface components {
             /** Reported Value */
             reported_value?: number | null;
             status: components["schemas"]["ValidationCheckStatus"];
+        };
+        /** MetricSpec */
+        MetricSpec: {
+            /**
+             * Absolute Tolerance
+             * @default 1e-9
+             */
+            absolute_tolerance: number;
+            /** Calculation */
+            calculation?: string | null;
+            /**
+             * Exact
+             * @default false
+             */
+            exact: boolean;
+            /** Inputs */
+            inputs?: string[];
+            key: components["schemas"]["MetricKey"];
+            /** Lower Threshold */
+            lower_threshold?: number | null;
+            /** Metric Id */
+            metric_id: string;
+            /** Model Binding */
+            model_binding?: string | null;
+            /** Quantity */
+            quantity?: string | null;
+            /**
+             * Relative Tolerance
+             * @default 1e-7
+             */
+            relative_tolerance: number;
+            /** Reported Key */
+            reported_key?: string | null;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Series Key */
+            series_key?: string | null;
+            /** Threshold Provenance */
+            threshold_provenance?: string | null;
+            /** Tolerance Provenance */
+            tolerance_provenance?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Upper Threshold */
+            upper_threshold?: number | null;
+            /** Value Symbol */
+            value_symbol?: string | null;
+            /**
+             * Version
+             * @constant
+             */
+            version: "1";
         };
         /** MissingInformation */
         MissingInformation: {
@@ -5090,6 +5182,7 @@ export interface components {
             submission_state?: {
                 [key: string]: unknown;
             };
+            subproblem_identity?: components["schemas"]["SubproblemIdentityResolution"] | null;
             /** Subproblems */
             subproblems?: components["schemas"]["SubProblem"][];
             /** Tables */
@@ -5937,6 +6030,28 @@ export interface components {
          * @enum {string}
          */
         RequirementCoverageStatus: "COVERED" | "PARTIAL" | "MISSING" | "NOT_APPLICABLE";
+        /** ResolvedAmbiguityIdentity */
+        ResolvedAmbiguityIdentity: {
+            /** Canonical Ambiguity Id */
+            canonical_ambiguity_id: string;
+            /** Canonical Interpretation Id */
+            canonical_interpretation_id: string;
+            method: components["schemas"]["SubproblemResolutionMethod"];
+            /** Source Ambiguity Id */
+            source_ambiguity_id: string;
+            /** Source Interpretation Id */
+            source_interpretation_id: string;
+        };
+        /** ResolvedSubproblemIdentity */
+        ResolvedSubproblemIdentity: {
+            /** Canonical Subproblem Id */
+            canonical_subproblem_id: string;
+            /** Internal Node Id */
+            internal_node_id: string;
+            method: components["schemas"]["SubproblemResolutionMethod"];
+            /** Source Subproblem Id */
+            source_subproblem_id: string;
+        };
         /** ResourceItem */
         ResourceItem: {
             /** Evidence Refs */
@@ -6344,6 +6459,58 @@ export interface components {
             pids_limit: number;
             /** Timeout Seconds */
             timeout_seconds: number;
+        };
+        /** ScenarioSpec */
+        ScenarioSpec: {
+            /** Acceptance Criterion */
+            acceptance_criterion?: string | null;
+            /** Baseline */
+            baseline?: string | null;
+            /** Comparison Quantity */
+            comparison_quantity?: string | null;
+            /** Criterion Provenance */
+            criterion_provenance?: string | null;
+            /** Decision Values */
+            decision_values?: {
+                [key: string]: number;
+            };
+            dynamic?: components["schemas"]["DynamicReplaySpec"] | null;
+            /** Input Changes */
+            input_changes?: string[];
+            /** Metrics */
+            metrics: components["schemas"]["MetricSpec"][];
+            /**
+             * Noise Fraction
+             * @default 0
+             */
+            noise_fraction: number;
+            /** Parameter Values */
+            parameter_values?: {
+                [key: string]: number;
+            };
+            /** Perturbation */
+            perturbation?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Scenario Id */
+            scenario_id: string;
+            /** Seed */
+            seed?: number | null;
+            /**
+             * Timeout Seconds
+             * @default 30
+             */
+            timeout_seconds: number;
+            /**
+             * Version
+             * @constant
+             */
+            version: "1";
         };
         /** ScopeItem */
         ScopeItem: {
@@ -7219,6 +7386,31 @@ export interface components {
             /** Subproblem Id */
             subproblem_id: string;
         };
+        /**
+         * SubproblemIdentityResolution
+         * @description Persisted audit record for the exact identity rewrite applied to an analysis.
+         */
+        SubproblemIdentityResolution: {
+            /** Ambiguity Bindings */
+            ambiguity_bindings?: components["schemas"]["ResolvedAmbiguityIdentity"][];
+            /** Benchmark Id */
+            benchmark_id: string;
+            /** Bindings */
+            bindings: components["schemas"]["ResolvedSubproblemIdentity"][];
+            /** Contract Digest */
+            contract_digest: string;
+            /** Contract Version */
+            contract_version: string;
+            /** Problem Namespace */
+            problem_namespace: string;
+            /** Problem Sha256 */
+            problem_sha256: string;
+        };
+        /**
+         * SubproblemResolutionMethod
+         * @enum {string}
+         */
+        SubproblemResolutionMethod: "CANONICAL_ID" | "REVIEWED_ALIAS";
         /** SymbolRef */
         SymbolRef: {
             /** Meaning */
@@ -7292,6 +7484,7 @@ export interface components {
              * @default 0
              */
             math_requirement: number;
+            maximum_reasoning_effort?: components["schemas"]["ReasoningEffort"] | null;
             /** Minimum Context Tokens */
             minimum_context_tokens?: number | null;
             minimum_level?: components["schemas"]["EscalationLevel"] | null;
@@ -7523,6 +7716,12 @@ export interface components {
             message: string;
             /** Requirement */
             requirement: string;
+            /**
+             * Scope
+             * @default RESULT
+             * @enum {string}
+             */
+            scope: "RESULT" | "PAPER";
             status: components["schemas"]["ValidationCheckStatus"];
         };
         /** ValidationRunRequest */
@@ -7598,6 +7797,46 @@ export interface components {
             value?: number | null;
             /** Variable Id */
             variable_id: string;
+        };
+        /** VerificationPlan */
+        VerificationPlan: {
+            /**
+             * Attempt Id
+             * Format: uuid
+             */
+            attempt_id: string;
+            /** Metrics */
+            metrics: components["schemas"]["MetricSpec"][];
+            /** Observation File Id */
+            observation_file_id?: string | null;
+            /** Observation Sha256 */
+            observation_sha256?: string | null;
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id?: string;
+            /**
+             * Result Id
+             * Format: uuid
+             */
+            result_id: string;
+            /** Scenarios */
+            scenarios: components["schemas"]["ScenarioSpec"][];
+            /** Scientific Scope */
+            scientific_scope: string;
+            /**
+             * Source Artifact Id
+             * Format: uuid
+             */
+            source_artifact_id: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            /**
+             * Version
+             * @constant
+             */
+            version: "1";
         };
         /** VerificationRunRequest */
         VerificationRunRequest: {

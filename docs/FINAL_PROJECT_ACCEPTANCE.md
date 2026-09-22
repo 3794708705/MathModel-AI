@@ -13,6 +13,16 @@ independent adversarial acceptance, and subsequent human acceptance. The real
 DeepSeek provider smoke is now accepted. The original preflight-blocked run
 details below are historical snapshots, not the current provider status.
 
+## Engineering regression update (2026-09-22)
+
+GitHub Linux CI run `35696926010` at commit `854194e` passed with 639 tests,
+8 explicit environment-gated skips, and 86.82% coverage. Ruff, strict mypy,
+fresh PostgreSQL migrations, and all three sandbox builds passed. That run
+covered the backend; it did not run frontend checks. The working-tree follow-up
+adds an independent frontend CI job and refreshes generated API types, plus
+database-outage diagnostics and unknown/stale-state regressions. None of these
+engineering checks promote live Case A or overall project readiness.
+
 ## Current live acceptance update (2026-09-06)
 
 Case A rerun 13 (`104df85e-8f04-46fe-a7ff-96c744fae9b5`) is FAIL / NOT_READY.
@@ -201,9 +211,10 @@ the general reproduction executor is not implemented.
 
 - A live-provider Phase 8 FEASIBLE solve exists, but no fully verified result,
   paper, PDF, or package exists.
-- No real case currently supplies the reviewed, versioned independent metric and
-  scenario policy required to apply the new verification extension. The system
-  will not infer case metrics, scenario obligations, or acceptance thresholds.
+- Case A now supplies the reviewed, versioned independent metric and scenario
+  policy described above, but no fresh exact-model live attempt has passed its
+  evidence chain. Cases B/C remain unaccepted. The system will not infer case
+  metrics, scenario obligations, or acceptance thresholds.
 - No independent benchmark LLM/human evaluator; human-rubric dimensions remain
   zero/Human Review rather than inferred from workflow success.
 - No automatic benchmark crash/resume coordinator or asynchronous human-cancel

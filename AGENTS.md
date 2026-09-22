@@ -59,7 +59,7 @@ uv run pytest --cov=mathmodel_ai
 cd frontend && npm ci && npm run build && npm run lint && npm run test:coverage
 docker build -t mathmodel-ai-sandbox:phase3 sandbox
 docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
-docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 sandbox
+docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 .
 ```
 
 ## Non-negotiable rules

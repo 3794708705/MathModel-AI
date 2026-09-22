@@ -11,9 +11,11 @@ identity after changed input, and reject a real failed execution. PostgreSQL is
 tested on a dedicated database for migration upgrade/downgrade, restart readback,
 foreign keys, concurrent claims, and physical replay evidence persistence.
 
-The three checked-in real case manifests currently have no reviewed
-`independent-verification.json` sidecars. This is a mandatory `NOT_READY`, not a
-test skip and not permission to invent Case A thresholds.
+Case A has a reviewed `independent-verification.json` sidecar bound to the v2
+modeling contract. This does not verify historical attempts: a fresh exact-model
+solve and its independent evidence chain are still required. Cases B/C remain
+unaccepted; missing reviewed policies are mandatory `NOT_READY`, not a test skip
+or permission to invent thresholds.
 
 Run the local quality gate:
 
@@ -23,7 +25,7 @@ uv run ruff check .
 uv run mypy --strict src
 docker build -t mathmodel-ai-sandbox:phase3 sandbox
 docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
-docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 sandbox
+docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 .
 uv run pytest --cov=mathmodel_ai --cov-report=term-missing
 ```
 
@@ -332,6 +334,25 @@ PostgreSQL acceptance database must independently run
 that destructive roundtrip on an unreviewed production database.
 
 ## Local startup acceptance
+
+### Continuous frontend checks
+
+The independent frontend CI job uses Python 3.12 and Node 22, installs locked
+dependencies with `uv sync --locked --dev` / `npm ci`, regenerates the OpenAPI
+TypeScript contract and fails if `frontend/src/api/schema.d.ts` differs from
+the committed backend contract. It then runs lint, component tests with
+coverage reporting, and the typechecked production build. No live Provider,
+database, paid key, or scientific benchmark run is needed for that job.
+After backend API changes, run `npm run api:generate` in `frontend` and include
+the generated type changes with the implementation.
+
+System-page regressions cover unavailable database vs live backend, redacted
+database error messages, unknown system configuration on failure, stale-success
+invalidation, and a manual recheck that recovers all three health/system queries.
+The backend health test verifies HTTP 503 with `DATABASE_UNAVAILABLE`, continued
+liveness, and subsequent database recovery without exposing connection details.
+
+### Startup and health
 
 The backend has one ASGI factory contract: `mathmodel_ai.main:create_app`.
 Startup regressions construct the real FastAPI graph and request OpenAPI, docs,

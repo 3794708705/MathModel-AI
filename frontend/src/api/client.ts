@@ -184,6 +184,12 @@ function errorDetails(error: unknown, status: number): { message: string; code: 
       const structuredCode = typeof detail === "object" && detail !== null && "code" in detail
         ? String(detail.code)
         : "";
+      if (status === 503 && structuredCode === "DATABASE_UNAVAILABLE") {
+        return {
+          message: "数据库连接不可用。请检查 PostgreSQL 是否启动，以及后端 MM_DATABASE_URL 配置。",
+          code: "DATABASE_UNAVAILABLE",
+        };
+      }
       if (!["MODEL_DISCOVERY_FAILED", "PROVIDER_UNREACHABLE"].includes(structuredCode)) {
         return { message: "The backend encountered an internal error", code: `HTTP_${status}` };
       }

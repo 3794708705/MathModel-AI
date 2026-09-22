@@ -8,6 +8,28 @@ from mathmodel_ai.submission.profiles import generic_modeling_test_profile
 
 
 @pytest.mark.integration
+def test_database_outage_is_explicit_and_does_not_change_liveness(monkeypatch) -> None:
+    app = create_app(Settings(environment="test", database_url="sqlite+pysqlite:///:memory:"))
+    with TestClient(app) as client:
+        monkeypatch.setattr(
+            "mathmodel_ai.api.routes.health.database_is_ready", lambda _engine: False
+        )
+        response = client.get("/health/ready")
+        assert response.status_code == 503
+        assert response.json() == {
+            "detail": {
+                "code": "DATABASE_UNAVAILABLE",
+                "message": "Database is unavailable. Check PostgreSQL and MM_DATABASE_URL.",
+            }
+        }
+        assert client.get("/health/live").json() == {"status": "ok"}
+        monkeypatch.setattr(
+            "mathmodel_ai.api.routes.health.database_is_ready", lambda _engine: True
+        )
+        assert client.get("/health/ready").json() == {"status": "ready", "database": "ready"}
+
+
+@pytest.mark.integration
 def test_health_and_system_endpoints_do_not_expose_secrets() -> None:
     settings = Settings(
         environment="test",

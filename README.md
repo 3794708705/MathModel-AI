@@ -43,7 +43,7 @@ MathModel AI 想解决的不是“让大模型一次生成一篇看起来像论�
 | COMAP MCM 2024 Case B/C | **尚未恢复正式运行** | 官方资源和结构检查已完成，但不能据此声称完成了真实建模。|
 | 全项目竞赛就绪 | **`NOT_READY`** | 在真实多案例、独立评估、论文与提交包门全部通过前，不应宣称可无人值守参赛。|
 
-最近一次保存在验收文档中的完整回归记录为：后端 606 tests passed、8 个环境条件 skip、87.10% coverage；前端 41 tests passed，并通过 Ruff、strict mypy、Alembic、TypeScript、ESLint 和 production build。测试通过只证明软件契约，不等于真实建模质量通过。详细证据见 [最终验收状态](docs/FINAL_PROJECT_ACCEPTANCE.md)。
+最近一次已确认的 GitHub Linux CI（提交 `854194e`）结果为：后端 639 tests passed、8 个环境条件 skip、86.82% coverage，静态检查、数据库迁移和三个沙箱镜像构建均通过。见 [成功运行记录](https://github.com/3794708705/MathModel-AI/actions/runs/35696926010)。该次运行尚未包含前端检查；当前工作流另设前端任务，检查接口类型同步、ESLint、组件测试和 production build。测试通过只证明软件契约，不等于真实建模质量通过。详细边界见 [最终验收状态](docs/FINAL_PROJECT_ACCEPTANCE.md)。
 
 ## 哪里可以运行
 
@@ -114,7 +114,7 @@ Copy-Item .env.example .env
 docker compose up -d postgres
 uv sync --dev
 uv run alembic upgrade head
-npm --prefix frontend install
+npm --prefix frontend ci
 ```
 
 在第一个 PowerShell 窗口启动后端：
@@ -140,7 +140,7 @@ npm --prefix frontend install
 ```powershell
 docker build -t mathmodel-ai-sandbox:phase3 sandbox
 docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
-docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 sandbox
+docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 .
 ```
 
 默认 Mock 仅用于工程验证。调用真实模型时，请在本地未跟踪的 `.env` 中配置密钥，或为后端设置随机 `MM_SECRET_MASTER_KEY` 后通过 Web UI 写入；任何真实凭据都不要提交到 Git。完整配置与启动说明见后文和 [自定义 Provider 文档](docs/CUSTOM_PROVIDERS.md)。
@@ -201,7 +201,7 @@ uv sync --dev
 uv run alembic upgrade head
 docker build -t mathmodel-ai-sandbox:phase3 sandbox
 docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
-docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 sandbox
+docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 .
 ```
 
 `uv sync` is intentionally not run on every startup. The single recommended
@@ -237,7 +237,7 @@ With the backend running on port 8000, use the frontend launcher:
 
 Run it in a second PowerShell window; it also remains in the foreground until
 `Ctrl+C`. The script does not install packages. If `frontend/node_modules` is
-absent, run `npm install` in `frontend` first.
+absent, run `npm ci` in `frontend` first.
 
 Open `http://127.0.0.1:5173`. Backend API and FastAPI documentation are at
 `http://127.0.0.1:8000` and `http://127.0.0.1:8000/docs`. Use
