@@ -83,7 +83,9 @@ class BenchmarkResourceCache:
             info = os.lstat(destination)
             if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
                 raise BenchmarkSourceError("cached benchmark input is not a regular file")
-            if hasattr(info, "st_file_attributes") and info.st_file_attributes & 0x400:
+            file_attributes = int(getattr(info, "st_file_attributes", 0))
+            reparse_point = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+            if file_attributes & reparse_point:
                 raise BenchmarkSourceError("cached benchmark input is a reparse point")
             data = destination.read_bytes()
             if self._matches(resource, data):

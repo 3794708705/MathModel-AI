@@ -3,7 +3,7 @@
   "benchmark_id": "BENCH-MCM2024-A",
   "model_digest": "16c3f2922ab8612e6e7ecee855b173f94c321b100b5d45be57e3546510e4bf0d",
   "model_contract_digest": "72d611664d6584299642a33a9f59ae222af32145e9153dbd5b3d3ea69dbe9d2e",
-  "policy_digest": "9b0781b2fdb063b60d1a86a147982371eb64c4cbd4545832dc74c74e04d8ab1d",
+  "policy_digest": "c61422eded3f1e1c05347090ce4737f94a0c967762d1dade907f447b73eb09bd",
   "reviewer": "deterministic-real-docker-scenario-review-v1",
   "reviewer_source_sha256": "05ef08e76869f70999099c3ef3a55365784b554809baa96a9dbe3a6c50c800a2",
   "runtime_source_sha256": "9108b43664c417a69e2cffe56d102244dc8fe504f6e06cf476adc943a2bc4d18",
@@ -245,5 +245,5 @@
   ],
   "critical_count": 0,
   "status": "PASS",
-  "content_digest": "cef32fedd7e09bc4557644d7488ab9106b9817e5d8b63a2a8ceb963f5e2219c4"
+  "content_digest": "40525e92b4c506f4d19c02072285a9df2a2e3b11658139a36d25610753ddce0e"
 }

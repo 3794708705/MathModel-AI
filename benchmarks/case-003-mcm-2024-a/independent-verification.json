@@ -7861,43 +7861,122 @@
     {
       "requirement": "Recompute both sex-ratio anchor identities from the formal AST.",
       "scope": "RESULT",
-      "metric_ids": ["fixed_ratio_definition", "adaptive_low_resource_male_ratio", "adaptive_high_resource_male_ratio"],
-      "scenario_ids": ["adaptive_low_resource", "adaptive_high_resource"],
+      "metric_ids": [
+        "fixed_ratio_definition",
+        "adaptive_low_resource_male_ratio",
+        "adaptive_high_resource_male_ratio"
+      ],
+      "scenario_ids": [
+        "adaptive_low_resource",
+        "adaptive_high_resource"
+      ],
       "model_evidence_refs": []
     },
     {
       "requirement": "Replay adaptive and fixed-ratio treatments through the same isolated RK45 path and common initial state.",
       "scope": "RESULT",
       "metric_ids": [],
-      "scenario_ids": ["adaptive_low_resource", "fixed_low_resource", "adaptive_high_resource", "fixed_high_resource"],
-      "model_evidence_refs": ["EQ-FIXED-RATIO", "EQ-SEXRULE"]
+      "scenario_ids": [
+        "adaptive_low_resource",
+        "fixed_low_resource",
+        "adaptive_high_resource",
+        "fixed_high_resource"
+      ],
+      "model_evidence_refs": [
+        "EQ-FIXED-RATIO",
+        "EQ-SEXRULE"
+      ]
     },
     {
       "requirement": "Recompute every Jacobian entry, all four real eigenvalues, dominant_real_part, and equilibrium_residual_sq from final raw state values.",
       "scope": "RESULT",
-      "metric_ids": ["adaptive_mid_reference_equilibrium_residual_sq", "adaptive_mid_reference_lambda_JA_plus", "adaptive_mid_reference_lambda_JA_minus", "adaptive_mid_reference_lambda_F", "adaptive_mid_reference_lambda_P", "adaptive_mid_reference_dominant_real_part"],
-      "scenario_ids": ["adaptive_mid_reference"],
-      "model_evidence_refs": ["EQ-JAC-JJ", "EQ-JAC-JA", "EQ-JAC-AJ", "EQ-JAC-AA", "EQ-JAC-FA", "EQ-JAC-FF", "EQ-JAC-PA", "EQ-JAC-PF", "EQ-JAC-PP"]
+      "metric_ids": [
+        "adaptive_mid_reference_equilibrium_residual_sq",
+        "adaptive_mid_reference_lambda_JA_plus",
+        "adaptive_mid_reference_lambda_JA_minus",
+        "adaptive_mid_reference_lambda_F",
+        "adaptive_mid_reference_lambda_P",
+        "adaptive_mid_reference_dominant_real_part"
+      ],
+      "scenario_ids": [
+        "adaptive_mid_reference"
+      ],
+      "model_evidence_refs": [
+        "EQ-JAC-JJ",
+        "EQ-JAC-JA",
+        "EQ-JAC-AJ",
+        "EQ-JAC-AA",
+        "EQ-JAC-FA",
+        "EQ-JAC-FF",
+        "EQ-JAC-PA",
+        "EQ-JAC-PF",
+        "EQ-JAC-PP"
+      ]
     },
     {
       "requirement": "Run one-at-a-time +1% local sensitivity for each of the 14 provisional ecological parameters; do not describe these as biological ranges.",
       "scope": "RESULT",
       "metric_ids": [],
-      "scenario_ids": ["sensitivity_sex_ratio_shape_plus_1pct", "sensitivity_cap_min_plus_1pct", "sensitivity_cap_slope_plus_1pct", "sensitivity_birth_coef_plus_1pct", "sensitivity_maturation_plus_1pct", "sensitivity_mort_larva_plus_1pct", "sensitivity_mort_adult_plus_1pct", "sensitivity_fish_growth_plus_1pct", "sensitivity_fish_capacity_plus_1pct", "sensitivity_attack_rate_plus_1pct", "sensitivity_parasite_growth_plus_1pct", "sensitivity_parasite_capacity_plus_1pct", "sensitivity_fish_benefit_par_plus_1pct", "sensitivity_lamprey_cost_par_plus_1pct"],
+      "scenario_ids": [
+        "sensitivity_sex_ratio_shape_plus_1pct",
+        "sensitivity_cap_min_plus_1pct",
+        "sensitivity_cap_slope_plus_1pct",
+        "sensitivity_birth_coef_plus_1pct",
+        "sensitivity_maturation_plus_1pct",
+        "sensitivity_mort_larva_plus_1pct",
+        "sensitivity_mort_adult_plus_1pct",
+        "sensitivity_fish_growth_plus_1pct",
+        "sensitivity_fish_capacity_plus_1pct",
+        "sensitivity_attack_rate_plus_1pct",
+        "sensitivity_parasite_growth_plus_1pct",
+        "sensitivity_parasite_capacity_plus_1pct",
+        "sensitivity_fish_benefit_par_plus_1pct",
+        "sensitivity_lamprey_cost_par_plus_1pct"
+      ],
       "model_evidence_refs": []
     },
     {
       "requirement": "Report local stability from dominant_real_part only when equilibrium_residual_sq <= 1e-10; do not require a favorable sign for verification PASS.",
       "scope": "RESULT",
-      "metric_ids": ["adaptive_mid_reference_equilibrium_residual_sq", "adaptive_mid_reference_dominant_real_part"],
-      "scenario_ids": ["adaptive_mid_reference"],
-      "model_evidence_refs": ["EQ-DOMINANT-REAL", "EQ-EQUILIBRIUM-RESIDUAL"]
+      "metric_ids": [
+        "adaptive_mid_reference_equilibrium_residual_sq",
+        "adaptive_mid_reference_dominant_real_part"
+      ],
+      "scenario_ids": [
+        "adaptive_mid_reference"
+      ],
+      "model_evidence_refs": [
+        "EQ-DOMINANT-REAL",
+        "EQ-EQUILIBRIUM-RESIDUAL"
+      ]
     },
     {
       "requirement": "Report mathematical persistence from positive limiting components; do not claim practical extinction or finite-horizon resilience without new evidence.",
       "scope": "RESULT",
-      "metric_ids": ["adaptive_low_resource_J_minimum", "adaptive_low_resource_A_minimum", "adaptive_low_resource_F_minimum", "adaptive_low_resource_P_minimum", "fixed_low_resource_J_minimum", "fixed_low_resource_A_minimum", "fixed_low_resource_F_minimum", "fixed_low_resource_P_minimum", "adaptive_high_resource_J_minimum", "adaptive_high_resource_A_minimum", "adaptive_high_resource_F_minimum", "adaptive_high_resource_P_minimum", "fixed_high_resource_J_minimum", "fixed_high_resource_A_minimum", "fixed_high_resource_F_minimum", "fixed_high_resource_P_minimum"],
-      "scenario_ids": ["adaptive_low_resource", "fixed_low_resource", "adaptive_high_resource", "fixed_high_resource"],
+      "metric_ids": [
+        "adaptive_low_resource_J_minimum",
+        "adaptive_low_resource_A_minimum",
+        "adaptive_low_resource_F_minimum",
+        "adaptive_low_resource_P_minimum",
+        "fixed_low_resource_J_minimum",
+        "fixed_low_resource_A_minimum",
+        "fixed_low_resource_F_minimum",
+        "fixed_low_resource_P_minimum",
+        "adaptive_high_resource_J_minimum",
+        "adaptive_high_resource_A_minimum",
+        "adaptive_high_resource_F_minimum",
+        "adaptive_high_resource_P_minimum",
+        "fixed_high_resource_J_minimum",
+        "fixed_high_resource_A_minimum",
+        "fixed_high_resource_F_minimum",
+        "fixed_high_resource_P_minimum"
+      ],
+      "scenario_ids": [
+        "adaptive_low_resource",
+        "fixed_low_resource",
+        "adaptive_high_resource",
+        "fixed_high_resource"
+      ],
       "model_evidence_refs": []
     },
     {
@@ -7905,7 +7984,11 @@
       "scope": "PAPER",
       "metric_ids": [],
       "scenario_ids": [],
-      "model_evidence_refs": ["VAR-PARASITE", "ASSUMP-PARASITE", "EQ-PDYN"]
+      "model_evidence_refs": [
+        "VAR-PARASITE",
+        "ASSUMP-PARASITE",
+        "EQ-PDYN"
+      ]
     }
   ],
   "scientific_scope": "Independently recompute the Case A model's formal sex-ratio mechanism, state-domain trajectories, adaptive/fixed structural comparisons, numerical equilibrium residuals, Jacobian spectrum, and one-at-a-time local sensitivity evidence. A PASS verifies faithful execution, not a favorable ecological conclusion.",

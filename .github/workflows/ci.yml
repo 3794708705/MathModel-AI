@@ -34,8 +34,10 @@ jobs:
       - run: uv sync --locked --dev
       - run: uv run ruff format --check .
       - run: uv run ruff check .
-      - run: uv run mypy src
+      - run: uv run mypy --strict src
       - run: uv run alembic upgrade head
       - run: uv run alembic check
       - run: docker build -t mathmodel-ai-sandbox:phase3 sandbox
+      - run: docker build -f sandbox/solver.Dockerfile -t mathmodel-ai-solver:phase4 sandbox
+      - run: docker build -f sandbox/paper.Dockerfile -t mathmodel-ai-paper:phase6 .
       - run: uv run pytest --cov=mathmodel_ai --cov-report=term-missing

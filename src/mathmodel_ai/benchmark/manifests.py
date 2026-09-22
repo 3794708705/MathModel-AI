@@ -97,7 +97,9 @@ def _verified_resource_bytes(
     info = os.lstat(path)
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
         raise ValueError("benchmark resources must be regular non-symlink files")
-    if hasattr(info, "st_file_attributes") and info.st_file_attributes & 0x400:
+    file_attributes = int(getattr(info, "st_file_attributes", 0))
+    reparse_point = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+    if file_attributes & reparse_point:
         raise ValueError("Windows reparse-point benchmark resources are forbidden")
     data = path.read_bytes()
     if resource.expected_size_bytes is not None and len(data) != resource.expected_size_bytes:

@@ -3,7 +3,7 @@
   "benchmark_id": "BENCH-MCM2024-A",
   "identity_contract_digest": "10144f04d9640695f382538c8e911be5d79c8049f36d7f5736091e9dcdf759d8",
   "model_digest": "16c3f2922ab8612e6e7ecee855b173f94c321b100b5d45be57e3546510e4bf0d",
-  "policy_digest": "9b0781b2fdb063b60d1a86a147982371eb64c4cbd4545832dc74c74e04d8ab1d",
+  "policy_digest": "c61422eded3f1e1c05347090ce4737f94a0c967762d1dade907f447b73eb09bd",
   "checks": {
     "official_problem_binding": "PASS",
     "canonical_id_uniqueness": "PASS",
@@ -18,5 +18,5 @@
   },
   "critical_count": 0,
   "status": "PASS",
-  "content_digest": "9116cf7306d1e512029422e4c87723de5843bc9d16276794e99544ea41f3f4c5"
+  "content_digest": "d7430396a46c9a34ba78ef05b88ffa9502cf8e293827534b8a4f05d705fe59f8"
 }

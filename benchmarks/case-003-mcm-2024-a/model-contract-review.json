@@ -7,9 +7,9 @@
   "model_jury_report_digest": "ef6eec0b31e075dd28f98db7c5eeab05e1d560fcd4e5c87f9b6f408d15479dfa",
   "model_jury_score": 100,
   "model_jury_decision": "PASS",
-  "policy_digest": "9b0781b2fdb063b60d1a86a147982371eb64c4cbd4545832dc74c74e04d8ab1d",
+  "policy_digest": "c61422eded3f1e1c05347090ce4737f94a0c967762d1dade907f447b73eb09bd",
   "unresolved_obligations": [],
   "fresh_case_a_run": false,
   "case_b_c_run": false,
-  "content_digest": "1aa16d5ca06afb20e5e5052932967125ba91a58a1aee41747001bb528617e48a"
+  "content_digest": "72c14781e2ac298fa7a31a18d727fede1977d4c54c9f39dc7bcfa65a5d1ca6d9"
 }
