@@ -14,6 +14,14 @@ from mathmodel_ai.providers.schemas import (
     ModelUsage,
     StructuredModelResponse,
 )
+from mathmodel_ai.providers.secrets import (
+    CredentialSupplier,
+)
+from mathmodel_ai.providers.secrets import (
+    credential_supplier as build_credential_supplier,
+)
+from mathmodel_ai.providers.security import EndpointSecurityPolicy
+from mathmodel_ai.schemas.provider_registry import ProviderEndpoint
 
 
 class GoogleProvider(HttpModelProvider):
@@ -22,13 +30,32 @@ class GoogleProvider(HttpModelProvider):
     def __init__(
         self,
         *,
-        api_key: str,
+        api_key: str | None,
         base_url: str,
         timeout_seconds: float,
         client: httpx.AsyncClient | None = None,
+        endpoint: ProviderEndpoint | None = None,
+        security_policy: EndpointSecurityPolicy | None = None,
+        max_response_bytes: int = 8 * 1024 * 1024,
+        credential_supplier: CredentialSupplier | None = None,
     ) -> None:
-        super().__init__(base_url=base_url, timeout_seconds=timeout_seconds, client=client)
-        self._headers = {"x-goog-api-key": api_key, "content-type": "application/json"}
+        super().__init__(
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            client=client,
+            endpoint=endpoint,
+            security_policy=security_policy,
+            max_response_bytes=max_response_bytes,
+        )
+        self._credential_supplier = build_credential_supplier(
+            api_key=api_key, supplier=credential_supplier
+        )
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "x-goog-api-key": self._credential_supplier(),
+            "content-type": "application/json",
+        }
 
     @staticmethod
     def _payload(request: GenerationRequest) -> JsonObject:
@@ -118,7 +145,7 @@ class GoogleProvider(HttpModelProvider):
     async def generate(self, request: GenerationRequest) -> ModelResponse:
         data = await self._post_json(
             self._path(request.model, "generateContent"),
-            headers=self._headers,
+            headers=self._headers(),
             payload=self._payload(request),
         )
         return self._response(data, request.model)
@@ -131,11 +158,11 @@ class GoogleProvider(HttpModelProvider):
         generation["responseMimeType"] = "application/json"
         generation["responseJsonSchema"] = response_model.model_json_schema()
         data = await self._post_json(
-            self._path(request.model, "generateContent"), headers=self._headers, payload=payload
+            self._path(request.model, "generateContent"), headers=self._headers(), payload=payload
         )
         response = self._response(data, request.model)
         return StructuredModelResponse(
-            parsed=response_model.model_validate_json(response.content), response=response
+            parsed=_validated_response(response_model, response.content), response=response
         )
 
     def stream(self, request: GenerationRequest) -> AsyncIterator[str]:
@@ -143,7 +170,7 @@ class GoogleProvider(HttpModelProvider):
             path = f"{self._path(request.model, 'streamGenerateContent')}?alt=sse"
             last_usage: dict[str, object] = {}
             async for event in self._stream_events(
-                path, headers=self._headers, payload=self._payload(request)
+                path, headers=self._headers(), payload=self._payload(request)
             ):
                 try:
                     yield self._text(event)
@@ -161,3 +188,10 @@ class GoogleProvider(HttpModelProvider):
             )
 
         return iterator()
+
+
+def _validated_response[T: BaseModel](model: type[T], content: str) -> T:
+    try:
+        return model.model_validate_json(content)
+    except ValueError as exc:
+        raise ProviderResponseError("google structured response failed validation") from exc

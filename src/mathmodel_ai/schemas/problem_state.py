@@ -38,6 +38,7 @@ from mathmodel_ai.schemas.quality import (
 from mathmodel_ai.schemas.results import ResultRecordRef
 from mathmodel_ai.schemas.solver import AlgorithmPlan, SolverRunRef
 from mathmodel_ai.schemas.submission import SubmissionStatus, SubmissionSummaryRef
+from mathmodel_ai.schemas.subproblem_identity import SubproblemIdentityResolution
 from mathmodel_ai.schemas.verification import (
     RedTeamReportRef,
     RepairCycleRef,
@@ -83,6 +84,19 @@ class WorkflowStatus(StrEnum):
     RETRY = "RETRY"
     ESCALATED = "ESCALATED"
     HUMAN_REVIEW = "HUMAN_REVIEW"
+
+
+class ProjectSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: UUID
+    name: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=500)
+    current_stage: WorkflowStage
+    status: WorkflowStatus
+    version: int = Field(ge=0)
+    created_at: datetime
+    updated_at: datetime
 
 
 class TraceableItem(BaseModel):
@@ -174,6 +188,7 @@ class ProblemState(BaseModel):
     constraints: list[TraceableItem] = Field(default_factory=list)
 
     problem_analysis: ProblemAnalysis | None = None
+    subproblem_identity: SubproblemIdentityResolution | None = None
     evidence_items: list[EvidenceItem] = Field(default_factory=list)
     proposed_assumptions: list[EvidenceItem] = Field(default_factory=list)
 
@@ -246,6 +261,19 @@ class ProblemState(BaseModel):
 
     @model_validator(mode="after")
     def enforce_evidence_categories(self) -> "ProblemState":
+        if self.subproblem_identity is not None:
+            canonical = [item.canonical_subproblem_id for item in self.subproblem_identity.bindings]
+            if [item.subproblem_id for item in self.subproblems] != canonical:
+                raise ValueError(
+                    "state subproblems must match the resolved canonical identity order"
+                )
+            if (
+                self.problem_analysis is None
+                or [item.subproblem_id for item in self.problem_analysis.subproblems] != canonical
+            ):
+                raise ValueError(
+                    "problem analysis must match the resolved canonical identity order"
+                )
         expected = {
             "facts": EvidenceType.FACT,
             "data_sources": EvidenceType.DATA,

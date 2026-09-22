@@ -1,0 +1,72 @@
+{
+  "report_version": "1",
+  "review_kind": "RED_TEAM",
+  "reviewer": "independent-deterministic-red_team-v1",
+  "reviewer_source_sha256": "72dbc9f59ce282fa111708706f45eb5ff5a38323eec12a2bf0743a21c1e49a3c",
+  "model_contract_digest": "72d611664d6584299642a33a9f59ae222af32145e9153dbd5b3d3ea69dbe9d2e",
+  "checks": {
+    "contract_digest_valid": true,
+    "draft_digest_valid": true,
+    "model_version_is_new": true,
+    "model_digest_valid": true,
+    "model_digest_changed": true,
+    "model_quality_gate_pass": true,
+    "symbol_registry_pass": true,
+    "equation_registry_pass": true,
+    "unit_audit_pass": true,
+    "all_core_symbols_have_units": true,
+    "initial_state_is_formal_and_ordered": true,
+    "reference_state_is_equilibrium": true,
+    "adaptive_anchor_identities_pass": true,
+    "fixed_ratio_identity_pass": true,
+    "jacobian_spectrum_is_recomputed": true,
+    "all_fourteen_parameters_inventory_complete": true,
+    "all_fourteen_parameters_are_assumptions": true,
+    "local_sensitivity_coverage_complete": true,
+    "structural_comparator_pairs_complete": true,
+    "policy_metric_metadata_complete": true,
+    "policy_scenario_metadata_complete": true,
+    "scientific_obligations_resolved": true,
+    "parasite_semantics_explicit": true,
+    "no_practical_extinction_threshold": true,
+    "historical_execution_artifacts_audited": true,
+    "no_retained_literature_ranges": true
+  },
+  "findings": [
+    {
+      "severity": "MAJOR",
+      "code": "PROVISIONAL_ECOLOGICAL_COEFFICIENTS",
+      "finding": "All 14 ecological coefficients are modeling assumptions rather than retained empirical estimates.",
+      "disposition": "ACCEPTED_LIMITATION_PAPER_VISIBLE_AND_FULLY_SENSITIVITY_COVERED"
+    },
+    {
+      "severity": "MAJOR",
+      "code": "LOCAL_STABILITY_ONLY",
+      "finding": "The Jacobian contract establishes only local asymptotic behavior at a numerical equilibrium.",
+      "disposition": "ACCEPTED_LIMITATION_GLOBAL_STABILITY_AND_RESILIENCE_CLAIMS_FORBIDDEN"
+    },
+    {
+      "severity": "MAJOR",
+      "code": "NORMALIZED_TIME_ONLY",
+      "finding": "No physical T_ref exists, so calendar-time ecological claims are unsupported.",
+      "disposition": "ACCEPTED_LIMITATION_PHYSICAL_TIME_CONVERSION_FORBIDDEN"
+    },
+    {
+      "severity": "MINOR",
+      "code": "INITIAL_STATE_DEPENDENCE",
+      "finding": "Transient endpoint magnitudes depend on the common normalized reference equilibrium.",
+      "disposition": "CONTROLLED_BY_IDENTICAL_PAIRED_INITIAL_STATE_AND_PAPER_DISCLOSURE"
+    },
+    {
+      "severity": "MINOR",
+      "code": "NO_PRACTICAL_EXTINCTION_THRESHOLD",
+      "finding": "The contract cannot make practical-extinction claims without a sourced threshold.",
+      "disposition": "BY_DESIGN_ONLY_MATHEMATICAL_PERSISTENCE_IS_AUTHORIZED"
+    }
+  ],
+  "critical_count": 0,
+  "major_count": 3,
+  "minor_count": 2,
+  "status": "PASS",
+  "content_digest": "850acac6a9d1eecc416536a7df141372a9221ff171ecca0cb6b8a2db0a166468"
+}

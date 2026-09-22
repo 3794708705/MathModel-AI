@@ -1,5 +1,20 @@
 # Testing
 
+## Independent verification extension
+
+Focused tests cover known metric vectors, false reported metrics, NaN/Inf and
+undefined R2, objective/constraint recalculation, unknown metric/version input,
+tampered plans/jobs/artifacts, missing obligations, exact-result binding,
+concurrent idempotency, and Benchmark AND-gate behavior. Real Docker tests run a
+seeded ODE replay and deterministic LP scenario, prove distinct execution/code
+identity after changed input, and reject a real failed execution. PostgreSQL is
+tested on a dedicated database for migration upgrade/downgrade, restart readback,
+foreign keys, concurrent claims, and physical replay evidence persistence.
+
+The three checked-in real case manifests currently have no reviewed
+`independent-verification.json` sidecars. This is a mandatory `NOT_READY`, not a
+test skip and not permission to invent Case A thresholds.
+
 Run the local quality gate:
 
 ```text
@@ -165,3 +180,179 @@ collisions, nested archives, dynamic deadline rechecks, fail-closed reproduction
 and correction-classification tampering. The real E2E additionally reopens the
 physical ZIP after source context, detects persisted Jury tampering, proves exact
 record restoration policy, and detects final package byte replacement.
+
+Phase 8 tests cover three distinct official manifests, verified rule provenance,
+blind solve/evaluation separation, hash/size/source tamper, prompt injection as
+data, immutable attempts and reruns, source-tree identity, deterministic score/
+status/cost/intervention recomputation, fake live-provider/literature rejection,
+budget and failure terminalization, report redaction, and the benchmark API:
+
+```text
+uv run pytest tests/benchmark tests/integration/test_benchmark_api.py
+$env:MM_RUN_LIVE_LITERATURE_TESTS = "1"
+uv run pytest tests/integration/test_live_literature_phase6.py
+```
+
+The live historical run uses the three `benchmarks/case-*` manifests and the
+existing secure provider configuration. It must not run with Mock. Without a
+non-Mock credential, the required result is `NOT_READY` with
+`LIVE_PROVIDER=BLOCKED`; this is not an allowed acceptance skip. Live Crossref
+search plus independent DOI resolution passed in the Phase 8 formal run.
+
+Deadline behavior is covered by all five Phase 7 modes plus the Phase 8
+versioned mode list; anonymity, secret, required-subproblem, validation, and
+hard-fail gates never weaken under deadline pressure. Recovery regression proves
+a thrown live-pipeline exception reaches an immutable terminal attempt and a
+later run cannot remove the first history. Automatic process crash/resume and
+asynchronous human cancellation are not implemented and must remain listed as
+limitations.
+
+Migration `20260830_0009` adds the six benchmark-history tables. Verify it by
+upgrading from `20260829_0008`, downgrading back to that revision on a disposable
+database, re-upgrading, running `alembic check`, and executing the PostgreSQL
+integration marker. Formal report artifacts are rebuilt from database records;
+changing a persisted summary cannot change acceptance.
+
+## Phase 8.1 provider acceptance
+
+The configurable-provider suite uses `httpx.MockTransport` and in-memory
+registries; no real provider network is needed for deterministic compatibility/
+security tests. The independent adversarial suite adds numeric/IPv6/mapped and
+mixed-DNS SSRF, encoded traversal, all-3xx redirects, trust/lookalike domains,
+secret rotation/removal, public API redaction, persisted config/probe tamper,
+capability-summary spoofing, authentication/count tamper, exact task/probe route
+binding, preview races, DNS address pinning with original Host/SNI,
+decompression limits, cancellation/timeout classes,
+usage/pricing bounds, tool-name validation, and immutable configured-vs-reported
+model identity. It also executes three independent fake-transport E2E paths:
+OpenAI-compatible native schema, partial-compatible prompt JSON, and constrained
+custom JSON HTTP, each through Provider → Probe → Router → ProblemAgent →
+AgentRun persistence.
+
+```text
+uv run pytest tests/providers tests/routing/test_registry_router.py
+uv run pytest tests/integration/test_provider_registry_api.py
+uv run pytest tests/integration/test_custom_provider_e2e.py
+uv run pytest tests/integration/test_provider_protocol_e2e.py
+uv run pytest tests/benchmark/test_provider_history.py
+```
+
+Paid/live compatibility gates are separate and truthful:
+
+```text
+uv run pytest tests/integration/test_live_custom_provider_phase81.py
+```
+
+They require the DeepSeek, Qwen, or generic custom environment configuration
+documented in `CUSTOM_PROVIDERS.md`. Missing credentials produce
+`SKIPPED_NO_CREDENTIALS`; a skip is not a provider PASS.
+
+Migration `20260830_0010` adds provider/model/probe/Agent-route registries,
+canonical probe digests, and nullable historical trace columns. On the
+disposable PostgreSQL test database,
+verify exactly:
+
+```text
+uv run alembic upgrade 20260830_0010
+uv run alembic downgrade 20260830_0009
+uv run alembic upgrade 20260830_0010
+uv run alembic check
+$env:MM_TEST_DATABASE_URL = "postgresql+psycopg://mathmodel:mathmodel@localhost:5432/mathmodel"
+uv run pytest tests/integration/test_postgres.py
+```
+
+The PostgreSQL suite includes ProviderEndpoint canonical digest creation,
+reload through a fresh registry instance, deterministic update, and direct-row
+tamper rejection. Provider/API regressions also cover the distinction between
+an integrity-valid configuration blocked by current endpoint policy and a true
+digest mismatch.
+
+The downgrade/upgrade cycle must preserve the existing Phase 8 baseline before
+formal use. Never run it against an unreviewed production database.
+
+The independent acceptance run completed with 482 passed, 8 truthful
+environment-gated skips, and 86.87% combined statement/branch coverage. Real
+PostgreSQL migration/integration, Docker sandbox, deterministic solver,
+verification-repair, PDF, Phase 4-7 adversarial, Phase 8 benchmark, and Phase 8.1
+security tests all ran. DeepSeek, Qwen, and generic custom live gates remain
+`SKIPPED_NO_CREDENTIALS`; Gurobi remains separately license-gated.
+
+## Phase 8.2 Web control center
+
+Frontend verification is deterministic and uses mocked HTTP only at the API
+boundary. Runtime code always calls FastAPI. Tests cover provider list/create/
+validation/disable, write-only credential clearing and browser non-persistence,
+model creation/probe/capability display/disable, Router preview rejection before
+save, project create/workflow delegation, and visible failed/blocked benchmark
+attempts.
+
+```text
+cd frontend
+npm ci
+npm run api:generate
+npm run typecheck
+npm run lint
+npm run test:coverage
+npm run build
+```
+
+Backend additions are covered by encrypted-secret plaintext, rotation,
+deletion, missing-key, environment-resolver, API redaction, runtime-default hard
+filter, project/benchmark read adapter, Agent catalog, and CORS regression tests.
+Migration `20260831_0011` creates only `encrypted_secrets`; verify its PostgreSQL
+downgrade/re-upgrade roundtrip from `20260830_0010` before self-test reporting.
+
+The independent UI acceptance suite extends that baseline with encrypted-row
+and stale-health tamper, direct route-write races, unknown Agent/model, stale or
+missing Probe, Mock routing, mass-assignment/readback, proxy trust spoofing,
+network/error secret redaction, mutation-cache exclusion, duplicate-submit and
+ambiguous-commit reconciliation, XSS-safe rendering, polling termination, and
+visible formal benchmark rejection tests. A controlled fake Provider is used
+only to prove Provider → credential → model → Probe → Router UI wiring; it never
+establishes live-provider or Phase 8 benchmark readiness.
+
+```text
+uv run pytest --cov
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy --strict src
+uv run alembic check
+
+cd frontend
+npm run typecheck
+npm run lint
+npm run test:coverage
+npm run build
+```
+
+After the frontend build, scan `frontend/dist` for synthetic credential markers,
+secret environment names, source maps, and private-key/API-key patterns. The
+PostgreSQL acceptance database must independently run
+`20260830_0010 → 20260831_0011 → 20260830_0010 → 20260831_0011`; never perform
+that destructive roundtrip on an unreviewed production database.
+
+## Local startup acceptance
+
+The backend has one ASGI factory contract: `mathmodel_ai.main:create_app`.
+Startup regressions construct the real FastAPI graph and request OpenAPI, docs,
+liveness, and system status. CLI tests cover help, invalid ports, factory mode,
+and host/port/reload forwarding without binding a permanent socket. Preflight
+tests cover a fresh database without a master key, existing encrypted rows with
+the key missing, redacted output, runtime directories, and absent live Provider
+credentials.
+
+```text
+uv run pytest tests/test_cli.py tests/integration/test_startup.py
+python -m mathmodel_ai --help
+python -m mathmodel_ai serve --help
+```
+
+Manual acceptance uses `scripts/dev-backend.ps1` and
+`scripts/dev-frontend.ps1`, then requests `/docs`, `/openapi.json`,
+`/health/live`, `/health/ready`, and the frontend root. Do not use
+`mathmodel_ai.main:application`; it is not a module attribute.
+Run the backend once with PostgreSQL stopped to confirm that the preflight
+reports the unavailable dependency within its bounded connection timeout, then
+repeat with the Compose `postgres` service healthy and confirm readiness. Both
+development scripts are foreground processes and must stop cleanly with
+`Ctrl+C`.

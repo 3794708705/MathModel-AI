@@ -145,15 +145,14 @@ class CrossrefLiteratureSource:
                 ).strip()
                 if name:
                     authors.append(name)
-        issued = item.get("issued")
-        year: int | None = None
-        if isinstance(issued, dict):
-            date_parts = issued.get("date-parts")
-            if isinstance(date_parts, list) and date_parts and isinstance(date_parts[0], list):
-                raw_year = date_parts[0][0] if date_parts[0] else None
-                year = int(raw_year) if isinstance(raw_year, int | float) else None
+        year = CrossrefLiteratureSource._year(item)
         container = item.get("container-title")
         venue = str(container[0]).strip() if isinstance(container, list) and container else ""
+        if not venue:
+            # Crossref books and technical reports frequently omit container-title while
+            # providing an authoritative publisher. Dropping those records made valid live
+            # searches appear empty; the publisher is retained verbatim, never inferred.
+            venue = str(item.get("publisher", "")).strip()
         doi = str(item.get("DOI", "")).strip().lower() or None
         source_id = doi or str(item.get("URL", "")).strip()
         if not title or not authors or year is None or not venue or not source_id:
@@ -186,6 +185,25 @@ class CrossrefLiteratureSource:
             ),
             raw_metadata_hash=raw_hash,
         )
+
+    @staticmethod
+    def _year(item: dict[str, object]) -> int | None:
+        for field in ("issued", "published", "published-print", "published-online"):
+            value = item.get(field)
+            if not isinstance(value, dict):
+                continue
+            date_parts = value.get("date-parts")
+            if not (
+                isinstance(date_parts, list)
+                and date_parts
+                and isinstance(date_parts[0], list)
+                and date_parts[0]
+            ):
+                continue
+            raw_year = date_parts[0][0]
+            if isinstance(raw_year, int | float):
+                return int(raw_year)
+        return None
 
 
 class CitationMetadataVerifier:

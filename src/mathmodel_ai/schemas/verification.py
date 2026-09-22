@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -82,6 +83,7 @@ class ValidationRequirementCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     requirement: str = Field(min_length=1)
+    scope: Literal["RESULT", "PAPER"] = "RESULT"
     status: ValidationCheckStatus
     evidence_refs: list[str] = Field(default_factory=list)
     message: str = Field(min_length=1)

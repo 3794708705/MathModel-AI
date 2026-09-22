@@ -261,7 +261,10 @@ class ParameterDefinition(BaseModel):
 
 
 class ConstantDefinition(ParameterDefinition):
-    parameter_id: str = Field(pattern=r"^CONST-[A-Za-z0-9_-]+$")
+    parameter_id: str = Field(
+        pattern=r"^CONST-[A-Za-z0-9_-]+$",
+        description="Constant identifier. The field is parameter_id, never constant_id.",
+    )
 
 
 class ObjectiveDefinition(BaseModel):
@@ -307,8 +310,17 @@ class EquationDefinition(BaseModel):
     source_refs: list[str] = Field(min_length=1)
     derivation: str = Field(min_length=1)
     symbol_refs: list[str] = Field(default_factory=list)
-    parameter_refs: list[str] = Field(default_factory=list)
-    dependency_refs: list[str] = Field(default_factory=list)
+    parameter_refs: list[str] = Field(
+        default_factory=list,
+        description="parameter_id values of referenced parameters (PAR-) and constants (CONST-).",
+    )
+    dependency_refs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Only EQ- identifiers of other equations registered in this model, "
+            "not constants, parameters, symbols, or evidence."
+        ),
+    )
     unit_lhs: UnitExpression | None = None
     unit_rhs: UnitExpression | None = None
     dimension_status: UnitCheckStatus = UnitCheckStatus.UNKNOWN

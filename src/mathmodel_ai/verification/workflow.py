@@ -21,6 +21,7 @@ from mathmodel_ai.mathematical.workflow import MathematicalWorkflow, SolveStageO
 from mathmodel_ai.reasoning.repository import ReasoningRepository
 from mathmodel_ai.reasoning.state_machine import ensure_transition
 from mathmodel_ai.routing.schemas import EscalationLevel, TaskProfile, TaskType
+from mathmodel_ai.schemas.independent_verification import ReviewedValidationEvidence
 from mathmodel_ai.schemas.mathematical import MathematicalModelRef
 from mathmodel_ai.schemas.problem_state import (
     EquationRef,
@@ -171,6 +172,7 @@ class VerificationWorkflow:
         project_id: UUID,
         *,
         result_id: UUID | None = None,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> ValidationStageOutcome:
         state = self._reasoning_repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.VALIDATE)
@@ -187,6 +189,7 @@ class VerificationWorkflow:
             result=context.result,
             solver_run=context.solver_run,
             evidence=context.evidence,
+            reviewed_evidence=reviewed_evidence,
         )
         gate = validation_quality_gate(report)
         next_state = self._validation_state(state, report, gate)
@@ -254,6 +257,7 @@ class VerificationWorkflow:
         project_id: UUID,
         *,
         user_guidance: list[str] | None = None,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> RedTeamStageOutcome:
         state = self._reasoning_repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.RED_TEAM)
@@ -297,6 +301,7 @@ class VerificationWorkflow:
             result=context.result,
             solver_run=context.solver_run,
             evidence=context.evidence,
+            reviewed_evidence=reviewed_evidence,
         )
         sensitivity_errors = self._repository.audit_experiment_report(
             project_id=project_id,
@@ -455,14 +460,19 @@ class VerificationWorkflow:
         sensitivity_config: SensitivityConfig | None = None,
         robustness_config: RobustnessConfig | None = None,
         user_guidance: list[str] | None = None,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> VerificationRunOutcome:
-        validation = self.validate(project_id)
+        validation = self.validate(project_id, reviewed_evidence=reviewed_evidence)
         self._require_pass(validation.gate)
         sensitivity = self.sensitivity(project_id, config=sensitivity_config)
         self._require_pass(sensitivity.gate)
         robustness = self.robustness(project_id, config=robustness_config)
         self._require_pass(robustness.gate)
-        red_team = await self.red_team(project_id, user_guidance=user_guidance)
+        red_team = await self.red_team(
+            project_id,
+            user_guidance=user_guidance,
+            reviewed_evidence=reviewed_evidence,
+        )
         return VerificationRunOutcome(
             validation=validation,
             sensitivity=sensitivity,

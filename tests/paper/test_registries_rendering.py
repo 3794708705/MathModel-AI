@@ -573,3 +573,22 @@ async def test_crossref_adapter_rejects_malformed_or_missing_records() -> None:
     assert await source.resolve("missing", uuid4()) is None
     assert CrossrefLiteratureSource._record({"title": ["Incomplete"]}, uuid4()) is None
     await source.aclose()
+
+
+def test_crossref_books_use_retrieved_publisher_and_published_year() -> None:
+    project_id = uuid4()
+    record = CrossrefLiteratureSource._record(
+        {
+            "title": ["Linear Programming and Extensions"],
+            "author": [{"given": "George", "family": "Dantzig"}],
+            "published": {"date-parts": [[1963]]},
+            "publisher": "Princeton University Press",
+            "DOI": "10.1000/book",
+            "URL": "https://doi.org/10.1000/book",
+        },
+        project_id,
+    )
+
+    assert record is not None
+    assert record.year == 1963
+    assert record.venue == "Princeton University Press"

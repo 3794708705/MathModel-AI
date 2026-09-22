@@ -39,6 +39,16 @@ solver feasibility evaluator. It recomputes:
 The absolute and relative tolerances are configured by
 `MM_VALIDATION_ABS_TOLERANCE` and `MM_VALIDATION_REL_TOLERANCE`. Unsupported
 free-form validation requirements are `NOT_EVALUABLE`, never assumed to pass.
+Validator `5.0.1` resolves only exact supported legacy contracts (case/whitespace
+normalization is allowed): `recompute variable bounds`, `recompute every
+constraint`, `recompute variable bounds and constraints`, `recalculate objective
+metric`, and `verify evidence trace`. Combined contracts require all components;
+an empty component remains unchecked. Words such as "variable", "constraint",
+"objective", or "evidence" inside a scientific request never prove it. Eigenvalue
+stability, empirical prediction accuracy, literature support, and scenario or
+resampling requirements need their own implemented evidence checks; relabeling
+them as a basic bounds check is not a repair. Existing reports remain immutable;
+a new audit recomputes requirements and detects old false-PASS reports.
 At the terminal gate, the validator recomputes the report again and compares all
 deterministic checks with the persisted payload so post-validation tampering
 cannot clear the final gate.
@@ -137,6 +147,55 @@ Project-scoped endpoints are:
 - `GET /api/v1/projects/{id}/robustness-runs/latest`
 - `GET /api/v1/projects/{id}/red-team-reports/latest`
 - `GET /api/v1/projects/{id}/repair-cycles`
+
+## Independent metric recomputation and scenario replay
+
+The Phase 5 extension does not trust Agent prose, solver aggregate metrics, or a
+persisted PASS/count. `MetricSpec` version 1 selects a closed calculator registry.
+MAE, RMSE, R2, maximum error, bounded series summaries, objective, feasibility,
+maximum hard-constraint violation, and MIP gap are recomputed from immutable raw
+artifacts and the exact MathematicalModel AST. Undefined R2, absent observations,
+non-finite values, unsupported versions, unevaluable constraints, and missing
+solver bounds fail closed.
+
+The narrow `algebraic_scalar` primitive resolves one declared derived-variable
+symbol by evaluating only the model's typed, allowlisted expression AST. It
+starts from exact model parameters/constants plus raw decision/state values,
+ignores raw or reported derived values, rejects duplicate/cyclic/incomplete
+definitions, and never accepts source text, `eval`, dynamic imports, or
+benchmark-specific branches.
+
+`ScenarioSpec` version 1 binds explicit parameter/decision changes, optional
+seeded noise, resource limits, required metrics, and—when needed—an explicit
+state-to-derivative-equation map. Every scenario creates a fresh non-Mock Docker
+execution with network disabled, non-root user, read-only root, CPU/RAM/PID/time
+limits, stdout/stderr, image identity, code hash, bundle hash, output artifact,
+and input/scenario digests. Reads reconstruct the expected source and parameters,
+rehash physical artifacts, recompute all metrics, and reject reused executions.
+
+Reviewed requirements live only in evaluation-side
+`benchmarks/case-*/independent-verification.json` sidecars and bind the existing
+solve-manifest digest, exact mathematical-model digest, metric model bindings,
+and—when supplied—the official problem artifact digest and independent contract
+review digests. Every metric carries calculation/input/unit/tolerance provenance;
+every scenario declares its exact changed inputs and review criterion. The
+Web/API cannot create or weaken these requirements.
+When a sidecar exists, the formal benchmark binds it automatically to the exact
+`verified_result_id` and its `result.json`, then runs every declared obligation.
+If it is absent, stale, or lacks an unambiguous observation file, the additional
+gate is `NOT_READY`; no case-specific threshold is inferred.
+
+Migration `20260906_0012` adds immutable `independent_verification_plans` and
+idempotent `independent_verification_jobs`. The API exposes only read and command
+operations:
+
+- `GET /api/v1/benchmarks/attempts/{id}/verification`
+- `POST /api/v1/benchmarks/attempts/{id}/verification/recompute`
+- `POST /api/v1/benchmarks/attempts/{id}/verification/scenarios/{scenario}/replay`
+
+This is an additional logical-AND gate. It cannot set `verified_result_id`, clear
+existing Phase 5 failures, repair a model, or override provider, literature,
+paper, submission, security, and benchmark gates.
 
 The aggregate verification endpoint intentionally stops at Red Team. It never
 starts repair implicitly; callers must choose the repair endpoint or bounded

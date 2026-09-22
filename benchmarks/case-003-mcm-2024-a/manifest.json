@@ -1,0 +1,101 @@
+{
+  "benchmark_id": "BENCH-MCM2024-A",
+  "competition": "COMAP Mathematical Contest in Modeling",
+  "difficulty": "MULTI_STAGE",
+  "expected_structural_facts": [
+    {
+      "expected": 4,
+      "fact_id": "FACT-A-PROBLEM-PAGES",
+      "field": "pdf_page_count",
+      "resource_id": "RESOURCE-A-PROBLEM",
+      "source_location": "Independent pypdf inspection of the official artifact",
+      "unit": "pages"
+    }
+  ],
+  "ground_truth_policy": {
+    "hard_facts": [
+      "Sea lamprey sex ratios can depend on larval growth rates and resource availability.",
+      "The task concerns ecosystem interactions, not only lamprey population size.",
+      "Benefits and disadvantages must be considered rather than presuming adaptation is uniformly beneficial."
+    ],
+    "historical_quality_signals": [
+      "Connects resource-dependent sex allocation to reproduction and interspecies dynamics.",
+      "Defines and evaluates ecosystem stability quantitatively.",
+      "Separates species-level advantage from broader ecosystem effects."
+    ],
+    "known_constraints": [
+      "Sex ratio is endogenous to local resource conditions.",
+      "The analysis must cover lampreys, ecosystem stability, and effects on other species."
+    ],
+    "known_invalid_approaches": [
+      "Assuming a fixed sex ratio while claiming to evaluate adaptive sex allocation.",
+      "Using a single-species model to make unsupported ecosystem-wide claims.",
+      "Declaring stability from one simulated trajectory without perturbation analysis."
+    ],
+    "reasonable_model_families": [
+      "resource-coupled population dynamics",
+      "predator-prey or food-web differential equations",
+      "stage-structured demographic model",
+      "scenario simulation with local stability and robustness analysis"
+    ],
+    "reference_ranges": [
+      "Stability conclusions should use explicit equilibria, perturbations, or bounded trajectory criteria.",
+      "At least fixed-ratio and resource-adaptive scenarios should be compared."
+    ],
+    "required_outputs": [
+      "Impact of adaptive lamprey sex ratio on the larger ecological system.",
+      "Advantages and disadvantages for the lamprey population.",
+      "Impact of sex-ratio changes on ecosystem stability.",
+      "Potential advantages or disadvantages for other organisms such as parasites.",
+      "A mathematical model linking resource availability, sex ratio, and ecosystem interactions."
+    ]
+  },
+  "license_or_distribution_notes": "The repository stores only this provenance manifest. Official COMAP problem, rules, and evaluation files remain externally hosted and are cached under ignored runtime storage.",
+  "literature_queries": [
+    "sea lamprey sex ratio resource availability growth rate",
+    "adaptive sex allocation ecological population dynamics stability"
+  ],
+  "manifest_version": 1,
+  "modeling_category": "MULTI_STAGE",
+  "problem_id": "2024-MCM-A",
+  "requires_external_data": true,
+  "requires_literature": true,
+  "requires_solver": true,
+  "resources": [
+    {
+      "distribution_notes": "Official public COMAP problem statement; runtime cache only.",
+      "expected_size_bytes": 396786,
+      "local_filename": "2024_MCM_Problem_A.pdf",
+      "media_type": "application/pdf",
+      "phase": "SOLVE",
+      "resource_id": "RESOURCE-A-PROBLEM",
+      "role": "PROBLEM",
+      "sha256": "3c69f8f3b56c9aeebc6ff45ab70b4e97f68ca7bd779923edab16ac61e36ce75a",
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/problems/2024_MCM_Problem_A.pdf"
+    },
+    {
+      "distribution_notes": "Official 2024 submission tips; runtime cache only.",
+      "expected_size_bytes": 359849,
+      "local_filename": "MCM-ICM_Tips.pdf",
+      "media_type": "application/pdf",
+      "phase": "SOLVE",
+      "resource_id": "RESOURCE-A-RULES",
+      "role": "RULES",
+      "sha256": "6ae9f44b7fcf2b09e4f1ec64b39fd906e64836987f7451677a0b2952c73f08b5",
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/problems/MCM-ICM_Tips.pdf"
+    },
+    {
+      "distribution_notes": "Official results are evaluation-only and are never loaded into blind solve.",
+      "expected_size_bytes": 1309628,
+      "local_filename": "2024_MCM_Problem_A_Results.pdf",
+      "media_type": "application/pdf",
+      "phase": "EVALUATION",
+      "resource_id": "RESOURCE-A-OFFICIAL-RESULTS",
+      "role": "REFERENCE_SOLUTION",
+      "sha256": null,
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/results/2024_MCM_Problem_A_Results.pdf"
+    }
+  ],
+  "title": "Resource Availability and Sex Ratios in Sea Lampreys",
+  "year": 2024
+}

@@ -16,7 +16,7 @@ from mathmodel_ai.db.models import (
 )
 from mathmodel_ai.db.session import session_scope
 from mathmodel_ai.schemas.model_selection import ModelDecisionEvidence
-from mathmodel_ai.schemas.problem_state import ProblemState
+from mathmodel_ai.schemas.problem_state import ProblemState, ProjectSummary
 
 
 class ReasoningRepository:
@@ -65,6 +65,32 @@ class ReasoningRepository:
         with session_scope(self._session_factory) as session:
             record = self._current_record(session, project_id)
             return ProblemState.model_validate(record.state_json)
+
+    def list_current_projects(self) -> list[ProjectSummary]:
+        with session_scope(self._session_factory) as session:
+            rows = session.execute(
+                select(Project.name, ProblemStateRecord.state_json)
+                .join(Problem, Problem.project_id == Project.id)
+                .join(ProblemStateRecord, ProblemStateRecord.problem_id == Problem.id)
+                .where(ProblemStateRecord.is_current.is_(True))
+                .order_by(Project.created_at.desc(), Project.id)
+            )
+            summaries: list[ProjectSummary] = []
+            for name, state_json in rows:
+                state = ProblemState.model_validate(state_json)
+                summaries.append(
+                    ProjectSummary(
+                        project_id=state.project_id,
+                        name=name,
+                        title=state.title,
+                        current_stage=state.current_stage,
+                        status=state.status,
+                        version=state.version,
+                        created_at=state.created_at,
+                        updated_at=state.updated_at,
+                    )
+                )
+            return summaries
 
     def save_revision[OutputT: BaseModel](
         self,
@@ -177,6 +203,16 @@ class ReasoningRepository:
             output_state_version=run.output_state_version,
             provider=run.provider,
             model=run.model,
+            provider_id=run.provider_id,
+            provider_config_digest=run.provider_config_digest,
+            model_id=run.model_id,
+            remote_model=run.remote_model,
+            model_config_digest=run.model_config_digest,
+            protocol=run.protocol,
+            structured_output_mode=run.structured_output_mode,
+            reasoning_requested=run.reasoning_requested,
+            reasoning_effective=run.reasoning_effective,
+            endpoint_trust=run.endpoint_trust,
             reasoning_level=run.reasoning,
             prompt_version=run.prompt_version,
             started_at=run.started_at,

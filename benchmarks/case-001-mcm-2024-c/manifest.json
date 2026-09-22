@@ -1,0 +1,166 @@
+{
+  "benchmark_id": "BENCH-MCM2024-C",
+  "competition": "COMAP Mathematical Contest in Modeling",
+  "difficulty": "MODERATE",
+  "expected_structural_facts": [
+    {
+      "expected": 8,
+      "fact_id": "FACT-C-PROBLEM-PAGES",
+      "field": "pdf_page_count",
+      "resource_id": "RESOURCE-C-PROBLEM",
+      "source_location": "Independent pypdf inspection of the official artifact",
+      "unit": "pages"
+    },
+    {
+      "expected": 7284,
+      "fact_id": "FACT-C-DATA-ROWS",
+      "field": "row_count",
+      "resource_id": "RESOURCE-C-WIMBLEDON",
+      "source_location": "Independent Polars inspection of the official CSV",
+      "unit": "rows"
+    },
+    {
+      "expected": 46,
+      "fact_id": "FACT-C-DATA-COLUMNS",
+      "field": "column_count",
+      "resource_id": "RESOURCE-C-WIMBLEDON",
+      "source_location": "Independent Polars inspection of the official CSV",
+      "unit": "columns"
+    },
+    {
+      "expected": 0,
+      "fact_id": "FACT-C-DATA-NULLS",
+      "field": "null_cell_count",
+      "resource_id": "RESOURCE-C-WIMBLEDON",
+      "source_location": "Independent Polars inspection of the official CSV",
+      "unit": "cells"
+    },
+    {
+      "expected": 46,
+      "fact_id": "FACT-C-DICTIONARY-ROWS",
+      "field": "row_count",
+      "resource_id": "RESOURCE-C-DICTIONARY",
+      "source_location": "Independent Polars inspection of the official CSV",
+      "unit": "rows"
+    },
+    {
+      "expected": 3,
+      "fact_id": "FACT-C-DICTIONARY-COLUMNS",
+      "field": "column_count",
+      "resource_id": "RESOURCE-C-DICTIONARY",
+      "source_location": "Independent Polars inspection of the official CSV",
+      "unit": "columns"
+    }
+  ],
+  "ground_truth_policy": {
+    "hard_facts": [
+      "The supplied point-level data covers Wimbledon 2023 men's matches after the first two rounds.",
+      "Serving materially affects point and game win probability and must be considered.",
+      "External player information is optional but must be fully sourced."
+    ],
+    "historical_quality_signals": [
+      "Separates descriptive match-flow measurement from predictive swing detection.",
+      "Tests the randomness claim rather than assuming momentum exists.",
+      "Uses out-of-match evaluation to discuss generalization."
+    ],
+    "known_constraints": [
+      "Use the provided data.",
+      "Test the model on one or more other matches.",
+      "Include a one- to two-page coaching memo within the solution."
+    ],
+    "known_invalid_approaches": [
+      "Treating raw consecutive point wins as momentum without correcting for server advantage.",
+      "Training and evaluating swing predictions on the same observations without leakage controls.",
+      "Claiming causality from point-level observational associations."
+    ],
+    "reasonable_model_families": [
+      "server-adjusted state-space or exponentially weighted performance model",
+      "change-point or hidden-state model",
+      "calibrated binary classification with grouped match validation",
+      "runs or permutation testing for the randomness claim"
+    ],
+    "reference_ranges": [
+      "Predictive quality must be reported on held-out matches with an explicit metric and baseline.",
+      "A match-flow score must identify direction and magnitude on a point-by-point timeline."
+    ],
+    "required_outputs": [
+      "A match-flow model identifying which player performs better and by how much.",
+      "A visualization of match flow for at least one match.",
+      "A quantitative assessment of the coach's randomness claim.",
+      "A model predicting imminent swings and an analysis of associated factors.",
+      "Advice for a player facing a new opponent.",
+      "Out-of-match testing, failure analysis, and generalizability discussion.",
+      "A one- to two-page memo for coaches."
+    ]
+  },
+  "license_or_distribution_notes": "The repository stores only this provenance manifest. Official COMAP problem, rules, data, and evaluation files remain externally hosted and are cached under ignored runtime storage.",
+  "literature_queries": [
+    "tennis momentum point by point server advantage change point",
+    "tennis point prediction match momentum empirical study"
+  ],
+  "manifest_version": 1,
+  "modeling_category": "DATA_PREDICTION",
+  "problem_id": "2024-MCM-C",
+  "requires_external_data": false,
+  "requires_literature": true,
+  "requires_solver": true,
+  "resources": [
+    {
+      "distribution_notes": "Official public COMAP problem statement; runtime cache only.",
+      "expected_size_bytes": 903832,
+      "local_filename": "2024_MCM_Problem_C.pdf",
+      "media_type": "application/pdf",
+      "phase": "SOLVE",
+      "resource_id": "RESOURCE-C-PROBLEM",
+      "role": "PROBLEM",
+      "sha256": "08245640e218391d199f1a240a05f1872b1dcd9e47d8740801966e22bca8e3bf",
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/problems/2024_MCM_Problem_C.pdf"
+    },
+    {
+      "distribution_notes": "Official public COMAP attachment; runtime cache only.",
+      "expected_size_bytes": 1194113,
+      "local_filename": "Wimbledon_featured_matches.csv",
+      "media_type": "text/csv",
+      "phase": "SOLVE",
+      "resource_id": "RESOURCE-C-WIMBLEDON",
+      "role": "ATTACHMENT",
+      "sha256": "b1788d0ea169b65629b0e9fb0f91d007507b306e404507bbf90bd5f700a3c229",
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/problems/Wimbledon_featured_matches.csv"
+    },
+    {
+      "distribution_notes": "Official public COMAP attachment; runtime cache only.",
+      "expected_size_bytes": 3179,
+      "local_filename": "data_dictionary.csv",
+      "media_type": "text/csv",
+      "phase": "SOLVE",
+      "resource_id": "RESOURCE-C-DICTIONARY",
+      "role": "ATTACHMENT",
+      "sha256": "372805a92957f9e4956c6e75503f7a9de57e8e95c1ab56133be0613a500a2a75",
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/problems/data_dictionary.csv"
+    },
+    {
+      "distribution_notes": "Official 2024 submission tips; runtime cache only.",
+      "expected_size_bytes": 359849,
+      "local_filename": "MCM-ICM_Tips.pdf",
+      "media_type": "application/pdf",
+      "phase": "SOLVE",
+      "resource_id": "RESOURCE-C-RULES",
+      "role": "RULES",
+      "sha256": "6ae9f44b7fcf2b09e4f1ec64b39fd906e64836987f7451677a0b2952c73f08b5",
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/problems/MCM-ICM_Tips.pdf"
+    },
+    {
+      "distribution_notes": "Official results are evaluation-only and are never loaded into blind solve.",
+      "expected_size_bytes": 2163151,
+      "local_filename": "2024_MCM_Problem_C_Results.pdf",
+      "media_type": "application/pdf",
+      "phase": "EVALUATION",
+      "resource_id": "RESOURCE-C-OFFICIAL-RESULTS",
+      "role": "REFERENCE_SOLUTION",
+      "sha256": null,
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/results/2024_MCM_Problem_C_Results.pdf"
+    }
+  ],
+  "title": "Momentum in Tennis",
+  "year": 2024
+}

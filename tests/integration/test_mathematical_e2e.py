@@ -145,6 +145,66 @@ def test_model_endpoint_rejects_skipping_reasoning_selection(tmp_path: Path) -> 
     assert "INGEST -> MODEL" in response.json()["detail"]
 
 
+@pytest.mark.asyncio
+async def test_reviewed_model_binding_preserves_digest_without_math_modeler_call(
+    tmp_path: Path,
+) -> None:
+    mock = MockProvider(
+        [
+            analysis_fixture().model_dump_json(),
+            exploration_fixture().model_dump_json(),
+            jury_fixture().model_dump_json(),
+        ]
+    )
+    app = create_app(
+        Settings(
+            environment="test",
+            database_url="sqlite+pysqlite:///:memory:",
+            reasoning_max_retries=0,
+            storage_root=tmp_path / "storage",
+            sandbox_root=tmp_path / "sandbox",
+            solver_sandbox_root=tmp_path / "solver-sandbox",
+        ),
+        providers=ProviderRegistry([mock]),
+    )
+    Base.metadata.create_all(app.state.engine)
+    template = lp_model()
+    digest = mathematical_model_digest(template)
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/v1/projects",
+            json={
+                "name": "Reviewed binding",
+                "title": "Bind a reviewed model",
+                "raw_problem": "Select a model, then bind reviewed mathematical meaning.",
+            },
+        )
+        project_id = UUID(created.json()["project_id"])
+        reasoning = client.post(f"/api/v1/projects/{project_id}/reasoning/run", json={})
+        assert reasoning.status_code == 200, reasoning.text
+        outcome = await app.state.mathematical_workflow.bind_reviewed_model(
+            project_id,
+            template=template,
+            expected_model_digest=digest,
+            model_contract_digest="c" * 64,
+            policy_digest="d" * 64,
+        )
+
+        assert mathematical_model_digest(outcome.model) == digest
+        assert outcome.model.project_id == project_id
+        assert outcome.model.model_id != template.model_id
+        assert outcome.run.agent_name == "reviewed_model_binder"
+        assert outcome.run.attempts == 0
+        assert outcome.run.provider is None
+        assert outcome.run.reasoning == "DETERMINISTIC"
+        assert outcome.run.token_usage.requests == 0
+        with Session(app.state.engine) as session:
+            rows = list(session.scalars(select(AgentRunRecord).order_by(AgentRunRecord.started_at)))
+            assert [row.agent_name for row in rows][-1] == "reviewed_model_binder"
+            assert rows[-1].reasoning_level == "DETERMINISTIC"
+            assert not any(row.agent_name == "math_modeler" for row in rows)
+
+
 @pytest.mark.integration
 def test_model_gate_failure_is_audited_without_persisting_model_revision(tmp_path: Path) -> None:
     template = lp_model().model_copy(update={"objective": None})
@@ -209,7 +269,8 @@ def test_model_gate_failure_is_audited_without_persisting_model_revision(tmp_pat
             runs = list(session.scalars(select(AgentRunRecord).order_by(AgentRunRecord.started_at)))
             assert len(runs) == 4
             assert runs[-1].agent_name == "math_modeler"
-            assert runs[-1].status == "RETRY"
+            assert runs[-1].status == "ESCALATED"
+            assert "MODEL_GATE_FAIL:optimization_objective_present" in (runs[-1].error or "")
 
 
 @pytest.mark.integration

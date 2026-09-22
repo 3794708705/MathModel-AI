@@ -96,6 +96,13 @@ identity, tolerance-aware objective/key outputs, exact model version/digest,
 non-Mock successful execution, entrypoint and complete source-bundle hashes,
 required variables/objective, truthful flags, and recomputed feasibility.
 Failures are persisted as attempts and return to MODEL with `RETRY`.
+For a generated-program path, the combined mathematical run may make at most
+three persisted solve attempts. Each retry receives bounded deterministic gate
+and result-schema diagnostics, creates a new CodeAgent run/program/execution/
+solver-result chain, and leaves every failed chain immutable. Verification is
+never entered unless the final SOLVE gate is `PASS`; exhaustion raises an
+explicit quality-gate error. Invalid `result.json` content is not normalized or
+silently repaired: field-level schema errors are retained for audit and retry.
 
 Phase 5 experiment runs reuse this exact router, adapter, sandbox, canonical
 status, and feasibility machinery on perturbed immutable model copies. They do

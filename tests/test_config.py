@@ -17,9 +17,29 @@ def test_production_requires_key_for_selected_provider() -> None:
 
 
 def test_secret_is_masked() -> None:
-    settings = Settings(openai_api_key="secret-value")
+    settings = Settings(
+        openai_api_key="secret-value",
+        secret_master_key="c2VjcmV0LW1hc3Rlci1rZXktMzItYnl0ZXMtbG9uZyEhISE=",
+    )
     assert "secret-value" not in repr(settings)
     assert "secret-value" not in settings.model_dump_json()
+    assert "secret-master" not in repr(settings)
+
+
+def test_cors_requires_explicit_origins() -> None:
+    with pytest.raises(ValidationError, match="explicit HTTP"):
+        Settings(cors_origins=["*"])
+    with pytest.raises(ValidationError, match="explicit HTTP"):
+        Settings(cors_origins=["https://example.test/path"])
+
+
+def test_default_cors_supports_the_reserved_vite_development_ports() -> None:
+    assert Settings().cors_origins == [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]
 
 
 def test_model_jury_weights_must_sum_to_one_hundred() -> None:

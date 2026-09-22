@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from mathmodel_ai.core.types import Environment, ProviderName, ReasoningEffort
@@ -92,7 +93,21 @@ class Settings(BaseSettings):
     database_echo: bool = False
     default_provider: ProviderName = ProviderName.MOCK
     default_provider_model: str = Field(default="mock-foundation", min_length=1)
+    default_model_id: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9._-]{1,99}$")
     provider_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    provider_connect_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
+    provider_max_response_bytes: int = Field(default=8 * 1024 * 1024, ge=1024, le=64 * 1024 * 1024)
+    allow_local_model_endpoints: bool = False
+    allow_insecure_provider_tls: bool = False
+    secret_master_key: SecretStr | None = None
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
+        ]
+    )
     reasoning_max_retries: int = Field(default=2, ge=0, le=5)
     ambiguity_review_threshold: float = Field(default=0.7, ge=0, le=1)
     storage_root: Path = Path("var/storage")
@@ -135,6 +150,15 @@ class Settings(BaseSettings):
     paper_compile_timeout_seconds: float = Field(default=90.0, gt=0, le=600)
     crossref_base_url: str = "https://api.crossref.org"
     crossref_mailto: str | None = None
+    benchmark_repository_root: Path = Path(".")
+    benchmark_manifest_root: Path = Path("benchmarks")
+    benchmark_cache_root: Path = Path("var/benchmarks/cache")
+    benchmark_artifact_root: Path = Path("var/benchmarks/runs")
+    benchmark_code_commit: str | None = Field(default=None, pattern=r"^[a-f0-9]{40}$")
+    benchmark_max_resource_bytes: int = Field(
+        default=25 * 1024 * 1024, ge=1024, le=1024 * 1024 * 1024
+    )
+    benchmark_download_timeout_seconds: float = Field(default=30, gt=0, le=300)
     solver_tiny_max_variables: int = Field(default=10, ge=1)
     solver_tiny_max_constraints: int = Field(default=10, ge=1)
     solver_tiny_max_nonzeros: int = Field(default=100, ge=1)
@@ -155,14 +179,41 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     anthropic_base_url: str = "https://api.anthropic.com/v1"
     anthropic_version: str = "2023-06-01"
+    test_deepseek_model_id: str | None = None
+    test_qwen_model_id: str | None = None
+    test_custom_provider_config: str | None = None
 
     model_catalog: ModelCatalogSettings = Field(default_factory=ModelCatalogSettings)
     model_jury_weights: ModelJuryWeightSettings = Field(default_factory=ModelJuryWeightSettings)
+
+    @field_validator("cors_origins")
+    @classmethod
+    def cors_origins_are_explicit(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for raw_value in values:
+            value = raw_value.rstrip("/")
+            parsed = urlsplit(value)
+            if (
+                value == "*"
+                or parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path not in {"", "/"}
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError("CORS origins must be explicit HTTP(S) origins")
+            normalized.append(value)
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("CORS origins must be unique")
+        return normalized
 
     @model_validator(mode="after")
     def disallow_mock_in_production(self) -> "Settings":
         if (
             self.environment is Environment.PRODUCTION
+            and self.default_model_id is None
             and self.default_provider is ProviderName.MOCK
         ):
             raise ValueError("MM_DEFAULT_PROVIDER=mock is forbidden in production")
@@ -172,7 +223,11 @@ class Settings(BaseSettings):
             ProviderName.ANTHROPIC: self.anthropic_api_key,
             ProviderName.MOCK: None,
         }[self.default_provider]
-        if self.environment is Environment.PRODUCTION and required_key is None:
+        if (
+            self.environment is Environment.PRODUCTION
+            and self.default_model_id is None
+            and required_key is None
+        ):
             raise ValueError(
                 f"an API key is required for production provider {self.default_provider.value}"
             )

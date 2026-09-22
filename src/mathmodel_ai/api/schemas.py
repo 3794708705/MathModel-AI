@@ -76,7 +76,8 @@ class SystemInfoResponse(BaseModel):
     version: str
     environment: Environment
     default_provider: ProviderName
-    configured_providers: list[ProviderName]
+    configured_providers: list[str]
+    secret_store_configured: bool
 
 
 class ProjectProblemCreateRequest(BaseModel):
@@ -118,10 +119,21 @@ class AgentRunSummary(BaseModel):
     output_state_version: int | None
     provider: str | None
     model: str | None
+    remote_model: str | None
+    remote_model_reported: str | None
+    provider_id: str | None
+    provider_config_digest: str | None
+    model_id: str | None
+    model_config_digest: str | None
+    protocol: str | None
+    structured_output_mode: str | None
+    reasoning_requested: str | None
+    reasoning_effective: str | None
+    endpoint_trust: str | None
     reasoning: str | None
     prompt_version: str | None
     latency_ms: int
-    token_usage: dict[str, int]
+    token_usage: dict[str, int | None]
     attempts: int
     errors: list[str]
     is_mock: bool
@@ -138,6 +150,17 @@ class AgentRunSummary(BaseModel):
                     "output_state_version",
                     "provider",
                     "model",
+                    "remote_model",
+                    "remote_model_reported",
+                    "provider_id",
+                    "provider_config_digest",
+                    "model_id",
+                    "model_config_digest",
+                    "protocol",
+                    "structured_output_mode",
+                    "reasoning_requested",
+                    "reasoning_effective",
+                    "endpoint_trust",
                     "reasoning",
                     "prompt_version",
                     "latency_ms",

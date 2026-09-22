@@ -1,5 +1,5 @@
 from mathmodel_ai.core.config import Settings
-from mathmodel_ai.core.types import ProviderName
+from mathmodel_ai.core.types import ProviderName, ReasoningEffort
 from mathmodel_ai.routing import EscalationLevel, ModelRouter, RouteAction, TaskProfile, TaskType
 
 
@@ -27,6 +27,22 @@ def test_documentation_can_use_fast_level() -> None:
     router = ModelRouter(Settings(), available_providers={ProviderName.OPENAI})
     decision = router.route(TaskProfile(task_type=TaskType.DOCUMENTATION))
     assert decision.level is EscalationLevel.FAST
+
+
+def test_reasoning_effort_cap_does_not_lower_model_quality_tier() -> None:
+    router = ModelRouter(Settings(), available_providers={ProviderName.OPENAI})
+    decision = router.route(
+        TaskProfile(
+            task_type=TaskType.CODE_GENERATION,
+            complexity=4,
+            coding_requirement=4,
+            maximum_reasoning_effort=ReasoningEffort.LOW,
+        )
+    )
+
+    assert decision.level is EscalationLevel.FLAGSHIP_XHIGH
+    assert decision.selected_reasoning is ReasoningEffort.LOW
+    assert decision.recommended_reasoning is ReasoningEffort.LOW
 
 
 def test_unavailable_recommended_provider_uses_explicit_mock_fallback() -> None:

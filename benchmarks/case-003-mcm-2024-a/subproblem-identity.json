@@ -1,0 +1,123 @@
+{
+  "contract_version": "1",
+  "benchmark_id": "BENCH-MCM2024-A",
+  "problem_namespace": "MCM-2024-A",
+  "problem_sha256": "3c69f8f3b56c9aeebc6ff45ab70b4e97f68ca7bd779923edab16ac61e36ce75a",
+  "bindings": [
+    {
+      "canonical_subproblem_id": "Q1",
+      "display_label": "Resource-dependent sex-ratio model",
+      "source_binding": "RESOURCE-A-PROBLEM:page-1:introduction-and-model-task",
+      "internal_node_id": "MCM-2024-A-Q1",
+      "source_order": 1,
+      "canonical_goal": "Develop and examine a model linking larval food availability and growth to the sea lamprey male fraction.",
+      "reviewed_aliases": [
+        "Q-SEXRATIO-FUNCTION"
+      ]
+    },
+    {
+      "canonical_subproblem_id": "Q2",
+      "display_label": "Lamprey population advantages and disadvantages",
+      "source_binding": "RESOURCE-A-PROBLEM:page-1:bullet-1",
+      "internal_node_id": "MCM-2024-A-Q2",
+      "source_order": 2,
+      "canonical_goal": "Analyze the advantages and disadvantages of resource-dependent sex-ratio variation for the lamprey population.",
+      "reviewed_aliases": [
+        "Q-POPULATION-DYNAMICS",
+        "Q-POPULATION-CONSEQUENCES",
+        "Q-ADAPTIVE-VALUE"
+      ]
+    },
+    {
+      "canonical_subproblem_id": "Q3",
+      "display_label": "Larger ecological-system impact",
+      "source_binding": "RESOURCE-A-PROBLEM:page-1:bullet-2-first-question",
+      "internal_node_id": "MCM-2024-A-Q3",
+      "source_order": 3,
+      "canonical_goal": "Assess impacts on the larger ecological system when lampreys can alter their sex ratio.",
+      "reviewed_aliases": [
+        "Q-ECOSYSTEM-IMPACT"
+      ]
+    },
+    {
+      "canonical_subproblem_id": "Q4",
+      "display_label": "Ecosystem stability",
+      "source_binding": "RESOURCE-A-PROBLEM:page-1:bullet-2-second-question",
+      "internal_node_id": "MCM-2024-A-Q4",
+      "source_order": 4,
+      "canonical_goal": "Assess how changes in lamprey sex ratios affect ecosystem stability.",
+      "reviewed_aliases": [
+        "Q-ECOSYSTEM-STABILITY"
+      ]
+    },
+    {
+      "canonical_subproblem_id": "Q5",
+      "display_label": "Advantages to other ecosystem members",
+      "source_binding": "RESOURCE-A-PROBLEM:page-1:bullet-3",
+      "internal_node_id": "MCM-2024-A-Q5",
+      "source_order": 5,
+      "canonical_goal": "Determine whether variable lamprey sex ratios can benefit other ecosystem members, including parasites.",
+      "reviewed_aliases": [
+        "Q-OTHER-SPECIES"
+      ]
+    }
+  ],
+  "ambiguity_bindings": [
+    {
+      "canonical_ambiguity_id": "AMB-1",
+      "display_label": "Meaning of parasites in the other-species task",
+      "source_binding": "RESOURCE-A-PROBLEM:page-1:bullet-3",
+      "canonical_subproblem_ids": ["Q5"],
+      "reviewed_aliases": ["AMB-PARASITE"],
+      "canonical_interpretation_id": "INT-AMB1-1",
+      "reviewed_interpretation_aliases": ["INT-PAR-2"],
+      "resolution_reason": "The grammatical phrase 'others in the ecosystem, such as parasites' is modeled as non-lamprey organisms; lampreys-as-parasites remains a disclosed alternative.",
+      "confidence": 0.85
+    },
+    {
+      "canonical_ambiguity_id": "AMB-2",
+      "display_label": "Operational resource variable",
+      "source_binding": "RESOURCE-A-PROBLEM:page-1:introduction",
+      "canonical_subproblem_ids": ["Q1", "Q3"],
+      "reviewed_aliases": ["AMB-RESOURCE"],
+      "canonical_interpretation_id": "INT-AMB2-1",
+      "reviewed_interpretation_aliases": ["INT-RES-1"],
+      "resolution_reason": "The official statement explicitly identifies larval food availability as the observed driver, so the formal resource index represents larval food supply.",
+      "confidence": 0.95
+    },
+    {
+      "canonical_ambiguity_id": "AMB-3",
+      "display_label": "Formal ecosystem stability criterion",
+      "source_binding": "RESOURCE-A-PROBLEM:page-1:bullet-2-second-question",
+      "canonical_subproblem_ids": ["Q4"],
+      "reviewed_aliases": ["AMB-STABILITY"],
+      "canonical_interpretation_id": "INT-AMB3-1",
+      "reviewed_interpretation_aliases": ["INT-STAB-1"],
+      "resolution_reason": "Use local asymptotic equilibrium stability for the formal calculation; resilience, persistence, and global stability remain explicit limitations.",
+      "confidence": 0.9
+    },
+    {
+      "canonical_ambiguity_id": "AMB-4",
+      "display_label": "Level of lamprey advantage analysis",
+      "source_binding": "RESOURCE-A-PROBLEM:page-1:bullet-1",
+      "canonical_subproblem_ids": ["Q2"],
+      "reviewed_aliases": ["AMB-ADV"],
+      "canonical_interpretation_id": "INT-AMB4-POP",
+      "reviewed_interpretation_aliases": ["INT-ADV-POP"],
+      "resolution_reason": "The official question explicitly asks for advantages and disadvantages to the lamprey population, so population abundance, reproduction, and persistence are primary.",
+      "confidence": 0.95
+    },
+    {
+      "canonical_ambiguity_id": "AMB-5",
+      "display_label": "Sex-ratio representation",
+      "source_binding": "RESOURCE-A-PROBLEM:page-1:introduction-percentages",
+      "canonical_subproblem_ids": ["Q1"],
+      "reviewed_aliases": ["AMB-SEXRATIO"],
+      "canonical_interpretation_id": "INT-AMB5-MALE-FRACTION",
+      "reviewed_interpretation_aliases": ["INT-SEX-1"],
+      "resolution_reason": "Represent sex ratio as the male fraction because the official anchors are reported as percentages of males.",
+      "confidence": 0.99
+    }
+  ],
+  "content_digest": "10144f04d9640695f382538c8e911be5d79c8049f36d7f5736091e9dcdf759d8"
+}

@@ -63,7 +63,7 @@ understanding/profiles, and user guidance. It performs one
 the complete machine contract. Deterministic code then binds project/problem,
 the repository-assigned stable `model_id`, next version, selected candidate ID,
 and `READY` status. The minimum route is `FLAGSHIP_XHIGH`, and its `AgentRun`
-records prompt version `4.0.0`, provider/model/reasoning, usage, latency, state
+records prompt version `4.3.0`, provider/model/reasoning, usage, latency, state
 versions, retries, and Mock status.
 
 Every accepted revision also receives a canonical SHA-256 `model_digest` over

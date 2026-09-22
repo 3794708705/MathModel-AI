@@ -1,0 +1,104 @@
+{
+  "benchmark_id": "BENCH-MCM2024-B",
+  "competition": "COMAP Mathematical Contest in Modeling",
+  "difficulty": "DIFFICULT",
+  "expected_structural_facts": [
+    {
+      "expected": 4,
+      "fact_id": "FACT-B-PROBLEM-PAGES",
+      "field": "pdf_page_count",
+      "resource_id": "RESOURCE-B-PROBLEM",
+      "source_location": "Independent pypdf inspection of the official artifact",
+      "unit": "pages"
+    }
+  ],
+  "ground_truth_policy": {
+    "hard_facts": [
+      "A disabled submersible may rest on the sea floor or reach neutral buoyancy underwater.",
+      "Currents, density variation, and sea-floor geography can affect its position.",
+      "Location uncertainty must be represented rather than replaced by a single deterministic point."
+    ],
+    "historical_quality_signals": [
+      "Couples uncertainty propagation to search deployment rather than treating them as unrelated tasks.",
+      "Updates probability of detection as negative search results accumulate.",
+      "Makes operational recommendations with readiness and cost tradeoffs."
+    ],
+    "known_constraints": [
+      "Minimize time to locate the lost submersible.",
+      "Determine probability of finding it as a function of time and accumulated search results.",
+      "Include a two-page memo to the Greek government."
+    ],
+    "known_invalid_approaches": [
+      "Reporting a deterministic trajectory without uncertainty bounds.",
+      "Selecting search patterns independently of the location probability distribution.",
+      "Assuming surface-search sensor performance applies unchanged underwater."
+    ],
+    "reasonable_model_families": [
+      "stochastic drift or particle-filter location model",
+      "Bayesian search and posterior updating",
+      "coverage-path or mixed-integer deployment optimization",
+      "scenario-based uncertainty and sensitivity analysis"
+    ],
+    "reference_ranges": [
+      "Search performance should be represented by time-dependent probability of detection.",
+      "Uncertainty and sensor assumptions must be explicit and sensitivity-tested."
+    ],
+    "required_outputs": [
+      "A model predicting submersible location over time with quantified uncertainty.",
+      "Recommended pre-incident telemetry and supporting equipment.",
+      "Recommended host-ship and rescue-vessel search equipment with readiness and cost tradeoffs.",
+      "Initial deployment points and search patterns minimizing time to location.",
+      "Probability of finding the submersible over time with accumulated search outcomes.",
+      "Extensions to the Caribbean and multiple nearby submersibles.",
+      "A two-page memo to the Greek government."
+    ]
+  },
+  "license_or_distribution_notes": "The repository stores only this provenance manifest. Official COMAP problem, rules, and evaluation files remain externally hosted and are cached under ignored runtime storage.",
+  "literature_queries": [
+    "underwater lost object stochastic drift particle filter search rescue",
+    "Bayesian optimal search moving target probability of detection"
+  ],
+  "manifest_version": 1,
+  "modeling_category": "OPTIMIZATION_DECISION",
+  "problem_id": "2024-MCM-B",
+  "requires_external_data": true,
+  "requires_literature": true,
+  "requires_solver": true,
+  "resources": [
+    {
+      "distribution_notes": "Official public COMAP problem statement; runtime cache only.",
+      "expected_size_bytes": 448248,
+      "local_filename": "2024_MCM_Problem_B.pdf",
+      "media_type": "application/pdf",
+      "phase": "SOLVE",
+      "resource_id": "RESOURCE-B-PROBLEM",
+      "role": "PROBLEM",
+      "sha256": "359969af2b55c9d6d1c27f93165305329c12944b5db7b6529386fb50630dc685",
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/problems/2024_MCM_Problem_B.pdf"
+    },
+    {
+      "distribution_notes": "Official 2024 submission tips; runtime cache only.",
+      "expected_size_bytes": 359849,
+      "local_filename": "MCM-ICM_Tips.pdf",
+      "media_type": "application/pdf",
+      "phase": "SOLVE",
+      "resource_id": "RESOURCE-B-RULES",
+      "role": "RULES",
+      "sha256": "6ae9f44b7fcf2b09e4f1ec64b39fd906e64836987f7451677a0b2952c73f08b5",
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/problems/MCM-ICM_Tips.pdf"
+    },
+    {
+      "distribution_notes": "Official results are evaluation-only and are never loaded into blind solve.",
+      "expected_size_bytes": 765253,
+      "local_filename": "2024_MCM_Problem_B_Results.pdf",
+      "media_type": "application/pdf",
+      "phase": "EVALUATION",
+      "resource_id": "RESOURCE-B-OFFICIAL-RESULTS",
+      "role": "REFERENCE_SOLUTION",
+      "sha256": null,
+      "source_url": "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/results/2024_MCM_Problem_B_Results.pdf"
+    }
+  ],
+  "title": "Searching for a Submersible",
+  "year": 2024
+}

@@ -1,8 +1,15 @@
-from collections.abc import AsyncIterator
+import subprocess
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.responses import Response
 
 from mathmodel_ai.agents import (
     CitationAgent,
@@ -19,16 +26,27 @@ from mathmodel_ai.agents import (
     ProblemAgent,
     RedTeamAgent,
 )
+from mathmodel_ai.api.routes.benchmarks import router as benchmarks_router
 from mathmodel_ai.api.routes.data_execution import router as data_execution_router
 from mathmodel_ai.api.routes.final_submission import router as final_submission_router
 from mathmodel_ai.api.routes.health import router as health_router
+from mathmodel_ai.api.routes.independent_verification import (
+    router as independent_verification_router,
+)
 from mathmodel_ai.api.routes.mathematical import router as mathematical_router
 from mathmodel_ai.api.routes.paper import router as paper_router
+from mathmodel_ai.api.routes.providers import router as providers_router
 from mathmodel_ai.api.routes.reasoning import router as reasoning_router
 from mathmodel_ai.api.routes.system import router as system_router
 from mathmodel_ai.api.routes.verification import router as verification_router
+from mathmodel_ai.benchmark.executor import PipelineBenchmarkExecutor
+from mathmodel_ai.benchmark.manifests import BenchmarkManifestRegistry
+from mathmodel_ai.benchmark.profiles import comap_mcm_2024_profile
+from mathmodel_ai.benchmark.repository import BenchmarkRepository
+from mathmodel_ai.benchmark.sources import BenchmarkResourceCache, BenchmarkStructureInspector
+from mathmodel_ai.benchmark.workflow import BenchmarkWorkflow, resolve_git_identity
 from mathmodel_ai.core.config import Settings, get_settings
-from mathmodel_ai.core.errors import MathModelError, ResourceNotFoundError
+from mathmodel_ai.core.errors import MathModelError, ModelDiscoveryError, ResourceNotFoundError
 from mathmodel_ai.core.logging import configure_logging
 from mathmodel_ai.core.middleware import UploadBodyLimitMiddleware
 from mathmodel_ai.data.profiler import DataProfiler
@@ -48,11 +66,21 @@ from mathmodel_ai.paper.assets import FigureAgent, TableAgent
 from mathmodel_ai.paper.bundle import PaperBundleBuilder
 from mathmodel_ai.paper.compiler import PDFCompiler
 from mathmodel_ai.paper.evidence import VerifiedEvidenceBuilder
+from mathmodel_ai.paper.hashing import sha256_json
 from mathmodel_ai.paper.literature import CrossrefLiteratureSource
 from mathmodel_ai.paper.rendering import LaTeXRenderer
 from mathmodel_ai.paper.repository import PaperRepository
 from mathmodel_ai.paper.workflow import PaperWorkflow
+from mathmodel_ai.providers.discovery import ProviderModelDiscovery
 from mathmodel_ai.providers.factory import ProviderRegistry, build_provider_registry
+from mathmodel_ai.providers.probe import ProviderCompatibilityProbe
+from mathmodel_ai.providers.repository import ProviderModelRegistry
+from mathmodel_ai.providers.secrets import (
+    CompositeSecretResolver,
+    EncryptedDatabaseSecretStore,
+    EnvironmentSecretResolver,
+)
+from mathmodel_ai.providers.security import EndpointSecurityPolicy, redact_sensitive_text
 from mathmodel_ai.reasoning.prompts import PromptRegistry
 from mathmodel_ai.reasoning.repository import ReasoningRepository
 from mathmodel_ai.reasoning.workflow import ReasoningWorkflow
@@ -76,17 +104,46 @@ from mathmodel_ai.submission.rules import RuleEngine
 from mathmodel_ai.submission.workflow import FinalSubmissionWorkflow
 from mathmodel_ai.verification.experiment_integrity import ExperimentIntegrityVerifier
 from mathmodel_ai.verification.experiments import ExperimentEngine
+from mathmodel_ai.verification.independent_repository import IndependentVerificationRepository
+from mathmodel_ai.verification.independent_service import IndependentVerificationService
 from mathmodel_ai.verification.red_team import RedTeamAnalyzer
 from mathmodel_ai.verification.repository import VerificationRepository
+from mathmodel_ai.verification.requirements import VerificationRequirementRegistry
 from mathmodel_ai.verification.robustness import RobustnessAnalyzer
+from mathmodel_ai.verification.scenario_replay import ScenarioReplayer
 from mathmodel_ai.verification.sensitivity import SensitivityAnalyzer
 from mathmodel_ai.verification.validation import IndependentValidator
 from mathmodel_ai.verification.workflow import VerificationWorkflow
 
 
+def _safe_validation_errors(errors: Sequence[object]) -> list[dict[str, object]]:
+    sanitized: list[dict[str, object]] = []
+    for raw_item in errors:
+        item: Mapping[str, object]
+        if isinstance(raw_item, Mapping):
+            item = raw_item
+        else:
+            item = {}
+        raw_location = item.get("loc", ())
+        location: list[object]
+        if isinstance(raw_location, (list, tuple)):
+            location = list(raw_location)
+        else:
+            location = []
+        sanitized.append(
+            {
+                "type": str(item.get("type", "validation_error")),
+                "loc": location,
+                "msg": redact_sensitive_text(str(item.get("msg", "invalid request"))),
+            }
+        )
+    return sanitized
+
+
 def create_app(
     settings: Settings | None = None,
     providers: ProviderRegistry | None = None,
+    provider_security_policy: EndpointSecurityPolicy | None = None,
 ) -> FastAPI:
     resolved = settings or get_settings()
     configure_logging(resolved.log_level)
@@ -96,6 +153,7 @@ def create_app(
         try:
             yield
         finally:
+            application.state.benchmark_resource_cache.close()
             await application.state.literature_source.aclose()
             await application.state.providers.aclose()
             application.state.engine.dispose()
@@ -105,14 +163,63 @@ def create_app(
         version=resolved.app_version,
         lifespan=lifespan,
     )
+
+    @application.middleware("http")
+    async def prevent_credential_response_caching(
+        request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        response = await call_next(request)
+        if request.url.path.endswith("/credential"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Pragma"] = "no-cache"
+        return response
+
+    if resolved.cors_origins:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=resolved.cors_origins,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=["Accept", "Content-Type"],
+        )
     application.add_middleware(
         UploadBodyLimitMiddleware,
         max_body_bytes=resolved.max_upload_bytes + 64 * 1024,
     )
     application.state.settings = resolved
     application.state.engine = create_database_engine(resolved)
-    application.state.providers = providers or build_provider_registry(resolved)
     application.state.session_factory = create_session_factory(application.state.engine)
+    application.state.secret_store = EncryptedDatabaseSecretStore(
+        application.state.session_factory,
+        resolved.secret_master_key,
+    )
+    application.state.secret_resolver = CompositeSecretResolver(
+        EnvironmentSecretResolver(),
+        application.state.secret_store,
+    )
+    application.state.provider_security_policy = provider_security_policy or (
+        EndpointSecurityPolicy(
+            environment=resolved.environment,
+            allow_local_model_endpoints=resolved.allow_local_model_endpoints,
+            allow_insecure_provider_tls=resolved.allow_insecure_provider_tls,
+        )
+    )
+    application.state.provider_configurations = ProviderModelRegistry(
+        application.state.session_factory,
+        secrets=application.state.secret_resolver,
+        security_policy=application.state.provider_security_policy,
+        resolve_dns_on_registration=True,
+    )
+    application.state.provider_model_discovery = ProviderModelDiscovery(
+        secrets=application.state.secret_resolver,
+        security_policy=application.state.provider_security_policy,
+    )
+    application.state.providers = providers or build_provider_registry(
+        resolved,
+        configurations=application.state.provider_configurations,
+        secrets=application.state.secret_resolver,
+        security_policy=application.state.provider_security_policy,
+    )
     application.state.reasoning_repository = ReasoningRepository(application.state.session_factory)
     application.state.data_repository = DataRepository(application.state.session_factory)
     evidence_verifier = EvidenceIntegrityVerifier(
@@ -124,7 +231,16 @@ def create_app(
         application.state.session_factory,
         evidence_verifier,
     )
-    model_router = ModelRouter(resolved, available_providers=application.state.providers.available)
+    model_router = ModelRouter(
+        resolved,
+        available_providers=application.state.providers.available,
+        registry=application.state.provider_configurations,
+    )
+    application.state.model_router = model_router
+    application.state.provider_probe = ProviderCompatibilityProbe(
+        configurations=application.state.provider_configurations,
+        providers=application.state.providers,
+    )
     prompts = PromptRegistry()
     weights = ModelJuryWeights(**resolved.model_jury_weights.model_dump(), version="configured-v1")
     shared = {
@@ -259,6 +375,7 @@ def create_app(
             store=file_store,
         ),
         evidence_verifier=evidence_verifier,
+        max_generated_solve_attempts=max(1, min(3, resolved.reasoning_max_retries + 1)),
     )
     validator = IndependentValidator(
         absolute_tolerance=resolved.validation_abs_tolerance,
@@ -320,8 +437,12 @@ def create_app(
         bundle_builder=PaperBundleBuilder(file_store),
         store=file_store,
     )
+    real_benchmark_profile = comap_mcm_2024_profile()
     application.state.competition_profile_registry = CompetitionProfileRegistry(
         [generic_modeling_test_profile()]
+    )
+    application.state.benchmark_competition_profile_registry = CompetitionProfileRegistry(
+        [real_benchmark_profile]
     )
     application.state.submission_repository = SubmissionRepository(
         application.state.session_factory
@@ -337,6 +458,96 @@ def create_app(
         package_builder=SubmissionPackageBuilder(file_store),
         store=file_store,
     )
+    application.state.benchmark_final_submission_workflow = FinalSubmissionWorkflow(
+        reasoning_repository=application.state.reasoning_repository,
+        paper_repository=application.state.paper_repository,
+        repository=application.state.submission_repository,
+        profiles=application.state.benchmark_competition_profile_registry,
+        jury_agent=FinalJuryAgent(**shared),
+        rule_engine=RuleEngine(file_store),
+        package_builder=SubmissionPackageBuilder(file_store),
+        store=file_store,
+    )
+    application.state.benchmark_repository = BenchmarkRepository(application.state.session_factory)
+    benchmark_repository_root = resolved.benchmark_repository_root
+    if benchmark_repository_root == Path("."):
+        benchmark_repository_root = Path(__file__).resolve().parents[2]
+    benchmark_manifest_root = resolved.benchmark_manifest_root
+    if not benchmark_manifest_root.is_absolute():
+        benchmark_manifest_root = benchmark_repository_root / benchmark_manifest_root
+    benchmark_cache_root = resolved.benchmark_cache_root
+    if not benchmark_cache_root.is_absolute():
+        benchmark_cache_root = benchmark_repository_root / benchmark_cache_root
+    benchmark_artifact_root = resolved.benchmark_artifact_root
+    if not benchmark_artifact_root.is_absolute():
+        benchmark_artifact_root = benchmark_repository_root / benchmark_artifact_root
+    application.state.benchmark_manifest_registry = BenchmarkManifestRegistry(
+        benchmark_manifest_root
+    )
+    verification_requirement_registry = VerificationRequirementRegistry(benchmark_manifest_root)
+    application.state.independent_verification = IndependentVerificationService(
+        repository=IndependentVerificationRepository(application.state.session_factory),
+        benchmarks=application.state.benchmark_repository,
+        mathematics=application.state.mathematical_repository,
+        data=application.state.data_repository,
+        store=file_store,
+        replayer=ScenarioReplayer(
+            store=file_store,
+            root=resolved.solver_sandbox_root,
+            image=resolved.solver_sandbox_image,
+            solver_router=solver_router,
+        ),
+        requirements=verification_requirement_registry.get,
+    )
+    application.state.benchmark_resource_cache = BenchmarkResourceCache(
+        benchmark_cache_root,
+        max_resource_bytes=resolved.benchmark_max_resource_bytes,
+        timeout_seconds=resolved.benchmark_download_timeout_seconds,
+    )
+    try:
+        code_identity = resolve_git_identity(benchmark_repository_root)
+        benchmark_commit = resolved.benchmark_code_commit or code_identity.commit
+        benchmark_source_tree_digest = code_identity.source_tree_digest
+        benchmark_working_tree_dirty = (
+            code_identity.working_tree_dirty or benchmark_commit != code_identity.commit
+        )
+    except (OSError, ValueError, subprocess.SubprocessError):
+        if resolved.benchmark_code_commit is None:
+            raise
+        benchmark_commit = resolved.benchmark_code_commit
+        benchmark_source_tree_digest = sha256_json(
+            {"declared_commit": benchmark_commit, "source_tree": "UNAVAILABLE"}
+        )
+        benchmark_working_tree_dirty = True
+    application.state.benchmark_workflow = BenchmarkWorkflow(
+        independent_verifier=application.state.independent_verification.view,
+        independent_runner=application.state.independent_verification.prepare_and_run,
+        repository=application.state.benchmark_repository,
+        manifests=application.state.benchmark_manifest_registry,
+        resource_cache=application.state.benchmark_resource_cache,
+        inspector=BenchmarkStructureInspector(),
+        providers=application.state.providers,
+        literature_source=literature_source,
+        profile=real_benchmark_profile,
+        code_commit=benchmark_commit,
+        source_tree_digest=benchmark_source_tree_digest,
+        working_tree_dirty=benchmark_working_tree_dirty,
+        output_root=benchmark_artifact_root,
+        case_executor=PipelineBenchmarkExecutor(
+            reasoning_repository=application.state.reasoning_repository,
+            reasoning_workflow=application.state.reasoning_workflow,
+            data_workflow=application.state.data_execution_workflow,
+            mathematical_workflow=application.state.mathematical_workflow,
+            verification_workflow=application.state.verification_workflow,
+            paper_workflow=application.state.paper_workflow,
+            final_workflow=application.state.benchmark_final_submission_workflow,
+            benchmark_repository=application.state.benchmark_repository,
+            reviewed_models=verification_requirement_registry,
+            independent_runner=application.state.independent_verification.prepare_and_run,
+            independent_verifier=application.state.independent_verification.view,
+        ),
+        provider_configurations=application.state.provider_configurations,
+    )
     application.include_router(health_router)
     application.include_router(system_router)
     application.include_router(reasoning_router)
@@ -345,16 +556,44 @@ def create_app(
     application.include_router(verification_router)
     application.include_router(paper_router)
     application.include_router(final_submission_router)
+    application.include_router(benchmarks_router)
+    application.include_router(independent_verification_router)
+    application.include_router(providers_router)
 
     @application.exception_handler(ResourceNotFoundError)
     async def not_found_handler(_request: Request, exc: ResourceNotFoundError) -> JSONResponse:
-        return JSONResponse(status_code=404, content={"detail": str(exc)})
+        return JSONResponse(status_code=404, content={"detail": redact_sensitive_text(str(exc))})
+
+    @application.exception_handler(RequestValidationError)
+    async def request_validation_handler(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422, content={"detail": _safe_validation_errors(exc.errors())}
+        )
+
+    @application.exception_handler(ValidationError)
+    async def pydantic_validation_handler(_request: Request, exc: ValidationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=422, content={"detail": _safe_validation_errors(exc.errors())}
+        )
+
+    @application.exception_handler(ModelDiscoveryError)
+    async def model_discovery_error_handler(
+        _request: Request, exc: ModelDiscoveryError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "detail": {
+                    "code": exc.code,
+                    "message": redact_sensitive_text(str(exc)),
+                }
+            },
+        )
 
     @application.exception_handler(MathModelError)
     async def mathmodel_error_handler(_request: Request, exc: MathModelError) -> JSONResponse:
-        return JSONResponse(status_code=400, content={"detail": str(exc)})
+        return JSONResponse(status_code=400, content={"detail": redact_sensitive_text(str(exc))})
 
     return application
-
-
-app = create_app()

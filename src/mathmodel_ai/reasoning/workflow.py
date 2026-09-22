@@ -19,6 +19,10 @@ from mathmodel_ai.reasoning.quality_gates import (
 )
 from mathmodel_ai.reasoning.repository import ReasoningRepository
 from mathmodel_ai.reasoning.state_machine import ensure_transition
+from mathmodel_ai.reasoning.subproblem_identity import (
+    identity_agent_note,
+    normalize_problem_analysis,
+)
 from mathmodel_ai.routing.schemas import TaskProfile, TaskType
 from mathmodel_ai.schemas.model_selection import (
     ModelDecisionEvidence,
@@ -31,6 +35,7 @@ from mathmodel_ai.schemas.model_selection import (
 from mathmodel_ai.schemas.problem_analysis import ProblemAgentInput, ProblemAnalysis
 from mathmodel_ai.schemas.problem_state import ProblemState, WorkflowStage, WorkflowStatus
 from mathmodel_ai.schemas.quality import QualityGateResult, StageHistoryEntry
+from mathmodel_ai.schemas.subproblem_identity import SubproblemIdentityContract
 
 ReasoningAgentRun = (
     AgentRunResult[ProblemAnalysis]
@@ -74,7 +79,11 @@ class ReasoningWorkflow:
         self._weights = weights
 
     async def analyze(
-        self, project_id: UUID, *, user_notes: list[str] | None = None
+        self,
+        project_id: UUID,
+        *,
+        user_notes: list[str] | None = None,
+        subproblem_identity_contract: SubproblemIdentityContract | None = None,
     ) -> StageOutcome[ProblemAnalysis]:
         state = self._repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.UNDERSTAND)
@@ -83,7 +92,14 @@ class ReasoningWorkflow:
                 title=state.title,
                 raw_problem=state.raw_problem,
                 competition_context=state.competition,
-                optional_user_notes=user_notes or [],
+                optional_user_notes=[
+                    *(user_notes or []),
+                    *(
+                        [identity_agent_note(subproblem_identity_contract)]
+                        if subproblem_identity_contract is not None
+                        else []
+                    ),
+                ],
             ),
             state,
             TaskProfile(
@@ -95,6 +111,21 @@ class ReasoningWorkflow:
             ),
         )
         output = self._require_output(state, result)
+        identity_resolution = None
+        if subproblem_identity_contract is not None:
+            try:
+                output, identity_resolution = normalize_problem_analysis(
+                    output, subproblem_identity_contract
+                )
+            except ValueError as exc:
+                rejected = result.model_copy(
+                    update={
+                        "status": AgentRunStatus.RETRY,
+                        "errors": [*result.errors, str(exc)],
+                    }
+                )
+                self._repository.record_run(state.project_id, state.problem_id, rejected)
+                raise QualityGateError(f"SUBPROBLEM_IDENTITY_GATE rejected output: {exc}") from exc
         gate = understand_quality_gate(output)
         self._require_gate(state, result, gate)
         next_state = self._advance_state(
@@ -106,6 +137,7 @@ class ReasoningWorkflow:
             reason="structured problem analysis accepted",
             changes={
                 "problem_analysis": output,
+                "subproblem_identity": identity_resolution,
                 "evidence_items": output.all_evidence(),
                 "proposed_assumptions": output.assumptions_required,
                 "subproblems": output.subproblems,
@@ -181,8 +213,11 @@ class ReasoningWorkflow:
             ),
         )
         output = self._require_output(state, result)
-        candidate_ids = {candidate.candidate_id for candidate in state.candidate_models}
-        gate = select_quality_gate(output, candidate_ids)
+        gate = select_quality_gate(
+            output,
+            state.candidate_models,
+            {item.subproblem_id for item in state.problem_analysis.subproblems},
+        )
         self._require_gate(state, result, gate)
         by_id = {candidate.candidate_id: candidate for candidate in state.candidate_models}
         decision = ModelDecisionEvidence(

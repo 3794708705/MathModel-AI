@@ -1,0 +1,5387 @@
+{
+  "contract_version": "2",
+  "content_digest": "72d611664d6584299642a33a9f59ae222af32145e9153dbd5b3d3ea69dbe9d2e",
+  "source_bindings": {
+    "manifest_digest": "5e4180fb7f37533508b38894272a116c3e43bdf489bfc5da55777c87f455038b",
+    "problem_resource_id": "RESOURCE-A-PROBLEM",
+    "problem_artifact_sha256": "3c69f8f3b56c9aeebc6ff45ab70b4e97f68ca7bd779923edab16ac61e36ce75a",
+    "source_model_record_id": "cf55e323-9cc5-45b6-a974-f6e1010771fc",
+    "source_model_version": 1,
+    "source_model_digest": "3334b664351b303aa89a0fd5e6efb2eec8862df18b579dab9f07268feb0c63cf",
+    "source_attempt_id": "1dd1e43e-99fd-4a6a-8332-81dde7b15a69",
+    "source_project_id": "0b8553b8-9119-46a2-ba0b-92ecb23d6d90",
+    "source_problem_id": "5e9c811f-f486-4280-896e-1ff424fe3c60",
+    "problem_state_version": 9,
+    "problem_state_digest": "ee652035759b04dd0f78b0f29b0e2db653e4e7d0a61f361796a57f1fd1754d17",
+    "historical_result_solver_execution_artifacts": [
+      {
+        "result_id": "789a99ed-1dab-428d-b7d6-9f3ef4fc2bde",
+        "solver_run_id": "c3db649f-cbe5-44f1-b785-eaa65dbaaf5d",
+        "execution_record_id": "5ffed31d-eda2-4892-aac6-998035ea3fd3",
+        "result_status": "EXECUTION_ERROR",
+        "generated_program_id": "4063732c-73ed-4f40-9c24-b6366e75fadb",
+        "program_code_hash": "2f5ee2ea1e8b664dccfa723b1ac8b2f941bcd5c547c8d5258f4b22e6f051bf1e",
+        "execution_code_hash": "6da8ecd7a367a94625375d2b5749e9f14eb89924847c6fb13e8261fbebec1dce",
+        "is_mock": false,
+        "execution_status": "SUCCEEDED"
+      },
+      {
+        "result_id": "02f16f72-274a-458a-8fdc-9b054c04c2f1",
+        "solver_run_id": "0c69853c-9f23-454e-b2ed-67a6cad1473a",
+        "execution_record_id": "9dcde0d6-5934-496c-be1b-26646760ceea",
+        "result_status": "FEASIBLE",
+        "generated_program_id": "a140c36b-9318-415b-ada3-85d1ccb70f10",
+        "program_code_hash": "13aa75e3947fc831a929e5e69353b82f7701f92bc3ae5867a579ac8b4ed04b56",
+        "execution_code_hash": "43bfba4b22465fd424ff03cd9aa10d55603f6c4b7d4754176c4c9476f8632628",
+        "is_mock": false,
+        "execution_status": "SUCCEEDED"
+      }
+    ],
+    "retained_literature_reference_count": 0
+  },
+  "model_digest": "16c3f2922ab8612e6e7ecee855b173f94c321b100b5d45be57e3546510e4bf0d",
+  "model": {
+    "name": "Resource-dependent sea lamprey sex ratio: reviewed coupled ODE contract",
+    "description": "Autonomous four-state normalized ecosystem ODE with an explicit adaptive-versus-fixed sex-ratio mechanism, reproducible initial state, Jacobian spectrum, and paper-visible assumption boundaries.",
+    "target_subproblems": [
+      "Q1",
+      "Q2",
+      "Q3",
+      "Q4",
+      "Q5"
+    ],
+    "model_family": "model_chain",
+    "assumptions": [
+      {
+        "assumption_id": "ASSUMP-SEXRULE",
+        "statement": "Larval food availability is represented by a normalized index E in [0,1], where E=0 corresponds to the low-food sex-ratio anchor and E=1 to the high-food anchor. The male fraction is modelled as a monotone response curve joining sex_low=0.78 at E=0 and sex_high=0.56 at E=1; intermediate curve shape is not identifiable from the provided endpoints and is therefore treated as a provisional parameter requiring sensitivity analysis.",
+        "source_refs": [
+          "EVID-FACT-1",
+          "EVID-FACT-2",
+          "EVID-DATA-1",
+          "EVID-DATA-2"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "Only two ordinal resource states are supplied; the chosen shape is a model assumption, not an empirical relationship."
+      },
+      {
+        "assumption_id": "ASSUMP-NORM",
+        "statement": "All population states and rate parameters are expressed in dimensionless normalized units relative to baseline carrying capacities and a normalized generation time. No physical unit conversion is embedded in the model.",
+        "source_refs": [
+          "EVID-FACT-1"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "No quantitative ecosystem measurements are available; normalization provides an executable scale for scenario analysis."
+      },
+      {
+        "assumption_id": "ASSUMP-PARAM",
+        "statement": "Provisional dimensionless life-history, fish, and parasite interaction parameters are set to unit-order baseline values so that the model can be executed. These values are not estimates from external data and must be explored by sensitivity analysis.",
+        "source_refs": [
+          "EVID-FACT-1"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "The problem statement supplies no survival, fecundity, attack, or parasite growth measurements."
+      },
+      {
+        "assumption_id": "ASSUMP-STABILITY",
+        "statement": "Ecosystem stability is interpreted as local asymptotic stability of the nonnegative equilibrium of the coupled ordinary differential equations. Alternative stability interpretations such as resilience or persistence are preserved in validation requirements.",
+        "source_refs": [
+          "EVID-FACT-4"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "The term ecosystem stability is not defined mathematically in the supplied text."
+      },
+      {
+        "assumption_id": "ASSUMP-PARASITE",
+        "statement": "For the parasite question, parasites are interpreted as non-lamprey fish parasites present in the same ecosystem; adult lampreys reduce host-fish abundance and therefore exert a negative per-capita effect on those parasites. The alternative reading in which lampreys themselves are the parasite class is retained as a sensitivity scenario.",
+        "source_refs": [
+          "EVID-FACT-4"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "The problem text presents both lampreys-as-parasites and other-species-parasites interpretations without resolving which should be used."
+      },
+      {
+        "assumption_id": "ASSUMP-COMPARATOR-V2",
+        "statement": "The fixed-ratio comparator uses the midpoint 0.67 of the two approximate male-ratio anchors and differs from the adaptive model only through adaptation_weight=0 rather than 1.",
+        "source_refs": [
+          "RESOURCE-A-PROBLEM",
+          "3334b664351b303aa89a0fd5e6efb2eec8862df18b579dab9f07268feb0c63cf"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "A midpoint comparator is neutral on the normalized two-anchor interval and preserves all non-mechanism inputs for causal comparison."
+      },
+      {
+        "assumption_id": "ASSUMP-INIT-V2",
+        "statement": "The ordered initial state [J,A,F,P] is the derived positive interior equilibrium at E_ref=0.5 for the baseline adaptive model; it is a normalized reference state, not an official field observation.",
+        "source_refs": [
+          "RESOURCE-A-PROBLEM",
+          "3334b664351b303aa89a0fd5e6efb2eec8862df18b579dab9f07268feb0c63cf"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "A common interior equilibrium avoids arbitrary absolute abundance and gives every paired scenario the same reproducible starting point; endpoint conclusions remain scenario- and initial-state-dependent."
+      },
+      {
+        "assumption_id": "ASSUMP-TIME-V2",
+        "statement": "Simulation time is tau=t/T_ref with unknown physical reference duration T_ref; horizon and sampling are numerical analysis choices and cannot be converted to calendar time without external evidence.",
+        "source_refs": [
+          "RESOURCE-A-PROBLEM",
+          "3334b664351b303aa89a0fd5e6efb2eec8862df18b579dab9f07268feb0c63cf"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "The problem supplies no physical time scale, so nondimensionalization is the only traceable executable contract."
+      },
+      {
+        "assumption_id": "ASSUMP-SENSITIVITY-V2",
+        "statement": "Local sensitivity uses a one-sided +1% finite change for each of the 14 provisional ecological parameters, one at a time, from the same reference state.",
+        "source_refs": [
+          "RESOURCE-A-PROBLEM",
+          "3334b664351b303aa89a0fd5e6efb2eec8862df18b579dab9f07268feb0c63cf"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "The perturbation is an analysis design choice large relative to solver tolerance and small relative to baseline scale; it is not a biological uncertainty range."
+      },
+      {
+        "assumption_id": "ASSUMP-STABILITY-V2",
+        "statement": "Stability means local asymptotic stability of an equilibrium reached by the autonomous fixed-E ODE. It is classified from the independently recomputed Jacobian eigenvalues only after the squared derivative residual satisfies the numerical equilibrium criterion.",
+        "source_refs": [
+          "RESOURCE-A-PROBLEM",
+          "3334b664351b303aa89a0fd5e6efb2eec8862df18b579dab9f07268feb0c63cf"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "This is mathematically matched to the autonomous ODE and does not invent a biological percentage threshold."
+      },
+      {
+        "assumption_id": "ASSUMP-PERSISTENCE-V2",
+        "statement": "Mathematical persistence is reported only when the limiting equilibrium component is strictly positive; no practical-extinction cutoff or separate finite-horizon resilience claim is authorized.",
+        "source_refs": [
+          "RESOURCE-A-PROBLEM",
+          "3334b664351b303aa89a0fd5e6efb2eec8862df18b579dab9f07268feb0c63cf"
+        ],
+        "critical": false,
+        "supported": false,
+        "support_reason": "Continuous ODE states need not reach exact zero, and the problem supplies no defensible practical extinction or recovery threshold."
+      }
+    ],
+    "interpretation_resolutions": [
+      {
+        "ambiguity_id": "AMB-1",
+        "interpretation_id": "INT-AMB1-1",
+        "status": "ASSUMPTION_REQUIRED",
+        "reason": "P is explicitly the normalized abundance of a representative non-lamprey fish-parasite guild. This is a paper-visible modeling assumption; it is not automatically inferred by the verifier.",
+        "source_refs": [
+          "ASSUMP-PARASITE"
+        ],
+        "critical": false
+      },
+      {
+        "ambiguity_id": "AMB-2",
+        "interpretation_id": "INT-AMB2-1",
+        "status": "RESOLVED_FROM_EVIDENCE",
+        "reason": "The problem statement explicitly links larval growth rate to food availability and anchors sex ratio observations to low and high food. The model therefore defines 'resource availability' as larval food supply on a normalized index E.",
+        "source_refs": [
+          "EVID-FACT-2",
+          "EVID-DATA-1",
+          "EVID-DATA-2"
+        ],
+        "critical": false
+      },
+      {
+        "ambiguity_id": "AMB-3",
+        "interpretation_id": "INT-AMB3-1",
+        "status": "ASSUMPTION_REQUIRED",
+        "reason": "The contract adopts local asymptotic equilibrium stability and mathematical persistence; it forbids an unsourced practical-extinction or recovery claim.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2",
+          "ASSUMP-PERSISTENCE-V2"
+        ],
+        "critical": false
+      }
+    ],
+    "sets": [],
+    "indices": [],
+    "decision_variables": [
+      {
+        "variable_id": "VAR-FOODENV",
+        "symbol": "E",
+        "description": "Normalized larval-food availability index. The low-food anchor is E=0 (observed approximately 78% male) and the high-food anchor is E=1 (observed approximately 56% male). It is a scenario forcing variable for the ecosystem model.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": 0.0,
+        "upper_bound": 1.0,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized food index",
+          "unknown_units": []
+        },
+        "role": "DECISION",
+        "source_refs": [
+          "EVID-FACT-2",
+          "EVID-DATA-1",
+          "EVID-DATA-2"
+        ]
+      }
+    ],
+    "state_variables": [
+      {
+        "variable_id": "VAR-LARVA",
+        "symbol": "J",
+        "description": "Dimensionless abundance of sea lamprey larvae in the larval habitat.",
+        "index_sets": [],
+        "domain": "NONNEGATIVE_CONTINUOUS",
+        "lower_bound": 0.0,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "STATE",
+        "source_refs": [
+          "EVID-FACT-1"
+        ]
+      },
+      {
+        "variable_id": "VAR-ADULT",
+        "symbol": "A",
+        "description": "Dimensionless abundance of parasitic-phase adult sea lamprey.",
+        "index_sets": [],
+        "domain": "NONNEGATIVE_CONTINUOUS",
+        "lower_bound": 0.0,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "STATE",
+        "source_refs": [
+          "EVID-FACT-3",
+          "EVID-FACT-4"
+        ]
+      },
+      {
+        "variable_id": "VAR-FISH",
+        "symbol": "F",
+        "description": "Dimensionless abundance of fish hosts available to adult sea lampreys and to non-lamprey fish parasites.",
+        "index_sets": [],
+        "domain": "NONNEGATIVE_CONTINUOUS",
+        "lower_bound": 0.0,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "STATE",
+        "source_refs": [
+          "EVID-FACT-4"
+        ]
+      },
+      {
+        "variable_id": "VAR-PARASITE",
+        "symbol": "P",
+        "description": "Dimensionless abundance of representative non-lamprey fish-parasite organisms in the ecosystem.",
+        "index_sets": [],
+        "domain": "NONNEGATIVE_CONTINUOUS",
+        "lower_bound": 0.0,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "STATE",
+        "source_refs": [
+          "EVID-FACT-4"
+        ]
+      }
+    ],
+    "derived_variables": [
+      {
+        "variable_id": "VAR-MALE",
+        "symbol": "male_ratio",
+        "description": "Male fraction of adult sea lampreys produced under the sex-determination response to larval food availability E.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "EVID-DATA-1",
+          "EVID-DATA-2"
+        ]
+      },
+      {
+        "variable_id": "VAR-FEMALE",
+        "symbol": "female_ratio",
+        "description": "Female fraction of adult sea lampreys, equal to one minus the male fraction.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "EVID-FACT-1"
+        ]
+      },
+      {
+        "variable_id": "VAR-JUVCAP",
+        "symbol": "juv_capacity",
+        "description": "Effective larval carrying capacity as a linear function of the normalized larval-food index E.",
+        "index_sets": [],
+        "domain": "NONNEGATIVE_CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "EVID-FACT-2"
+        ]
+      },
+      {
+        "variable_id": "VAR-DJ",
+        "symbol": "dJ_dt",
+        "description": "Time derivative of larval lamprey abundance in the coupled ordinary differential equation model.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "EVID-FACT-1"
+        ]
+      },
+      {
+        "variable_id": "VAR-DA",
+        "symbol": "dA_dt",
+        "description": "Time derivative of adult lamprey abundance.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "EVID-FACT-3"
+        ]
+      },
+      {
+        "variable_id": "VAR-DF",
+        "symbol": "dF_dt",
+        "description": "Time derivative of fish host abundance.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "EVID-FACT-4"
+        ]
+      },
+      {
+        "variable_id": "VAR-DP",
+        "symbol": "dP_dt",
+        "description": "Time derivative of the non-lamprey parasite abundance.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "EVID-FACT-4"
+        ]
+      },
+      {
+        "variable_id": "VAR-FIXED-MALE",
+        "symbol": "fixed_male_ratio",
+        "description": "Fixed comparator male fraction, defined as the midpoint of the two approximate anchors.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": 0.0,
+        "upper_bound": 1.0,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-JJ",
+        "symbol": "jac_JJ",
+        "description": "Jacobian partial derivative of dJ_dt with respect to J.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-JA",
+        "symbol": "jac_JA",
+        "description": "Jacobian partial derivative of dJ_dt with respect to A.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-AJ",
+        "symbol": "jac_AJ",
+        "description": "Jacobian partial derivative of dA_dt with respect to J.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-AA",
+        "symbol": "jac_AA",
+        "description": "Jacobian partial derivative of dA_dt with respect to A.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-FA",
+        "symbol": "jac_FA",
+        "description": "Jacobian partial derivative of dF_dt with respect to A.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-FF",
+        "symbol": "jac_FF",
+        "description": "Jacobian partial derivative of dF_dt with respect to F.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-PA",
+        "symbol": "jac_PA",
+        "description": "Jacobian partial derivative of dP_dt with respect to A.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-PF",
+        "symbol": "jac_PF",
+        "description": "Jacobian partial derivative of dP_dt with respect to F.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-PP",
+        "symbol": "jac_PP",
+        "description": "Jacobian partial derivative of dP_dt with respect to P.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-TRACE-JA",
+        "symbol": "trace_JA",
+        "description": "Trace of the larva-adult Jacobian block.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-DET-JA",
+        "symbol": "det_JA",
+        "description": "Determinant of the larva-adult Jacobian block.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-DISC-JA",
+        "symbol": "disc_JA",
+        "description": "Nonnegative discriminant of the real larva-adult eigenvalue pair.",
+        "index_sets": [],
+        "domain": "NONNEGATIVE_CONTINUOUS",
+        "lower_bound": 0.0,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-LAMBDA-JA-PLUS",
+        "symbol": "lambda_JA_plus",
+        "description": "Larger larva-adult eigenvalue.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-LAMBDA-JA-MINUS",
+        "symbol": "lambda_JA_minus",
+        "description": "Smaller larva-adult eigenvalue.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-LAMBDA-F",
+        "symbol": "lambda_F",
+        "description": "Fish-direction eigenvalue of the block-triangular Jacobian.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-LAMBDA-P",
+        "symbol": "lambda_P",
+        "description": "Parasite-direction eigenvalue of the block-triangular Jacobian.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-DOMINANT-REAL",
+        "symbol": "dominant_real_part",
+        "description": "Maximum real part among the four explicitly derived real Jacobian eigenvalues.",
+        "index_sets": [],
+        "domain": "CONTINUOUS",
+        "lower_bound": null,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      },
+      {
+        "variable_id": "VAR-EQUILIBRIUM-RESIDUAL",
+        "symbol": "equilibrium_residual_sq",
+        "description": "Squared Euclidean norm of the four ODE derivatives at the evaluated state.",
+        "index_sets": [],
+        "domain": "NONNEGATIVE_CONTINUOUS",
+        "lower_bound": 0.0,
+        "upper_bound": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "role": "DERIVED",
+        "source_refs": [
+          "ASSUMP-NORM",
+          "ASSUMP-STABILITY-V2"
+        ]
+      }
+    ],
+    "parameters": [
+      {
+        "parameter_id": "PAR-GAMMA",
+        "symbol": "sex_ratio_shape",
+        "description": "Exponent controlling the shape of the male-fraction response curve between the two observed endpoint values. Baseline 1 corresponds to a linear decrease from 78% to 56% male across the normalized food index.",
+        "value": 1.0,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-SEXRULE",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.4
+      },
+      {
+        "parameter_id": "PAR-CAPMIN",
+        "symbol": "cap_min",
+        "description": "Larval carrying-capacity intercept at E=0, i.e. at the low-food endpoint.",
+        "value": 0.2,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-CAPSLOPE",
+        "symbol": "cap_slope",
+        "description": "Increase in normalized larval carrying capacity per unit increase in E.",
+        "value": 0.8,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-BIRTH",
+        "symbol": "birth_coef",
+        "description": "Per-female adult lamprey recruitment coefficient under the dimensionless baseline.",
+        "value": 0.8,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-MAT",
+        "symbol": "maturation",
+        "description": "Maturation rate of larvae into the adult parasitic phase.",
+        "value": 0.2,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-MUJ",
+        "symbol": "mort_larva",
+        "description": "Natural mortality rate of larval sea lampreys.",
+        "value": 0.15,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-MUA",
+        "symbol": "mort_adult",
+        "description": "Mortality rate of adult parasitic-phase sea lampreys.",
+        "value": 0.25,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-RF",
+        "symbol": "fish_growth",
+        "description": "Intrinsic growth rate of the fish-host population.",
+        "value": 0.6,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-KF",
+        "symbol": "fish_capacity",
+        "description": "Carrying capacity of the fish-host population in dimensionless units.",
+        "value": 1.0,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-ATTACK",
+        "symbol": "attack_rate",
+        "description": "Per-adult-lamprey attack/mortality rate on the fish-host population.",
+        "value": 0.3,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-RP",
+        "symbol": "parasite_growth",
+        "description": "Intrinsic growth rate of the representative non-lamprey parasite population.",
+        "value": 0.15,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-KP",
+        "symbol": "parasite_capacity",
+        "description": "Carrying capacity of the representative parasite population in the absence of fish subsidy.",
+        "value": 1.0,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-BPF",
+        "symbol": "fish_benefit_par",
+        "description": "Per-unit fish abundance added growth contribution to the parasite population.",
+        "value": 0.4,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-PA",
+        "symbol": "lamprey_cost_par",
+        "description": "Per-adult-lamprey negative interaction on non-lamprey fish parasites, representing host depletion by lamprey feeding.",
+        "value": 0.15,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-PARAM",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.3
+      },
+      {
+        "parameter_id": "PAR-ADAPT",
+        "symbol": "adaptation_weight",
+        "description": "Mechanism switch: 1 uses the resource-adaptive sex ratio and 0 uses the fixed comparator.",
+        "value": 1.0,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "ASSUMPTION",
+        "source_ref": "ASSUMP-COMPARATOR-V2",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 1.0
+      }
+    ],
+    "constants": [
+      {
+        "parameter_id": "CONST-SEXLOW",
+        "symbol": "sex_low",
+        "description": "Observed approximate male fraction under low larval food availability.",
+        "value": 0.78,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "DATA",
+        "source_ref": "EVID-DATA-1",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.85
+      },
+      {
+        "parameter_id": "CONST-SEXHIGH",
+        "symbol": "sex_high",
+        "description": "Observed approximate male fraction under high larval food availability.",
+        "value": 0.56,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "DATA",
+        "source_ref": "EVID-DATA-2",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 0.85
+      },
+      {
+        "parameter_id": "CONST-J0",
+        "symbol": "J0",
+        "description": "J component of the derived positive reference equilibrium at E_ref.",
+        "value": 0.17386363636363633,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "DERIVATION",
+        "source_ref": "ASSUMP-INIT-V2",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 1.0
+      },
+      {
+        "parameter_id": "CONST-A0",
+        "symbol": "A0",
+        "description": "A component of the derived positive reference equilibrium at E_ref.",
+        "value": 0.13909090909090907,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "DERIVATION",
+        "source_ref": "ASSUMP-INIT-V2",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 1.0
+      },
+      {
+        "parameter_id": "CONST-F0",
+        "symbol": "F0",
+        "description": "F component of the derived positive reference equilibrium at E_ref.",
+        "value": 0.9304545454545454,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "DERIVATION",
+        "source_ref": "ASSUMP-INIT-V2",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 1.0
+      },
+      {
+        "parameter_id": "CONST-P0",
+        "symbol": "P0",
+        "description": "P component of the derived positive reference equilibrium at E_ref.",
+        "value": 3.3421212121212127,
+        "data_binding": null,
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_type": "DERIVATION",
+        "source_ref": "ASSUMP-INIT-V2",
+        "is_estimated": false,
+        "estimation_method": null,
+        "confidence": 1.0
+      }
+    ],
+    "objective": null,
+    "constraints": [
+      {
+        "constraint_id": "CON-ALPHA-LOW",
+        "name": "mechanism switch lower bound",
+        "expression": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "adaptation_weight",
+          "operands": []
+        },
+        "relation": "GE",
+        "rhs": {
+          "kind": "CONSTANT",
+          "value": 0.0,
+          "symbol": null,
+          "operands": []
+        },
+        "normalized_expression": "adaptation_weight >= 0",
+        "description": "The mechanism interpolation cannot be below the fixed comparator.",
+        "source_refs": [
+          "ASSUMP-COMPARATOR-V2"
+        ],
+        "assumption_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "index_scope": [],
+        "is_hard": true,
+        "equation_ref": "EQ-ALPHA-LOW"
+      },
+      {
+        "constraint_id": "CON-ALPHA-HIGH",
+        "name": "mechanism switch upper bound",
+        "expression": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "adaptation_weight",
+          "operands": []
+        },
+        "relation": "LE",
+        "rhs": {
+          "kind": "CONSTANT",
+          "value": 1.0,
+          "symbol": null,
+          "operands": []
+        },
+        "normalized_expression": "adaptation_weight <= 1",
+        "description": "The mechanism interpolation cannot exceed the adaptive branch.",
+        "source_refs": [
+          "ASSUMP-COMPARATOR-V2"
+        ],
+        "assumption_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "index_scope": [],
+        "is_hard": true,
+        "equation_ref": "EQ-ALPHA-HIGH"
+      }
+    ],
+    "equations": [
+      {
+        "equation_id": "EQ-FIXED-RATIO",
+        "latex": "fixed_male_ratio = (sex_low + sex_high) / 2",
+        "normalized_expression": "fixed_male_ratio = (sex_low + sex_high) / 2",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "fixed_male_ratio",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "DIVIDE",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "ADD",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "sex_low",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "sex_high",
+                  "operands": []
+                }
+              ]
+            },
+            {
+              "kind": "CONSTANT",
+              "value": 2.0,
+              "symbol": null,
+              "operands": []
+            }
+          ]
+        },
+        "meaning": "Fixed-ratio comparator shared by all paired structural scenarios.",
+        "source_refs": [
+          "EVID-DATA-1",
+          "EVID-DATA-2",
+          "ASSUMP-COMPARATOR-V2"
+        ],
+        "derivation": "Arithmetic midpoint is an explicit comparator design choice, not an observed third datum.",
+        "symbol_refs": [
+          "fixed_male_ratio",
+          "sex_low",
+          "sex_high"
+        ],
+        "parameter_refs": [
+          "CONST-SEXLOW",
+          "CONST-SEXHIGH"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-SEXRULE",
+        "latex": "male_ratio = alpha adaptive_ratio(E) + (1-alpha) fixed_male_ratio",
+        "normalized_expression": "male_ratio = adaptation_weight*(sex_low-(sex_low-sex_high)*E^sex_ratio_shape)+(1-adaptation_weight)*fixed_male_ratio",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "male_ratio",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "ADD",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "adaptation_weight",
+                  "operands": []
+                },
+                {
+                  "kind": "SUBTRACT",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "sex_low",
+                      "operands": []
+                    },
+                    {
+                      "kind": "MULTIPLY",
+                      "value": null,
+                      "symbol": null,
+                      "operands": [
+                        {
+                          "kind": "SUBTRACT",
+                          "value": null,
+                          "symbol": null,
+                          "operands": [
+                            {
+                              "kind": "SYMBOL",
+                              "value": null,
+                              "symbol": "sex_low",
+                              "operands": []
+                            },
+                            {
+                              "kind": "SYMBOL",
+                              "value": null,
+                              "symbol": "sex_high",
+                              "operands": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "POWER",
+                          "value": null,
+                          "symbol": null,
+                          "operands": [
+                            {
+                              "kind": "SYMBOL",
+                              "value": null,
+                              "symbol": "E",
+                              "operands": []
+                            },
+                            {
+                              "kind": "SYMBOL",
+                              "value": null,
+                              "symbol": "sex_ratio_shape",
+                              "operands": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SUBTRACT",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "CONSTANT",
+                      "value": 1.0,
+                      "symbol": null,
+                      "operands": []
+                    },
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "adaptation_weight",
+                      "operands": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "fixed_male_ratio",
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "One formal mechanism parameter selects the adaptive treatment or fixed comparator without changing any demographic or interaction coefficient.",
+        "source_refs": [
+          "EVID-DATA-1",
+          "EVID-DATA-2",
+          "ASSUMP-COMPARATOR-V2"
+        ],
+        "derivation": "The adaptive branch preserves the two stated approximate data anchors; the fixed branch uses their midpoint as a transparent neutral comparator assumption.",
+        "symbol_refs": [
+          "male_ratio",
+          "adaptation_weight",
+          "sex_low",
+          "sex_high",
+          "E",
+          "sex_ratio_shape",
+          "fixed_male_ratio"
+        ],
+        "parameter_refs": [
+          "PAR-ADAPT",
+          "CONST-SEXLOW",
+          "CONST-SEXHIGH",
+          "PAR-GAMMA"
+        ],
+        "dependency_refs": [
+          "EQ-FIXED-RATIO"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-FEMRATIO",
+        "latex": "female_ratio = 1 - male_ratio",
+        "normalized_expression": "female_ratio = 1 - male_ratio",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "female_ratio",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SUBTRACT",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "CONSTANT",
+              "value": 1.0,
+              "symbol": null,
+              "operands": []
+            },
+            {
+              "kind": "SYMBOL",
+              "value": null,
+              "symbol": "male_ratio",
+              "operands": []
+            }
+          ]
+        },
+        "meaning": "The adult lamprey population is partitioned into female and male fractions; only the female fraction directly contributes to egg production in the recruitment term.",
+        "source_refs": [
+          "EVID-FACT-1"
+        ],
+        "derivation": "Complementary sex ratio.",
+        "symbol_refs": [
+          "female_ratio",
+          "male_ratio"
+        ],
+        "parameter_refs": [],
+        "dependency_refs": [
+          "EQ-SEXRULE"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JUVCAP",
+        "latex": "juv_capacity = cap_min + cap_slope * E",
+        "normalized_expression": "juv_capacity = cap_min + cap_slope * E",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "juv_capacity",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "ADD",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "SYMBOL",
+              "value": null,
+              "symbol": "cap_min",
+              "operands": []
+            },
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "cap_slope",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "E",
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "The carrying capacity for larval sea lamprey increases with the normalized larval-food index E, encoding the resource limitation that underlies larval growth and sex determination.",
+        "source_refs": [
+          "EVID-FACT-2"
+        ],
+        "derivation": "A linearly increasing capacity is the minimal resource-dependent density-regulation function consistent with the low-food and high-food distinction.",
+        "symbol_refs": [
+          "juv_capacity",
+          "cap_min",
+          "cap_slope",
+          "E"
+        ],
+        "parameter_refs": [
+          "PAR-CAPMIN",
+          "PAR-CAPSLOPE"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JDYN",
+        "latex": "dJ_dt = birth_coef * female_ratio * A * (1 - J / juv_capacity) - mort_larva * J",
+        "normalized_expression": "dJ_dt = birth_coef * female_ratio * A * (1 - J / juv_capacity) - mort_larva * J",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "dJ_dt",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SUBTRACT",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "birth_coef",
+                  "operands": []
+                },
+                {
+                  "kind": "MULTIPLY",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "female_ratio",
+                      "operands": []
+                    },
+                    {
+                      "kind": "MULTIPLY",
+                      "value": null,
+                      "symbol": null,
+                      "operands": [
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "A",
+                          "operands": []
+                        },
+                        {
+                          "kind": "SUBTRACT",
+                          "value": null,
+                          "symbol": null,
+                          "operands": [
+                            {
+                              "kind": "CONSTANT",
+                              "value": 1.0,
+                              "symbol": null,
+                              "operands": []
+                            },
+                            {
+                              "kind": "DIVIDE",
+                              "value": null,
+                              "symbol": null,
+                              "operands": [
+                                {
+                                  "kind": "SYMBOL",
+                                  "value": null,
+                                  "symbol": "J",
+                                  "operands": []
+                                },
+                                {
+                                  "kind": "SYMBOL",
+                                  "value": null,
+                                  "symbol": "juv_capacity",
+                                  "operands": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "mort_larva",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "J",
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Larval recruitment is generated by adult females, is limited by larval carrying capacity, and is reduced by larval mortality. It therefore captures the demographic advantage or disadvantage caused by changes in the adult female fraction induced by resource-dependent sex determination.",
+        "source_refs": [
+          "EVID-FACT-1",
+          "EVID-FACT-2"
+        ],
+        "derivation": "The equation combines a standard two-sex birthing input with Beverton-Holt-style larval density dependence and linear mortality.",
+        "symbol_refs": [
+          "dJ_dt",
+          "birth_coef",
+          "female_ratio",
+          "A",
+          "J",
+          "juv_capacity",
+          "mort_larva"
+        ],
+        "parameter_refs": [
+          "PAR-BIRTH",
+          "PAR-MUJ"
+        ],
+        "dependency_refs": [
+          "EQ-FEMRATIO",
+          "EQ-JUVCAP"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-ADYN",
+        "latex": "dA_dt = maturation * J - mort_adult * A",
+        "normalized_expression": "dA_dt = maturation * J - mort_adult * A",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "dA_dt",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SUBTRACT",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "maturation",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "J",
+                  "operands": []
+                }
+              ]
+            },
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "mort_adult",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "A",
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Adult lamprey abundance is increased by larval maturation and decreased by adult mortality, closing the lamprey life cycle used in Q2-Q5 comparisons.",
+        "source_refs": [
+          "EVID-FACT-3"
+        ],
+        "derivation": "A single aggregate adult stage is used because the problem does not provide age-specific adult survival data.",
+        "symbol_refs": [
+          "dA_dt",
+          "maturation",
+          "J",
+          "mort_adult",
+          "A"
+        ],
+        "parameter_refs": [
+          "PAR-MAT",
+          "PAR-MUA"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-FDYN",
+        "latex": "dF_dt = fish_growth * F * (1 - F / fish_capacity) - attack_rate * A * F",
+        "normalized_expression": "dF_dt = fish_growth * F * (1 - F / fish_capacity) - attack_rate * A * F",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "dF_dt",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SUBTRACT",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "fish_growth",
+                  "operands": []
+                },
+                {
+                  "kind": "MULTIPLY",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "F",
+                      "operands": []
+                    },
+                    {
+                      "kind": "SUBTRACT",
+                      "value": null,
+                      "symbol": null,
+                      "operands": [
+                        {
+                          "kind": "CONSTANT",
+                          "value": 1.0,
+                          "symbol": null,
+                          "operands": []
+                        },
+                        {
+                          "kind": "DIVIDE",
+                          "value": null,
+                          "symbol": null,
+                          "operands": [
+                            {
+                              "kind": "SYMBOL",
+                              "value": null,
+                              "symbol": "F",
+                              "operands": []
+                            },
+                            {
+                              "kind": "SYMBOL",
+                              "value": null,
+                              "symbol": "fish_capacity",
+                              "operands": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "attack_rate",
+                  "operands": []
+                },
+                {
+                  "kind": "MULTIPLY",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "A",
+                      "operands": []
+                    },
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "F",
+                      "operands": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Fish hosts grow logistically and are depleted by adult sea lamprey attack. This resource axis links lamprey abundance to the broader ecosystem.",
+        "source_refs": [
+          "EVID-FACT-4"
+        ],
+        "derivation": "Logistic prey growth with a type I lamprey attack term is the minimal representation of the fish resource depleted by adult lampreys.",
+        "symbol_refs": [
+          "dF_dt",
+          "fish_growth",
+          "F",
+          "fish_capacity",
+          "attack_rate",
+          "A"
+        ],
+        "parameter_refs": [
+          "PAR-RF",
+          "PAR-KF",
+          "PAR-ATTACK"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-PDYN",
+        "latex": "dP_dt = parasite_growth * P * (1 - P / parasite_capacity) + fish_benefit_par * F * P - lamprey_cost_par * A * P",
+        "normalized_expression": "dP_dt = parasite_growth * P * (1 - P / parasite_capacity) + fish_benefit_par * F * P - lamprey_cost_par * A * P",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "dP_dt",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SUBTRACT",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "ADD",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "MULTIPLY",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "parasite_growth",
+                      "operands": []
+                    },
+                    {
+                      "kind": "MULTIPLY",
+                      "value": null,
+                      "symbol": null,
+                      "operands": [
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "P",
+                          "operands": []
+                        },
+                        {
+                          "kind": "SUBTRACT",
+                          "value": null,
+                          "symbol": null,
+                          "operands": [
+                            {
+                              "kind": "CONSTANT",
+                              "value": 1.0,
+                              "symbol": null,
+                              "operands": []
+                            },
+                            {
+                              "kind": "DIVIDE",
+                              "value": null,
+                              "symbol": null,
+                              "operands": [
+                                {
+                                  "kind": "SYMBOL",
+                                  "value": null,
+                                  "symbol": "P",
+                                  "operands": []
+                                },
+                                {
+                                  "kind": "SYMBOL",
+                                  "value": null,
+                                  "symbol": "parasite_capacity",
+                                  "operands": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "MULTIPLY",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "fish_benefit_par",
+                      "operands": []
+                    },
+                    {
+                      "kind": "MULTIPLY",
+                      "value": null,
+                      "symbol": null,
+                      "operands": [
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "F",
+                          "operands": []
+                        },
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "P",
+                          "operands": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "lamprey_cost_par",
+                  "operands": []
+                },
+                {
+                  "kind": "MULTIPLY",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "A",
+                      "operands": []
+                    },
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "P",
+                      "operands": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "The non-lamprey fish-parasite population grows through intrinsic dynamics and fish-host subsidy, while adult lampreys reduce it by damaging or consuming shared fish hosts.",
+        "source_refs": [
+          "EVID-FACT-4"
+        ],
+        "derivation": "This equation operationalizes interpretation INT-AMB1-1 under assumption ASSUMP-PARASITE: parasites benefit from fish abundance and are harmed by lamprey predation on host fish.",
+        "symbol_refs": [
+          "dP_dt",
+          "parasite_growth",
+          "P",
+          "parasite_capacity",
+          "fish_benefit_par",
+          "F",
+          "lamprey_cost_par",
+          "A"
+        ],
+        "parameter_refs": [
+          "PAR-RP",
+          "PAR-KP",
+          "PAR-BPF",
+          "PAR-PA"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JAC-JJ",
+        "latex": "jac_JJ = -birth_coef*female_ratio*A/juv_capacity-mort_larva",
+        "normalized_expression": "jac_JJ = -birth_coef*female_ratio*A/juv_capacity-mort_larva",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_JJ",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "NEGATE",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "ADD",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "DIVIDE",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "MULTIPLY",
+                      "value": null,
+                      "symbol": null,
+                      "operands": [
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "birth_coef",
+                          "operands": []
+                        },
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "female_ratio",
+                          "operands": []
+                        },
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "A",
+                          "operands": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "juv_capacity",
+                      "operands": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "mort_larva",
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity jac_JJ.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "jac_JJ",
+          "birth_coef",
+          "female_ratio",
+          "A",
+          "juv_capacity",
+          "mort_larva"
+        ],
+        "parameter_refs": [
+          "PAR-BIRTH",
+          "PAR-MUJ"
+        ],
+        "dependency_refs": [
+          "EQ-FEMRATIO",
+          "EQ-JUVCAP"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JAC-JA",
+        "latex": "jac_JA = birth_coef*female_ratio*(1-J/juv_capacity)",
+        "normalized_expression": "jac_JA = birth_coef*female_ratio*(1-J/juv_capacity)",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_JA",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "MULTIPLY",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "SYMBOL",
+              "value": null,
+              "symbol": "birth_coef",
+              "operands": []
+            },
+            {
+              "kind": "SYMBOL",
+              "value": null,
+              "symbol": "female_ratio",
+              "operands": []
+            },
+            {
+              "kind": "SUBTRACT",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "CONSTANT",
+                  "value": 1.0,
+                  "symbol": null,
+                  "operands": []
+                },
+                {
+                  "kind": "DIVIDE",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "J",
+                      "operands": []
+                    },
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "juv_capacity",
+                      "operands": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity jac_JA.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "jac_JA",
+          "birth_coef",
+          "female_ratio",
+          "J",
+          "juv_capacity"
+        ],
+        "parameter_refs": [
+          "PAR-BIRTH"
+        ],
+        "dependency_refs": [
+          "EQ-FEMRATIO",
+          "EQ-JUVCAP"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JAC-AJ",
+        "latex": "jac_AJ = maturation",
+        "normalized_expression": "jac_AJ = maturation",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_AJ",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "maturation",
+          "operands": []
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity jac_AJ.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "jac_AJ",
+          "maturation"
+        ],
+        "parameter_refs": [
+          "PAR-MAT"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JAC-AA",
+        "latex": "jac_AA = -mort_adult",
+        "normalized_expression": "jac_AA = -mort_adult",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_AA",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "NEGATE",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "SYMBOL",
+              "value": null,
+              "symbol": "mort_adult",
+              "operands": []
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity jac_AA.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "jac_AA",
+          "mort_adult"
+        ],
+        "parameter_refs": [
+          "PAR-MUA"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JAC-FA",
+        "latex": "jac_FA = -attack_rate*F",
+        "normalized_expression": "jac_FA = -attack_rate*F",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_FA",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "NEGATE",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "attack_rate",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "F",
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity jac_FA.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "jac_FA",
+          "attack_rate",
+          "F"
+        ],
+        "parameter_refs": [
+          "PAR-ATTACK"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JAC-FF",
+        "latex": "jac_FF = fish_growth*(1-2*F/fish_capacity)-attack_rate*A",
+        "normalized_expression": "jac_FF = fish_growth*(1-2*F/fish_capacity)-attack_rate*A",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_FF",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SUBTRACT",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "fish_growth",
+                  "operands": []
+                },
+                {
+                  "kind": "SUBTRACT",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "CONSTANT",
+                      "value": 1.0,
+                      "symbol": null,
+                      "operands": []
+                    },
+                    {
+                      "kind": "DIVIDE",
+                      "value": null,
+                      "symbol": null,
+                      "operands": [
+                        {
+                          "kind": "MULTIPLY",
+                          "value": null,
+                          "symbol": null,
+                          "operands": [
+                            {
+                              "kind": "CONSTANT",
+                              "value": 2.0,
+                              "symbol": null,
+                              "operands": []
+                            },
+                            {
+                              "kind": "SYMBOL",
+                              "value": null,
+                              "symbol": "F",
+                              "operands": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "fish_capacity",
+                          "operands": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "attack_rate",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "A",
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity jac_FF.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "jac_FF",
+          "fish_growth",
+          "F",
+          "fish_capacity",
+          "attack_rate",
+          "A"
+        ],
+        "parameter_refs": [
+          "PAR-RF",
+          "PAR-KF",
+          "PAR-ATTACK"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JAC-PA",
+        "latex": "jac_PA = -lamprey_cost_par*P",
+        "normalized_expression": "jac_PA = -lamprey_cost_par*P",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_PA",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "NEGATE",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "lamprey_cost_par",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "P",
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity jac_PA.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "jac_PA",
+          "lamprey_cost_par",
+          "P"
+        ],
+        "parameter_refs": [
+          "PAR-PA"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JAC-PF",
+        "latex": "jac_PF = fish_benefit_par*P",
+        "normalized_expression": "jac_PF = fish_benefit_par*P",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_PF",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "MULTIPLY",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "SYMBOL",
+              "value": null,
+              "symbol": "fish_benefit_par",
+              "operands": []
+            },
+            {
+              "kind": "SYMBOL",
+              "value": null,
+              "symbol": "P",
+              "operands": []
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity jac_PF.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "jac_PF",
+          "fish_benefit_par",
+          "P"
+        ],
+        "parameter_refs": [
+          "PAR-BPF"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-JAC-PP",
+        "latex": "jac_PP = parasite_growth*(1-2*P/parasite_capacity)+fish_benefit_par*F-lamprey_cost_par*A",
+        "normalized_expression": "jac_PP = parasite_growth*(1-2*P/parasite_capacity)+fish_benefit_par*F-lamprey_cost_par*A",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_PP",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "ADD",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "parasite_growth",
+                  "operands": []
+                },
+                {
+                  "kind": "SUBTRACT",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "CONSTANT",
+                      "value": 1.0,
+                      "symbol": null,
+                      "operands": []
+                    },
+                    {
+                      "kind": "DIVIDE",
+                      "value": null,
+                      "symbol": null,
+                      "operands": [
+                        {
+                          "kind": "MULTIPLY",
+                          "value": null,
+                          "symbol": null,
+                          "operands": [
+                            {
+                              "kind": "CONSTANT",
+                              "value": 2.0,
+                              "symbol": null,
+                              "operands": []
+                            },
+                            {
+                              "kind": "SYMBOL",
+                              "value": null,
+                              "symbol": "P",
+                              "operands": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "parasite_capacity",
+                          "operands": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "fish_benefit_par",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "F",
+                  "operands": []
+                }
+              ]
+            },
+            {
+              "kind": "NEGATE",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "MULTIPLY",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "lamprey_cost_par",
+                      "operands": []
+                    },
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "A",
+                      "operands": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity jac_PP.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "jac_PP",
+          "parasite_growth",
+          "P",
+          "parasite_capacity",
+          "fish_benefit_par",
+          "F",
+          "lamprey_cost_par",
+          "A"
+        ],
+        "parameter_refs": [
+          "PAR-RP",
+          "PAR-KP",
+          "PAR-BPF",
+          "PAR-PA"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-TRACE-JA",
+        "latex": "trace_JA = jac_JJ + jac_AA",
+        "normalized_expression": "trace_JA = jac_JJ + jac_AA",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "trace_JA",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "ADD",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "SYMBOL",
+              "value": null,
+              "symbol": "jac_JJ",
+              "operands": []
+            },
+            {
+              "kind": "SYMBOL",
+              "value": null,
+              "symbol": "jac_AA",
+              "operands": []
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity trace_JA.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "trace_JA",
+          "jac_JJ",
+          "jac_AA"
+        ],
+        "parameter_refs": [],
+        "dependency_refs": [
+          "EQ-JAC-JJ",
+          "EQ-JAC-AA"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-DET-JA",
+        "latex": "det_JA = jac_JJ*jac_AA-jac_JA*jac_AJ",
+        "normalized_expression": "det_JA = jac_JJ*jac_AA-jac_JA*jac_AJ",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "det_JA",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SUBTRACT",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "jac_JJ",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "jac_AA",
+                  "operands": []
+                }
+              ]
+            },
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "jac_JA",
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "jac_AJ",
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity det_JA.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "det_JA",
+          "jac_JJ",
+          "jac_AA",
+          "jac_JA",
+          "jac_AJ"
+        ],
+        "parameter_refs": [],
+        "dependency_refs": [
+          "EQ-JAC-JJ",
+          "EQ-JAC-AA",
+          "EQ-JAC-JA",
+          "EQ-JAC-AJ"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-DISC-JA",
+        "latex": "disc_JA = trace_JA^2-4*det_JA",
+        "normalized_expression": "disc_JA = trace_JA^2-4*det_JA",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "disc_JA",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SUBTRACT",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "POWER",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "trace_JA",
+                  "operands": []
+                },
+                {
+                  "kind": "CONSTANT",
+                  "value": 2.0,
+                  "symbol": null,
+                  "operands": []
+                }
+              ]
+            },
+            {
+              "kind": "MULTIPLY",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "CONSTANT",
+                  "value": 4.0,
+                  "symbol": null,
+                  "operands": []
+                },
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "det_JA",
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity disc_JA.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "disc_JA",
+          "trace_JA",
+          "det_JA"
+        ],
+        "parameter_refs": [],
+        "dependency_refs": [
+          "EQ-TRACE-JA",
+          "EQ-DET-JA"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-LAMBDA-JA-PLUS",
+        "latex": "lambda_JA_plus = (trace_JA+sqrt(disc_JA))/2",
+        "normalized_expression": "lambda_JA_plus = (trace_JA+sqrt(disc_JA))/2",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "lambda_JA_plus",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "DIVIDE",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "ADD",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "trace_JA",
+                  "operands": []
+                },
+                {
+                  "kind": "POWER",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "disc_JA",
+                      "operands": []
+                    },
+                    {
+                      "kind": "CONSTANT",
+                      "value": 0.5,
+                      "symbol": null,
+                      "operands": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "CONSTANT",
+              "value": 2.0,
+              "symbol": null,
+              "operands": []
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity lambda_JA_plus.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "lambda_JA_plus",
+          "trace_JA",
+          "disc_JA"
+        ],
+        "parameter_refs": [],
+        "dependency_refs": [
+          "EQ-TRACE-JA",
+          "EQ-DISC-JA"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-LAMBDA-JA-MINUS",
+        "latex": "lambda_JA_minus = (trace_JA-sqrt(disc_JA))/2",
+        "normalized_expression": "lambda_JA_minus = (trace_JA-sqrt(disc_JA))/2",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "lambda_JA_minus",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "DIVIDE",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "SUBTRACT",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "trace_JA",
+                  "operands": []
+                },
+                {
+                  "kind": "POWER",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "SYMBOL",
+                      "value": null,
+                      "symbol": "disc_JA",
+                      "operands": []
+                    },
+                    {
+                      "kind": "CONSTANT",
+                      "value": 0.5,
+                      "symbol": null,
+                      "operands": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "CONSTANT",
+              "value": 2.0,
+              "symbol": null,
+              "operands": []
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity lambda_JA_minus.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "lambda_JA_minus",
+          "trace_JA",
+          "disc_JA"
+        ],
+        "parameter_refs": [],
+        "dependency_refs": [
+          "EQ-TRACE-JA",
+          "EQ-DISC-JA"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-LAMBDA-F",
+        "latex": "lambda_F = jac_FF",
+        "normalized_expression": "lambda_F = jac_FF",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "lambda_F",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_FF",
+          "operands": []
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity lambda_F.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "lambda_F",
+          "jac_FF"
+        ],
+        "parameter_refs": [],
+        "dependency_refs": [
+          "EQ-JAC-FF"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-LAMBDA-P",
+        "latex": "lambda_P = jac_PP",
+        "normalized_expression": "lambda_P = jac_PP",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "lambda_P",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "jac_PP",
+          "operands": []
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity lambda_P.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "lambda_P",
+          "jac_PP"
+        ],
+        "parameter_refs": [],
+        "dependency_refs": [
+          "EQ-JAC-PP"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-DOMINANT-REAL",
+        "latex": "dominant_real_part = max(lambda_JA_plus,lambda_JA_minus,lambda_F,lambda_P)",
+        "normalized_expression": "dominant_real_part = max(lambda_JA_plus,lambda_JA_minus,lambda_F,lambda_P)",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "dominant_real_part",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "DIVIDE",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "ADD",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "lambda_JA_plus",
+                  "operands": []
+                },
+                {
+                  "kind": "DIVIDE",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "ADD",
+                      "value": null,
+                      "symbol": null,
+                      "operands": [
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "lambda_F",
+                          "operands": []
+                        },
+                        {
+                          "kind": "SYMBOL",
+                          "value": null,
+                          "symbol": "lambda_P",
+                          "operands": []
+                        },
+                        {
+                          "kind": "POWER",
+                          "value": null,
+                          "symbol": null,
+                          "operands": [
+                            {
+                              "kind": "POWER",
+                              "value": null,
+                              "symbol": null,
+                              "operands": [
+                                {
+                                  "kind": "SUBTRACT",
+                                  "value": null,
+                                  "symbol": null,
+                                  "operands": [
+                                    {
+                                      "kind": "SYMBOL",
+                                      "value": null,
+                                      "symbol": "lambda_F",
+                                      "operands": []
+                                    },
+                                    {
+                                      "kind": "SYMBOL",
+                                      "value": null,
+                                      "symbol": "lambda_P",
+                                      "operands": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "CONSTANT",
+                                  "value": 2.0,
+                                  "symbol": null,
+                                  "operands": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "CONSTANT",
+                              "value": 0.5,
+                              "symbol": null,
+                              "operands": []
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "CONSTANT",
+                      "value": 2.0,
+                      "symbol": null,
+                      "operands": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "POWER",
+                  "value": null,
+                  "symbol": null,
+                  "operands": [
+                    {
+                      "kind": "POWER",
+                      "value": null,
+                      "symbol": null,
+                      "operands": [
+                        {
+                          "kind": "SUBTRACT",
+                          "value": null,
+                          "symbol": null,
+                          "operands": [
+                            {
+                              "kind": "SYMBOL",
+                              "value": null,
+                              "symbol": "lambda_JA_plus",
+                              "operands": []
+                            },
+                            {
+                              "kind": "DIVIDE",
+                              "value": null,
+                              "symbol": null,
+                              "operands": [
+                                {
+                                  "kind": "ADD",
+                                  "value": null,
+                                  "symbol": null,
+                                  "operands": [
+                                    {
+                                      "kind": "SYMBOL",
+                                      "value": null,
+                                      "symbol": "lambda_F",
+                                      "operands": []
+                                    },
+                                    {
+                                      "kind": "SYMBOL",
+                                      "value": null,
+                                      "symbol": "lambda_P",
+                                      "operands": []
+                                    },
+                                    {
+                                      "kind": "POWER",
+                                      "value": null,
+                                      "symbol": null,
+                                      "operands": [
+                                        {
+                                          "kind": "POWER",
+                                          "value": null,
+                                          "symbol": null,
+                                          "operands": [
+                                            {
+                                              "kind": "SUBTRACT",
+                                              "value": null,
+                                              "symbol": null,
+                                              "operands": [
+                                                {
+                                                  "kind": "SYMBOL",
+                                                  "value": null,
+                                                  "symbol": "lambda_F",
+                                                  "operands": []
+                                                },
+                                                {
+                                                  "kind": "SYMBOL",
+                                                  "value": null,
+                                                  "symbol": "lambda_P",
+                                                  "operands": []
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "kind": "CONSTANT",
+                                              "value": 2.0,
+                                              "symbol": null,
+                                              "operands": []
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "kind": "CONSTANT",
+                                          "value": 0.5,
+                                          "symbol": null,
+                                          "operands": []
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "CONSTANT",
+                                  "value": 2.0,
+                                  "symbol": null,
+                                  "operands": []
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "CONSTANT",
+                          "value": 2.0,
+                          "symbol": null,
+                          "operands": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "CONSTANT",
+                      "value": 0.5,
+                      "symbol": null,
+                      "operands": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "CONSTANT",
+              "value": 2.0,
+              "symbol": null,
+              "operands": []
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity dominant_real_part.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "dominant_real_part",
+          "lambda_JA_plus",
+          "lambda_JA_minus",
+          "lambda_F",
+          "lambda_P"
+        ],
+        "parameter_refs": [],
+        "dependency_refs": [
+          "EQ-LAMBDA-JA-PLUS",
+          "EQ-LAMBDA-JA-MINUS",
+          "EQ-LAMBDA-F",
+          "EQ-LAMBDA-P"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-EQUILIBRIUM-RESIDUAL",
+        "latex": "equilibrium_residual_sq = dJ_dt^2+dA_dt^2+dF_dt^2+dP_dt^2",
+        "normalized_expression": "equilibrium_residual_sq = dJ_dt^2+dA_dt^2+dF_dt^2+dP_dt^2",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "equilibrium_residual_sq",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "ADD",
+          "value": null,
+          "symbol": null,
+          "operands": [
+            {
+              "kind": "POWER",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "dJ_dt",
+                  "operands": []
+                },
+                {
+                  "kind": "CONSTANT",
+                  "value": 2.0,
+                  "symbol": null,
+                  "operands": []
+                }
+              ]
+            },
+            {
+              "kind": "POWER",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "dA_dt",
+                  "operands": []
+                },
+                {
+                  "kind": "CONSTANT",
+                  "value": 2.0,
+                  "symbol": null,
+                  "operands": []
+                }
+              ]
+            },
+            {
+              "kind": "POWER",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "dF_dt",
+                  "operands": []
+                },
+                {
+                  "kind": "CONSTANT",
+                  "value": 2.0,
+                  "symbol": null,
+                  "operands": []
+                }
+              ]
+            },
+            {
+              "kind": "POWER",
+              "value": null,
+              "symbol": null,
+              "operands": [
+                {
+                  "kind": "SYMBOL",
+                  "value": null,
+                  "symbol": "dP_dt",
+                  "operands": []
+                },
+                {
+                  "kind": "CONSTANT",
+                  "value": 2.0,
+                  "symbol": null,
+                  "operands": []
+                }
+              ]
+            }
+          ]
+        },
+        "meaning": "Deterministic Jacobian/equilibrium quantity equilibrium_residual_sq.",
+        "source_refs": [
+          "ASSUMP-STABILITY-V2"
+        ],
+        "derivation": "Symbolic differentiation or algebraic derivation from the formal autonomous ODE.",
+        "symbol_refs": [
+          "equilibrium_residual_sq",
+          "dJ_dt",
+          "dA_dt",
+          "dF_dt",
+          "dP_dt"
+        ],
+        "parameter_refs": [],
+        "dependency_refs": [
+          "EQ-JDYN",
+          "EQ-ADYN",
+          "EQ-FDYN",
+          "EQ-PDYN"
+        ],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-INIT-J",
+        "latex": "J(0) = J0",
+        "normalized_expression": "J(0) = J0",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "J",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "J0",
+          "operands": []
+        },
+        "meaning": "Initial value for state J in state ordering [J,A,F,P].",
+        "source_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "derivation": "Derived positive interior equilibrium at E_ref=0.5 under baseline assumptions.",
+        "symbol_refs": [
+          "J",
+          "J0"
+        ],
+        "parameter_refs": [
+          "CONST-J0"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-INIT-A",
+        "latex": "A(0) = A0",
+        "normalized_expression": "A(0) = A0",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "A",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "A0",
+          "operands": []
+        },
+        "meaning": "Initial value for state A in state ordering [J,A,F,P].",
+        "source_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "derivation": "Derived positive interior equilibrium at E_ref=0.5 under baseline assumptions.",
+        "symbol_refs": [
+          "A",
+          "A0"
+        ],
+        "parameter_refs": [
+          "CONST-A0"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-INIT-F",
+        "latex": "F(0) = F0",
+        "normalized_expression": "F(0) = F0",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "F",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "F0",
+          "operands": []
+        },
+        "meaning": "Initial value for state F in state ordering [J,A,F,P].",
+        "source_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "derivation": "Derived positive interior equilibrium at E_ref=0.5 under baseline assumptions.",
+        "symbol_refs": [
+          "F",
+          "F0"
+        ],
+        "parameter_refs": [
+          "CONST-F0"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-INIT-P",
+        "latex": "P(0) = P0",
+        "normalized_expression": "P(0) = P0",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "P",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "P0",
+          "operands": []
+        },
+        "meaning": "Initial value for state P in state ordering [J,A,F,P].",
+        "source_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "derivation": "Derived positive interior equilibrium at E_ref=0.5 under baseline assumptions.",
+        "symbol_refs": [
+          "P",
+          "P0"
+        ],
+        "parameter_refs": [
+          "CONST-P0"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-ALPHA-LOW",
+        "latex": "adaptation_weight >= 0",
+        "normalized_expression": "adaptation_weight >= 0",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "adaptation_weight",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "CONSTANT",
+          "value": 0.0,
+          "symbol": null,
+          "operands": []
+        },
+        "meaning": "Lower domain boundary of the mechanism switch.",
+        "source_refs": [
+          "ASSUMP-COMPARATOR-V2"
+        ],
+        "derivation": "Comparator design domain.",
+        "symbol_refs": [
+          "adaptation_weight"
+        ],
+        "parameter_refs": [
+          "PAR-ADAPT"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      },
+      {
+        "equation_id": "EQ-ALPHA-HIGH",
+        "latex": "adaptation_weight <= 1",
+        "normalized_expression": "adaptation_weight <= 1",
+        "lhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "adaptation_weight",
+          "operands": []
+        },
+        "rhs": {
+          "kind": "CONSTANT",
+          "value": 1.0,
+          "symbol": null,
+          "operands": []
+        },
+        "meaning": "Upper domain boundary of the mechanism switch.",
+        "source_refs": [
+          "ASSUMP-COMPARATOR-V2"
+        ],
+        "derivation": "Comparator design domain.",
+        "symbol_refs": [
+          "adaptation_weight"
+        ],
+        "parameter_refs": [
+          "PAR-ADAPT"
+        ],
+        "dependency_refs": [],
+        "unit_lhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "unit_rhs": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "dimension_status": "PASS"
+      }
+    ],
+    "initial_conditions": [
+      {
+        "constraint_id": "CON-INIT-J",
+        "name": "initial J",
+        "expression": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "J",
+          "operands": []
+        },
+        "relation": "EQ",
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "J0",
+          "operands": []
+        },
+        "normalized_expression": "J(0) = J0",
+        "description": "Normalized reference-state initial condition for J.",
+        "source_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "assumption_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "index_scope": [],
+        "is_hard": true,
+        "equation_ref": "EQ-INIT-J"
+      },
+      {
+        "constraint_id": "CON-INIT-A",
+        "name": "initial A",
+        "expression": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "A",
+          "operands": []
+        },
+        "relation": "EQ",
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "A0",
+          "operands": []
+        },
+        "normalized_expression": "A(0) = A0",
+        "description": "Normalized reference-state initial condition for A.",
+        "source_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "assumption_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "index_scope": [],
+        "is_hard": true,
+        "equation_ref": "EQ-INIT-A"
+      },
+      {
+        "constraint_id": "CON-INIT-F",
+        "name": "initial F",
+        "expression": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "F",
+          "operands": []
+        },
+        "relation": "EQ",
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "F0",
+          "operands": []
+        },
+        "normalized_expression": "F(0) = F0",
+        "description": "Normalized reference-state initial condition for F.",
+        "source_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "assumption_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "index_scope": [],
+        "is_hard": true,
+        "equation_ref": "EQ-INIT-F"
+      },
+      {
+        "constraint_id": "CON-INIT-P",
+        "name": "initial P",
+        "expression": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "P",
+          "operands": []
+        },
+        "relation": "EQ",
+        "rhs": {
+          "kind": "SYMBOL",
+          "value": null,
+          "symbol": "P0",
+          "operands": []
+        },
+        "normalized_expression": "P(0) = P0",
+        "description": "Normalized reference-state initial condition for P.",
+        "source_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "assumption_refs": [
+          "ASSUMP-INIT-V2"
+        ],
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "1",
+          "unknown_units": []
+        },
+        "index_scope": [],
+        "is_hard": true,
+        "equation_ref": "EQ-INIT-P"
+      }
+    ],
+    "boundary_conditions": [],
+    "units": {
+      "tau": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "E": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "J": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "A": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "F": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "P": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "male_ratio": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "female_ratio": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "juv_capacity": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "dJ_dt": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "dA_dt": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "dF_dt": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "dP_dt": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "fixed_male_ratio": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "jac_JJ": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "jac_JA": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "jac_AJ": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "jac_AA": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "jac_FA": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "jac_FF": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "jac_PA": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "jac_PF": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "jac_PP": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "trace_JA": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "det_JA": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "disc_JA": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "lambda_JA_plus": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "lambda_JA_minus": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "lambda_F": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "lambda_P": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "dominant_real_part": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "equilibrium_residual_sq": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "sex_ratio_shape": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "cap_min": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "cap_slope": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "birth_coef": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "maturation": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "mort_larva": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "mort_adult": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "fish_growth": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "fish_capacity": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "attack_rate": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "parasite_growth": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "parasite_capacity": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "fish_benefit_par": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "lamprey_cost_par": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "adaptation_weight": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "sex_low": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "sex_high": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "J0": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "A0": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "F0": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      },
+      "P0": {
+        "dimensions": {},
+        "scale": 1.0,
+        "display": "1",
+        "unknown_units": []
+      }
+    },
+    "algorithm_requirements": {
+      "exact_solution_required": false,
+      "deterministic_required": true,
+      "convexity": "UNKNOWN",
+      "supports_local_solution": true,
+      "numerical_tolerance": 1e-07,
+      "notes": [
+        "Integrate the formal ODE AST with RK45, rtol=1e-8, atol=1e-10.",
+        "Require all 401 requested samples on tau in [0,153.50567286626972].",
+        "Classify local stability from independently recomputed eigenvalues at a numerical equilibrium."
+      ]
+    },
+    "solver_requirements": {
+      "requires_continuous": true,
+      "requires_integer": false,
+      "requires_binary": false,
+      "requires_nonlinear": true,
+      "requires_multiobjective": false,
+      "required_capabilities": [
+        "CONTINUOUS"
+      ],
+      "allow_commercial_solver": true,
+      "maximum_runtime_seconds": 30.0,
+      "preferred_solver_families": [
+        "SCIPY_MINIMIZE"
+      ]
+    },
+    "data_bindings": [],
+    "source_evidence": [
+      "EVID-FACT-1",
+      "EVID-FACT-2",
+      "EVID-FACT-3",
+      "EVID-FACT-4",
+      "EVID-DATA-1",
+      "EVID-DATA-2"
+    ],
+    "expected_outputs": [
+      {
+        "output_id": "OUT-SEXRULE",
+        "name": "resource_dependent_sex_ratio_rule",
+        "description": "Male-fraction response curve male_ratio(E), with exact anchor values 0.78 at E=0 and 0.56 at E=1, and a report of sensitivity to sex_ratio_shape.",
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_refs": [
+          "EVID-DATA-1",
+          "EVID-DATA-2"
+        ]
+      },
+      {
+        "output_id": "OUT-LAMPREY-TRADEOFF",
+        "name": "lamprey_sex_ratio_tradeoff",
+        "description": "Equilibrium larval and adult lamprey abundances and recruitment versus low/high E, together with the change in female reproductive contribution caused by the sex-ratio rule.",
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_refs": [
+          "EVID-FACT-1",
+          "EVID-FACT-2"
+        ]
+      },
+      {
+        "output_id": "OUT-ECOSYSTEM",
+        "name": "ecosystem_equilibrium_states",
+        "description": "Predicted equilibrium values of J, A, F, and P under variable sex ratio and alternative fixed-ratio scenarios across the food axis E.",
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_refs": [
+          "EVID-FACT-4"
+        ]
+      },
+      {
+        "output_id": "OUT-STABILITY",
+        "name": "stability_comparison",
+        "description": "Local stability indicator derived from the Jacobian eigenvalues of EQ-JDYN-EQ-PDYN evaluated at nonnegative equilibria, comparing the variable sex-ratio response to fixed male-fraction controls.",
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_refs": [
+          "EVID-FACT-4"
+        ]
+      },
+      {
+        "output_id": "OUT-PARASITE-ADV",
+        "name": "parasite_advantage",
+        "description": "Sign and magnitude of parasite equilibrium difference P under variable sex ratio versus fixed sex ratio, with conditions for a parasite advantage.",
+        "unit": {
+          "dimensions": {},
+          "scale": 1.0,
+          "display": "normalized dimensionless scalar",
+          "unknown_units": []
+        },
+        "source_refs": [
+          "EVID-FACT-4"
+        ]
+      }
+    ],
+    "validation_requirements": [
+      "Recompute both sex-ratio anchor identities from the formal AST.",
+      "Replay adaptive and fixed-ratio treatments through the same isolated RK45 path and common initial state.",
+      "Recompute every Jacobian entry, all four real eigenvalues, dominant_real_part, and equilibrium_residual_sq from final raw state values.",
+      "Run one-at-a-time +1% local sensitivity for each of the 14 provisional ecological parameters; do not describe these as biological ranges.",
+      "Report local stability from dominant_real_part only when equilibrium_residual_sq <= 1e-10; do not require a favorable sign for verification PASS.",
+      "Report mathematical persistence from positive limiting components; do not claim practical extinction or finite-horizon resilience without new evidence.",
+      "Keep P's representative non-lamprey fish-parasite-guild interpretation explicit in all paper claims."
+    ],
+    "limitations": [
+      "The 14 ecological coefficients are dimensionless modeling assumptions, not empirical estimates.",
+      "The physical duration T_ref is unavailable, so tau cannot be converted to calendar time.",
+      "Local asymptotic stability does not establish global stability or ecological resilience after arbitrary disturbances.",
+      "The common reference equilibrium improves comparator fairness but endpoint trajectories can remain initial-condition dependent.",
+      "P is a representative non-lamprey fish-parasite abundance, not prevalence, burden, or infection pressure."
+    ],
+    "confidence": 0.65,
+    "model_id": "2e44497b-4f85-4bb6-a136-561d7a210a51",
+    "project_id": "0b8553b8-9119-46a2-ba0b-92ecb23d6d90",
+    "problem_id": "5e9c811f-f486-4280-896e-1ff424fe3c60",
+    "version": 2,
+    "source_selected_model_id": "CAND-EVO-ES",
+    "status": "READY"
+  },
+  "fact_data_assumption_derivation": {
+    "FACT": [
+      "Sea-lamprey sex depends on larval growth conditions and food availability.",
+      "The task asks about lampreys, ecosystem stability, and other organisms including parasites."
+    ],
+    "DATA": [
+      "Approximate low-food male fraction 0.78.",
+      "Approximate high-food male fraction 0.56."
+    ],
+    "ASSUMPTION": [
+      "Normalized food index, state scaling, provisional coefficients, midpoint fixed comparator, common reference equilibrium, nondimensional time, parasite-guild interpretation, and local sensitivity design."
+    ],
+    "DERIVATION": [
+      "Reference state, comparator equation, ODE residual, Jacobian entries, eigenvalues, dominant real part, and all replay metrics follow from the formal AST."
+    ]
+  },
+  "state_contract": {
+    "state_vector": [
+      "J",
+      "A",
+      "F",
+      "P"
+    ],
+    "state_ordering": "[larvae, adult lamprey, fish hosts, representative non-lamprey fish-parasite abundance]",
+    "unit": "normalized dimensionless abundance",
+    "valid_domain": "R_{≥0}^4",
+    "initial_state": {
+      "J": 0.17386363636363633,
+      "A": 0.13909090909090907,
+      "F": 0.9304545454545454,
+      "P": 3.3421212121212127
+    },
+    "initial_state_source": "DERIVATION under ASSUMP-INIT-V2 at E_ref=0.5",
+    "normalization_rule": "Each abundance is scaled to the model's provisional baseline capacity; no absolute population claim is authorized.",
+    "initial_condition_dependence": "Endpoint and transient magnitudes depend on this common initial proportion and require scenario-visible reporting."
+  },
+  "time_contract": {
+    "time_variable": "tau",
+    "unit": "dimensionless",
+    "conversion": "tau=t/T_ref; T_ref has no retained physical calibration",
+    "source_status": "ASSUMPTION",
+    "start": 0.0,
+    "stop": 153.50567286626972,
+    "horizon_derivation": "-ln(1e-10)/0.15 using the smallest positive baseline rate",
+    "samples": 401,
+    "termination": "all requested samples on the closed interval must be returned"
+  },
+  "integration_contract": {
+    "solver_family": "SciPy solve_ivp RK45",
+    "step_policy": "adaptive internal steps with fixed 401-point output grid",
+    "absolute_tolerance": 1e-10,
+    "relative_tolerance": 1e-08,
+    "maximum_integration_time": 153.50567286626972,
+    "wall_timeout_seconds": 30.0,
+    "failure_conditions": [
+      "solver reports failure",
+      "not all requested samples are returned",
+      "non-finite output",
+      "state below -1e-7 numerical domain tolerance"
+    ]
+  },
+  "fixed_ratio_comparator": {
+    "adaptive_model": "adaptation_weight=1",
+    "fixed_model": "adaptation_weight=0 and fixed_male_ratio=(0.78+0.56)/2=0.67",
+    "same_contract": [
+      "state variables",
+      "initial state",
+      "horizon",
+      "sampling",
+      "all ecological parameters",
+      "output metrics"
+    ],
+    "only_changed_mechanism": "EQ-SEXRULE branch selected by adaptation_weight",
+    "source_status": "ASSUMPTION plus DERIVATION"
+  },
+  "stability_contract": {
+    "system": "autonomous ODE at fixed E and adaptation_weight",
+    "equilibrium_criterion": "equilibrium_residual_sq <= 1e-10 (numerical, not biological)",
+    "jacobian_order": [
+      "J",
+      "A",
+      "F",
+      "P"
+    ],
+    "spectrum": [
+      "lambda_JA_plus",
+      "lambda_JA_minus",
+      "lambda_F",
+      "lambda_P"
+    ],
+    "dominant_real_part": "max of the four formal real eigenvalues via max(a,b)=(a+b+sqrt((a-b)^2))/2",
+    "local_asymptotic_stability": "dominant_real_part < 0 after equilibrium criterion passes",
+    "boundary": "dominant_real_part=0 is non-asymptotic/indeterminate, not stable",
+    "source_status": "ASSUMPTION definition plus DERIVATION from the ODE"
+  },
+  "parameter_inventory": [
+    {
+      "parameter": "PAR-GAMMA",
+      "symbol": "sex_ratio_shape",
+      "meaning": "Exponent controlling the shape of the male-fraction response curve between the two observed endpoint values. Baseline 1 corresponds to a linear decrease from 78% to 56% male across the normalized food index.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 1.0,
+      "source": "ASSUMP-SEXRULE",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-CAPMIN",
+      "symbol": "cap_min",
+      "meaning": "Larval carrying-capacity intercept at E=0, i.e. at the low-food endpoint.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.2,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-CAPSLOPE",
+      "symbol": "cap_slope",
+      "meaning": "Increase in normalized larval carrying capacity per unit increase in E.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.8,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-BIRTH",
+      "symbol": "birth_coef",
+      "meaning": "Per-female adult lamprey recruitment coefficient under the dimensionless baseline.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.8,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-MAT",
+      "symbol": "maturation",
+      "meaning": "Maturation rate of larvae into the adult parasitic phase.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.2,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-MUJ",
+      "symbol": "mort_larva",
+      "meaning": "Natural mortality rate of larval sea lampreys.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.15,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-MUA",
+      "symbol": "mort_adult",
+      "meaning": "Mortality rate of adult parasitic-phase sea lampreys.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.25,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-RF",
+      "symbol": "fish_growth",
+      "meaning": "Intrinsic growth rate of the fish-host population.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.6,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-KF",
+      "symbol": "fish_capacity",
+      "meaning": "Carrying capacity of the fish-host population in dimensionless units.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 1.0,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-ATTACK",
+      "symbol": "attack_rate",
+      "meaning": "Per-adult-lamprey attack/mortality rate on the fish-host population.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.3,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-RP",
+      "symbol": "parasite_growth",
+      "meaning": "Intrinsic growth rate of the representative non-lamprey parasite population.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.15,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-KP",
+      "symbol": "parasite_capacity",
+      "meaning": "Carrying capacity of the representative parasite population in the absence of fish subsidy.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 1.0,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-BPF",
+      "symbol": "fish_benefit_par",
+      "meaning": "Per-unit fish abundance added growth contribution to the parasite population.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.4,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    },
+    {
+      "parameter": "PAR-PA",
+      "symbol": "lamprey_cost_par",
+      "meaning": "Per-adult-lamprey negative interaction on non-lamprey fish parasites, representing host depletion by lamprey feeding.",
+      "unit": "normalized dimensionless scalar",
+      "baseline_value": 0.15,
+      "source": "ASSUMP-PARAM",
+      "status": "ASSUMPTION",
+      "uncertainty": "No retained literature range; local +1% finite-change analysis only, not a biological uncertainty interval."
+    }
+  ],
+  "sensitivity_contract": {
+    "kind": "one-at-a-time local finite-change sensitivity",
+    "parameters": [
+      "sex_ratio_shape",
+      "cap_min",
+      "cap_slope",
+      "birth_coef",
+      "maturation",
+      "mort_larva",
+      "mort_adult",
+      "fish_growth",
+      "fish_capacity",
+      "attack_rate",
+      "parasite_growth",
+      "parasite_capacity",
+      "fish_benefit_par",
+      "lamprey_cost_par"
+    ],
+    "range": "+1% from each baseline, one parameter per fresh replay",
+    "source_status": "ASSUMPTION analysis design choice",
+    "not_authorized_as": "biological confidence interval or real-world uncertainty bound"
+  },
+  "robustness_contract": {
+    "kind": "structural scenario comparison",
+    "treatments": [
+      "adaptive versus fixed ratio at E=0",
+      "adaptive versus fixed ratio at E=1"
+    ],
+    "controlled_inputs": "all non-mechanism parameters, initial state, and time contract identical within each pair",
+    "source_status": "ASSUMPTION design plus manifest requirement"
+  },
+  "resilience_persistence_contract": {
+    "resilience": "No separate finite-horizon resilience claim is authorized; local asymptotic return is represented only by the Jacobian stability definition.",
+    "persistence": "A limiting equilibrium component is mathematically persistent only when strictly positive.",
+    "extinction": "No practical-extinction cutoff is used because no domain source supplies one.",
+    "source_status": "ASSUMPTION/DERIVATION"
+  },
+  "parasite_contract": {
+    "P": "normalized abundance of a representative non-lamprey fish-parasite guild",
+    "not_P": [
+      "prevalence",
+      "burden",
+      "infection pressure",
+      "lamprey population"
+    ],
+    "mechanism": "fish hosts subsidize P; adult lamprey reduces P indirectly through shared-host depletion",
+    "source_status": "ASSUMPTION_REQUIRED and paper-visible"
+  },
+  "symbol_table": [
+    {
+      "symbol": "E",
+      "definition": "Normalized larval-food availability index. The low-food anchor is E=0 (observed approximately 78% male) and the high-food anchor is E=1 (observed approximately 56% male). It is a scenario forcing variable for the ecosystem model.",
+      "unit": "normalized food index",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "decision"
+    },
+    {
+      "symbol": "J",
+      "definition": "Dimensionless abundance of sea lamprey larvae in the larval habitat.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "NONNEGATIVE_CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "state"
+    },
+    {
+      "symbol": "A",
+      "definition": "Dimensionless abundance of parasitic-phase adult sea lamprey.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "NONNEGATIVE_CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "state"
+    },
+    {
+      "symbol": "F",
+      "definition": "Dimensionless abundance of fish hosts available to adult sea lampreys and to non-lamprey fish parasites.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "NONNEGATIVE_CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "state"
+    },
+    {
+      "symbol": "P",
+      "definition": "Dimensionless abundance of representative non-lamprey fish-parasite organisms in the ecosystem.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "NONNEGATIVE_CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "state"
+    },
+    {
+      "symbol": "male_ratio",
+      "definition": "Male fraction of adult sea lampreys produced under the sex-determination response to larval food availability E.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "female_ratio",
+      "definition": "Female fraction of adult sea lampreys, equal to one minus the male fraction.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "juv_capacity",
+      "definition": "Effective larval carrying capacity as a linear function of the normalized larval-food index E.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "NONNEGATIVE_CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "dJ_dt",
+      "definition": "Time derivative of larval lamprey abundance in the coupled ordinary differential equation model.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "dA_dt",
+      "definition": "Time derivative of adult lamprey abundance.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "dF_dt",
+      "definition": "Time derivative of fish host abundance.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "dP_dt",
+      "definition": "Time derivative of the non-lamprey parasite abundance.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "fixed_male_ratio",
+      "definition": "Fixed comparator male fraction, defined as the midpoint of the two approximate anchors.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "jac_JJ",
+      "definition": "Jacobian partial derivative of dJ_dt with respect to J.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "jac_JA",
+      "definition": "Jacobian partial derivative of dJ_dt with respect to A.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "jac_AJ",
+      "definition": "Jacobian partial derivative of dA_dt with respect to J.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "jac_AA",
+      "definition": "Jacobian partial derivative of dA_dt with respect to A.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "jac_FA",
+      "definition": "Jacobian partial derivative of dF_dt with respect to A.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "jac_FF",
+      "definition": "Jacobian partial derivative of dF_dt with respect to F.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "jac_PA",
+      "definition": "Jacobian partial derivative of dP_dt with respect to A.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "jac_PF",
+      "definition": "Jacobian partial derivative of dP_dt with respect to F.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "jac_PP",
+      "definition": "Jacobian partial derivative of dP_dt with respect to P.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "trace_JA",
+      "definition": "Trace of the larva-adult Jacobian block.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "det_JA",
+      "definition": "Determinant of the larva-adult Jacobian block.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "disc_JA",
+      "definition": "Nonnegative discriminant of the real larva-adult eigenvalue pair.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "NONNEGATIVE_CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "lambda_JA_plus",
+      "definition": "Larger larva-adult eigenvalue.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "lambda_JA_minus",
+      "definition": "Smaller larva-adult eigenvalue.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "lambda_F",
+      "definition": "Fish-direction eigenvalue of the block-triangular Jacobian.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "lambda_P",
+      "definition": "Parasite-direction eigenvalue of the block-triangular Jacobian.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "dominant_real_part",
+      "definition": "Maximum real part among the four explicitly derived real Jacobian eigenvalues.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "equilibrium_residual_sq",
+      "definition": "Squared Euclidean norm of the four ODE derivatives at the evaluated state.",
+      "unit": "normalized dimensionless scalar",
+      "domain": "NONNEGATIVE_CONTINUOUS",
+      "source_status": "DERIVATION",
+      "kind": "derived"
+    },
+    {
+      "symbol": "sex_ratio_shape",
+      "definition": "Exponent controlling the shape of the male-fraction response curve between the two observed endpoint values. Baseline 1 corresponds to a linear decrease from 78% to 56% male across the normalized food index.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "cap_min",
+      "definition": "Larval carrying-capacity intercept at E=0, i.e. at the low-food endpoint.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "cap_slope",
+      "definition": "Increase in normalized larval carrying capacity per unit increase in E.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "birth_coef",
+      "definition": "Per-female adult lamprey recruitment coefficient under the dimensionless baseline.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "maturation",
+      "definition": "Maturation rate of larvae into the adult parasitic phase.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "mort_larva",
+      "definition": "Natural mortality rate of larval sea lampreys.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "mort_adult",
+      "definition": "Mortality rate of adult parasitic-phase sea lampreys.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "fish_growth",
+      "definition": "Intrinsic growth rate of the fish-host population.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "fish_capacity",
+      "definition": "Carrying capacity of the fish-host population in dimensionless units.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "attack_rate",
+      "definition": "Per-adult-lamprey attack/mortality rate on the fish-host population.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "parasite_growth",
+      "definition": "Intrinsic growth rate of the representative non-lamprey parasite population.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "parasite_capacity",
+      "definition": "Carrying capacity of the representative parasite population in the absence of fish subsidy.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "fish_benefit_par",
+      "definition": "Per-unit fish abundance added growth contribution to the parasite population.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "lamprey_cost_par",
+      "definition": "Per-adult-lamprey negative interaction on non-lamprey fish parasites, representing host depletion by lamprey feeding.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "adaptation_weight",
+      "definition": "Mechanism switch: 1 uses the resource-adaptive sex ratio and 0 uses the fixed comparator.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "ASSUMPTION",
+      "kind": "parameter"
+    },
+    {
+      "symbol": "sex_low",
+      "definition": "Observed approximate male fraction under low larval food availability.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "DATA",
+      "kind": "constant"
+    },
+    {
+      "symbol": "sex_high",
+      "definition": "Observed approximate male fraction under high larval food availability.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "DATA",
+      "kind": "constant"
+    },
+    {
+      "symbol": "J0",
+      "definition": "J component of the derived positive reference equilibrium at E_ref.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "DERIVATION",
+      "kind": "constant"
+    },
+    {
+      "symbol": "A0",
+      "definition": "A component of the derived positive reference equilibrium at E_ref.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "DERIVATION",
+      "kind": "constant"
+    },
+    {
+      "symbol": "F0",
+      "definition": "F component of the derived positive reference equilibrium at E_ref.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "DERIVATION",
+      "kind": "constant"
+    },
+    {
+      "symbol": "P0",
+      "definition": "P component of the derived positive reference equilibrium at E_ref.",
+      "unit": "normalized dimensionless scalar",
+      "domain": null,
+      "source_status": "DERIVATION",
+      "kind": "constant"
+    }
+  ],
+  "derived_metric_contract": [
+    "state minimum and final value from raw trajectory series",
+    "formal sex-ratio scalar",
+    "squared equilibrium residual",
+    "four Jacobian eigenvalues",
+    "dominant real part"
+  ],
+  "unresolved_obligations": []
+}

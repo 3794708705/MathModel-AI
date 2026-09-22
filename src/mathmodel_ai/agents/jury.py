@@ -67,7 +67,14 @@ class ModelJury(BaseAgent[ModelJuryInput, ModelSelection]):
             metadata={"agent": self.name, "prompt_version": prompt.version},
         )
         response = await provider.structured_generate(request, JuryAssessment)
-        selection = build_model_selection(input_data.candidates, response.parsed, self._weights)
+        selection = build_model_selection(
+            input_data.candidates,
+            response.parsed,
+            self._weights,
+            required_subproblem_ids={
+                item.subproblem_id for item in input_data.analysis.subproblems
+            },
+        )
         return AgentExecution(
             output=selection,
             response=response.response,

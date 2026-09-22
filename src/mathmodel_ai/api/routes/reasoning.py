@@ -17,7 +17,7 @@ from mathmodel_ai.reasoning.repository import ReasoningRepository
 from mathmodel_ai.reasoning.workflow import ReasoningWorkflow
 from mathmodel_ai.schemas.model_selection import ModelCandidate, ModelSelection
 from mathmodel_ai.schemas.problem_analysis import ProblemAnalysis
-from mathmodel_ai.schemas.problem_state import ProblemState
+from mathmodel_ai.schemas.problem_state import ProblemState, ProjectSummary
 
 router = APIRouter(prefix="/api/v1/projects", tags=["reasoning"])
 
@@ -32,6 +32,18 @@ def _services(request: Request) -> tuple[ReasoningRepository, ReasoningWorkflow]
 def create_project(payload: ProjectProblemCreateRequest, request: Request) -> ProblemState:
     repository, _ = _services(request)
     return repository.create_project_problem(**payload.model_dump())
+
+
+@router.get("", response_model=list[ProjectSummary])
+def list_projects(request: Request) -> list[ProjectSummary]:
+    repository, _ = _services(request)
+    return repository.list_current_projects()
+
+
+@router.get("/{project_id}", response_model=ProblemState)
+def get_project(project_id: UUID, request: Request) -> ProblemState:
+    repository, _ = _services(request)
+    return repository.load_current(project_id)
 
 
 @router.post("/{project_id}/problem/analyze", response_model=ProblemAnalysisStageResponse)

@@ -26,7 +26,10 @@ from mathmodel_ai.schemas.execution import (
 )
 from mathmodel_ai.schemas.mathematical import (
     BaseDimension,
+    ConstantDefinition,
+    ExpressionKind,
     IndexDefinition,
+    MathExpression,
     ParameterDefinition,
     ParameterSourceType,
     SetDefinition,
@@ -58,6 +61,49 @@ def test_mathematical_model_round_trips_with_typed_expression_tree() -> None:
     assert restored.objective is not None
     assert restored.objective.expression.operands[0].kind.value == "MULTIPLY"
     assert restored.version == 1
+
+
+def test_constant_identity_and_equation_dependency_namespaces_remain_distinct() -> None:
+    constant = ConstantDefinition(
+        parameter_id="CONST-scale",
+        symbol="scale",
+        description="A dimensionless normalization constant",
+        value=1,
+        unit=UnitExpression(),
+        source_type=ParameterSourceType.DERIVATION,
+        source_ref="EVID-fact-1",
+        confidence=1,
+    )
+    model = lp_model().model_copy(update={"constants": [constant]})
+    assert SymbolRegistry.from_model(model).lookup("scale") is not None
+    assert ParameterRegistry.from_model(model).lookup("scale") == constant
+    assert EquationRegistry.from_model(model).report.valid
+
+    wrong_fields = constant.model_dump()
+    wrong_fields["constant_id"] = wrong_fields.pop("parameter_id")
+    with pytest.raises(ValidationError) as error:
+        ConstantDefinition.model_validate(wrong_fields)
+    assert {item["type"] for item in error.value.errors()} == {"extra_forbidden", "missing"}
+
+    bad_equation = model.equations[0].model_copy(
+        update={"dependency_refs": [constant.parameter_id]}
+    )
+    invalid = model.model_copy(update={"equations": [bad_equation, *model.equations[1:]]})
+    report = EquationRegistry.from_model(invalid).report
+    assert not report.valid
+    assert any(
+        issue.code is RegistryIssueCode.UNDEFINED_EQUATION_DEPENDENCY
+        and issue.reference == "CONST-scale"
+        for issue in report.issues
+    )
+    valid_equation = bad_equation.model_copy(
+        update={
+            "parameter_refs": [constant.parameter_id],
+            "dependency_refs": [model.equations[1].equation_id],
+        }
+    )
+    repaired = model.model_copy(update={"equations": [valid_equation, *model.equations[1:]]})
+    assert EquationRegistry.from_model(repaired).report.valid
 
 
 def test_symbol_registry_detects_undefined_and_parameter_variable_conflict() -> None:
@@ -225,6 +271,25 @@ def test_unit_checker_returns_unknown_for_unrecognized_custom_unit() -> None:
 
     assert report.status is UnitCheckStatus.UNKNOWN
     assert any("UNIT_CHECK_REQUIRED" in issue.message for issue in report.issues)
+
+
+def test_dimensionless_base_accepts_dimensionless_variable_exponent() -> None:
+    model = lp_model()
+    expression = MathExpression(
+        kind=ExpressionKind.POWER,
+        operands=[symbol("x"), symbol("y")],
+    )
+    assert model.objective is not None
+    objective = model.objective.model_copy(update={"expression": expression})
+    equation = model.equations[0].model_copy(update={"lhs": expression, "rhs": expression})
+    powered = model.model_copy(
+        update={"objective": objective, "equations": [equation, *model.equations[1:]]}
+    )
+
+    report = UnitChecker(SymbolRegistry.from_model(powered)).check_model(powered)
+
+    assert report.status is UnitCheckStatus.PASS
+    assert report.issues == []
 
 
 def test_model_gate_accepts_valid_lp_and_rejects_required_failures() -> None:

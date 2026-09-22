@@ -15,8 +15,29 @@ perturb-and-resolve experiments, configurable robustness methods, structured
 adversarial review, and a three-cycle immutable model-repair loop. Phase 6 adds
 verified-evidence snapshots, claim/evidence graphs, retrieved literature and
 two-stage citation checks, Paper IR, document/asset registries, deterministic
-LaTeX/BibTeX rendering, and sandboxed real PDF compilation. SQLite is used for database-independent tests;
+LaTeX/BibTeX rendering, and sandboxed real PDF compilation. Phase 7 adds
+versioned competition profiles, deterministic Final Jury/submission checks, and
+hash-frozen packages. Phase 8 adds a separate benchmark audit plane with blind
+official inputs, immutable attempts, atomic metrics/failures/interventions,
+deterministic score recomputation, and report generation. SQLite is used for database-independent tests;
 PostgreSQL remains the production contract and migration target.
+
+Phase 8.1 replaces brand-bound routing with a persisted provider/model registry.
+An Agent selects a stable `ModelProfile`; runtime then binds its
+`ProviderEndpoint` to a native, OpenAI-compatible, or constrained custom-JSON
+adapter. Endpoint health, capability evidence, trust, and model identity remain
+separate claims. A route binds the exact task, provider/model configurations, and
+atomic capability probe; an execution guard revalidates those bindings before
+every outbound call. Outbound HTTP connects to the validated resolved address
+with the configured hostname retained for Host/SNI.
+
+Phase 8.2 adds a separate React/Vite presentation boundary. The Web UI consumes
+generated OpenAPI types and calls coarse backend workflow endpoints; it does not
+call Agents in sequence or derive readiness. Additive read adapters expose the
+existing project, Agent catalog, benchmark, and provider evidence. The only new
+write boundary outside existing registry APIs is the encrypted credential
+bridge. Runtime default-model persistence remains a Router preference and still
+passes every existing hard filter.
 
 ## Boundaries
 
@@ -25,6 +46,11 @@ API -> reasoning workflow -> agent -> model router -> provider adapter
                       |          \-> versioned structured prompt
                       \-> deterministic quality/scoring -> ProblemState revision
                                                    \-> PostgreSQL audit evidence
+
+Agent -> TaskProfile -> ModelRouter -> ModelProfile -> ProviderEndpoint
+                         |                   \-> protocol adapter -> remote API
+                         \-> task/config/probe digests -> execution guard
+                                                    \-> registry audit evidence
 
 upload API -> body limit -> validator -> immutable file store -> parser
                                                     |          \-> artifacts
@@ -50,6 +76,12 @@ SOLVE -> IndependentValidator -> VALIDATE gate -> Sensitivity experiments
                        -> SOLVE -> VALIDATE -> SENSITIVITY -> ROBUSTNESS
                        -> RED_TEAM (maximum three automatic repair cycles)
 
+verified raw result artifact -> versioned MetricSpec calculators -> independent values
+                            -> reviewed ScenarioSpec -> fresh isolated execution
+                            -> physical artifact/code/input hash re-audit
+                            -> independent verification AND gate -> benchmark evaluator
+                            (missing reviewed case policy remains NOT_READY)
+
 verified_result_id -> EvidenceBuilder -> Claim/Evidence graph -> PaperAgent
                   -> Paper IR + registries -> deterministic factual gates
                   -> LaTeX/BibTeX -> restricted PDFCompiler -> manifest
@@ -60,12 +92,23 @@ explicit paper/profile versions -> RuleEngine + RequirementCoverageValidator
                   -> SubmissionCheck -> SubmissionFreeze
                   -> canonical manifest + deterministic ZIP -> FROZEN
                   -> rehash/re-open verification; changed bytes -> DIRTY
+
+official manifest + VERIFIED profile -> blind solve bundle -> Phase 1-7 project
+                  -> atomic benchmark records -> deterministic evaluator
+                  -> JSON/Markdown report -> SELF_TEST_READY or NOT_READY
+                  (evaluation resources never enter the solve bundle)
+
+browser -> typed API client -> FastAPI workflow/registry adapters
+                               |-> ModelRouter hard filters remain authoritative
+                               `-> encrypted credential write -> credential_ref
 ```
 
 - `api`: transport concerns and health reporting only.
 - `schemas`: durable domain and orchestration contracts.
 - `routing`: deterministic task classification and model-level selection.
-- `providers`: the only code allowed to know vendor HTTP shapes.
+- `providers`: native/compatible protocol adapters, secret resolution, endpoint
+  security, capability probing, and provider/model registry repositories. This
+  is the only code allowed to know vendor HTTP shapes.
 - `agents`: shared execution, validation, retry, and audit behavior.
 - `reasoning`: state transitions, prompt registry, deduplication, gates,
   deterministic scoring, orchestration, and repository boundary.
@@ -92,6 +135,14 @@ explicit paper/profile versions -> RuleEngine + RequirementCoverageValidator
   artifact allow-listing, canonical digest-linked manifests, deterministic ZIP
   construction, archive/security rechecks, idempotent freeze coordination, and
   current-chain plus post-freeze integrity verification.
+- `benchmark`: official manifest/profile binding, host-allowlisted and hash-
+  pinned source materialization, blind solve/evaluation isolation, Phase 1-7
+  orchestration, immutable run/attempt records, atomic metrics/failures/human
+  interventions, budget gates, deterministic score/acceptance recomputation,
+  report redaction/rendering, and the minimal benchmark API.
+- `frontend`: React Router pages, TanStack Query server-state handling, generated
+  OpenAPI types, and plain-text rendering. It owns no workflow, routing, probe,
+  verification, benchmark, or readiness rule.
 - `db`: persistence mapping and sessions; no reasoning logic.
 
 External model calls happen outside database transactions. A successful stage
@@ -123,6 +174,24 @@ Phase 7 adds `competition_profiles`, `competition_rules`,
 relationally retained while immutable package bytes remain in the file store.
 Profile, Jury, check, artifact-set, and snapshot digests are also stored in
 separate indexed columns so JSON/scalar disagreement is detected on read.
+Phase 8 adds `benchmark_runs`, `benchmark_attempts`,
+`benchmark_case_results`, `benchmark_metrics`, `benchmark_failures`, and
+`benchmark_human_interventions`. Run identity binds the baseline commit plus a
+digest of tracked differences and untracked non-ignored source files, so a
+formal run cannot misattribute an uncommitted Phase 8 tree to the Phase 7
+commit. Terminal attempts and runs are immutable; reports are rebuilt from
+atomic records rather than persisted totals.
+Phase 8.1 adds `provider_endpoints`, `model_profiles`,
+`capability_probe_runs`, and `agent_route_policies`, plus exact nullable
+provider/model trace columns on historical AgentRun and BenchmarkRun records.
+Only credential references are persisted. Configuration digests exclude
+runtime health, timestamps, observed probe output, and secret values; each
+atomic probe has its own digest, binds both configuration digests, and becomes
+stale when configuration changes. Credentials are late-bound per request, while
+AgentRun stores configured and provider-reported remote identities separately.
+Phase 8.2 adds `encrypted_secrets` only. AES-GCM ciphertext and nonce are stored
+under an opaque secret ID; the master key remains server environment state and
+ProviderEndpoint continues to persist only `credential_ref`.
 
 ## Technical debt
 
@@ -135,8 +204,18 @@ nonlinear global optimization, or every reserved model family. Gurobi requires a
 separate licensed runtime. Bootstrap remains blocked without row-level
 data-to-parameter resampling. Crossref is the first live literature adapter;
 additional scholarly sources and orphaned file-artifact cleanup remain future
-work. The generic Phase 7 profile is test-only; no real competition ruleset has
-yet been verified. Historical competition profiles and benchmarking are Phase 8.
+work. The ordinary Phase 7 API profile remains test-only, while Phase 8 owns an
+isolated verified historical COMAP 2024 profile. That profile does not establish
+compliance with current rules. Phase 8 now has accepted real DeepSeek evidence
+and generated Case A solver executions, but no independent benchmark evaluator,
+automatic benchmark crash/resume or asynchronous human-cancel coordinator, or
+live case paper/package artifacts; its formal status remains `NOT_READY`.
+The latest Case A model is a dynamic, no-objective system. Phase 5 currently
+summarizes scalar optimization objectives and routes perturbations through
+deterministic adapters; it does not yet provide generated dynamic-program
+scenario replay, typed trajectory/equilibrium metrics, or independent Jacobian
+stability/empirical checks. Those gaps must not be disguised as bounds checks,
+fixed by inventing an objective, or bypassed by deleting scientific requirements.
 Phase 7 also intentionally lacks an automatic code-reproduction executor; a
 profile requiring it is fail-closed to human review rather than accepted from
 README claims or a Mock run.

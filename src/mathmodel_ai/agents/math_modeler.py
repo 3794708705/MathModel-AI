@@ -1,6 +1,8 @@
 import json
 
 from mathmodel_ai.agents.base import AgentExecution, BaseAgent
+from mathmodel_ai.core.errors import QualityGateError
+from mathmodel_ai.mathematical.quality_gates import model_quality_gate
 from mathmodel_ai.providers.base import BaseModelProvider
 from mathmodel_ai.providers.factory import ProviderRegistry
 from mathmodel_ai.providers.schemas import GenerationRequest, ModelMessage
@@ -14,9 +16,12 @@ from mathmodel_ai.schemas.mathematical import (
     MathModelerInput,
 )
 from mathmodel_ai.schemas.problem_state import ProblemState
+from mathmodel_ai.schemas.quality import QualityGateStatus
 
 
 class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):
+    """Build an executable, source-typed model without inventing empirical calibration."""
+
     name = "math_modeler"
     role = "structured solver-independent mathematical model construction"
     capabilities = frozenset(
@@ -36,6 +41,38 @@ class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):
         super().__init__(router=router, providers=providers, max_retries=max_retries)
         self._prompts = prompts
 
+    def prepare_attempt_input(
+        self,
+        input_data: MathModelerInput,
+        state: ProblemState,
+        previous_errors: tuple[str, ...],
+    ) -> MathModelerInput:
+        if not previous_errors:
+            return input_data
+        feedback = previous_errors[-1][:4096]
+        return input_data.model_copy(
+            update={
+                "user_guidance": [
+                    *input_data.user_guidance,
+                    (
+                        "AUTOMATED_RETRY_FEEDBACK: The previous draft was rejected. "
+                        "Correct every listed issue without weakening or bypassing the "
+                        f"deterministic gates: {feedback}"
+                    ),
+                ]
+            }
+        )
+
+    def validate_output_for_state(
+        self,
+        output: MathematicalModel,
+        state: ProblemState,
+    ) -> MathematicalModel:
+        gate = model_quality_gate(output, state)
+        if gate.status is not QualityGateStatus.PASS:
+            raise QualityGateError(f"MODEL quality gate rejected output: {', '.join(gate.errors)}")
+        return output
+
     async def execute(
         self,
         input_data: MathModelerInput,
@@ -47,6 +84,9 @@ class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):
         request = GenerationRequest(
             model=route.selected_model or "unselected",
             reasoning_effort=route.selected_reasoning,
+            # The schema is intentionally rich and reasoning tokens count toward
+            # OpenAI-compatible max_tokens on providers such as DeepSeek.
+            max_output_tokens=65_536,
             messages=[
                 ModelMessage(role="system", content=prompt.system),
                 ModelMessage(

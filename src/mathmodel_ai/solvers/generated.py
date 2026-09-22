@@ -5,6 +5,8 @@ import math
 import re
 from typing import Any
 
+from pydantic import ValidationError
+
 from mathmodel_ai.core.errors import DependencyUnavailableError, SandboxError
 from mathmodel_ai.files.storage import FileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
@@ -88,7 +90,9 @@ class GeneratedProgramExecutor:
             else GeneratedProgramStatus.FAILED
         )
         finalized = program.model_copy(update={"files": finalized_files, "status": program_status})
-        payload = self._result_payload(execution.record.status, execution.artifact_records)
+        payload, payload_error = self._result_payload(
+            execution.record.status, execution.artifact_records
+        )
         if payload is None:
             result_status = (
                 SolverStatus.TIME_LIMIT
@@ -101,6 +105,7 @@ class GeneratedProgramExecutor:
                     status=result_status,
                     runtime_seconds=execution.record.runtime_seconds,
                     message=execution.record.error
+                    or payload_error
                     or "generated program produced no valid result.json",
                     raw_status=execution.record.status.value,
                     execution_record_id=execution.record.run_id,
@@ -213,17 +218,25 @@ class GeneratedProgramExecutor:
         self,
         status: ExecutionStatus,
         artifacts: list[Any],
-    ) -> GeneratedResultPayload | None:
+    ) -> tuple[GeneratedResultPayload | None, str | None]:
         if status is not ExecutionStatus.SUCCEEDED:
-            return None
+            return None, None
         artifact = next((item for item in artifacts if item.name == "result.json"), None)
         if artifact is None:
-            return None
+            return None, "generated program did not produce /output/result.json"
         try:
             data: Any = json.loads(self._store.read_bytes(artifact.storage_key).decode("utf-8"))
-            return GeneratedResultPayload.model_validate(data)
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
-            return None
+            return GeneratedResultPayload.model_validate(data), None
+        except ValidationError as exc:
+            details = "; ".join(
+                f"{'.'.join(str(part) for part in item['loc'])}: {item['msg']}"
+                for item in exc.errors(include_url=False, include_context=False)
+            )
+            return None, f"generated result.json failed schema validation: {details[:2000]}"
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None, "generated result.json is not valid UTF-8 JSON"
+        except ValueError as exc:
+            return None, f"generated result.json could not be read ({type(exc).__name__})"
 
     @staticmethod
     def _declared_solver(program: GeneratedProgram) -> SolverName:

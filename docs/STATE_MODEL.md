@@ -14,6 +14,14 @@ primary/backup selection, decision evidence, quality gates, and stage history.
 Phase 7 appends compact `SubmissionSummaryRef` values that pin the profile
 version, approved paper version, formal verified result, manifest hash, package
 hash, and status. Full jury/check/package records stay in their registries.
+Phase 8 does not add private benchmark truth to a single project state. A
+`BenchmarkRun` spans multiple projects and binds each terminal `ProblemState`
+through its `BenchmarkAttempt.project_id`; benchmark identity, metrics, failures,
+and interventions live in a separate immutable audit registry.
+Phase 8.1 likewise keeps ProviderEndpoint, ModelProfile, capability probes, and
+Agent route policies outside `ProblemState`. State revisions refer to AgentRun
+evidence; each run snapshots the exact provider/model IDs and configuration
+digests so a later registry change cannot rewrite project history.
 
 Every traceable statement is classified as `FACT`, `DATA`, `ASSUMPTION`,
 `DERIVATION`, `RESULT`, or `EXTERNAL_EVIDENCE`. Verification status defaults to
@@ -38,6 +46,18 @@ PAPER -> FINAL_JURY -> SUBMISSION -> FINAL
                     | correction/recheck
                     `------------> PAPER
 ```
+
+The complete product lifecycle is therefore logically:
+
+```text
+INGEST -> UNDERSTAND -> DATA -> EXPLORE -> SELECT -> MODEL -> SOLVE
+       -> VALIDATE -> SENSITIVITY -> ROBUSTNESS -> RED_TEAM -> REPAIR
+       -> PAPER -> FINAL_JURY -> SUBMISSION -> BENCHMARK
+```
+
+`BENCHMARK` is an outer audit stage, not a value written into every
+`ProblemState.current_stage`: one run evaluates three or more independently
+versioned projects and must not rewrite their frozen Phase 7 histories.
 
 The MODEL revision stores a model record ID plus stable `model_id` and `version`.
 An accepted repair creates `v2`; it does not overwrite `v1`. The reference also
@@ -96,7 +116,10 @@ literature and citation checks, paper versions, document IDs, figure/table
 hashes, and paper artifact manifests. Phase 7 registries preserve versioned rule
 provenance, requirement mappings, jury findings, deterministic check inputs,
 frozen snapshots, source artifact hashes, manifests, packages, and correction
-scopes.
+scopes. Phase 8 registries preserve run configuration/source-tree identity,
+every formal attempt, case result links, atomic metrics, failures, and human
+interventions. A deterministic report rebuild verifies each digest and
+recalculates scores/statuses; no `latest result` shortcut is used.
 
 The Phase 3 sub-workflow is ordered independently of the main reasoning stage:
 

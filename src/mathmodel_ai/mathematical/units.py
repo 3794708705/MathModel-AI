@@ -260,6 +260,15 @@ class UnitChecker:
         if expression.kind is ExpressionKind.POWER:
             exponent_expression = expression.operands[1]
             if (
+                operands[0].unit.is_known
+                and not operands[0].unit.dimensions
+                and operands[1].unit.is_known
+                and not operands[1].unit.dimensions
+            ):
+                return _ExpressionUnit(
+                    UnitExpression(), self._status_from_issues(list(issues)), issues
+                )
+            if (
                 exponent_expression.kind is not ExpressionKind.CONSTANT
                 or exponent_expression.value is None
                 or not exponent_expression.value.is_integer()

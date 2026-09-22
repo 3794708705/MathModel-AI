@@ -1,17 +1,20 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from mathmodel_ai.agents import AgentRunStatus, CodeAgent, MathModeler
 from mathmodel_ai.core.config import Settings
 from mathmodel_ai.mathematical.algorithms import AlgorithmSelector
 from mathmodel_ai.providers.factory import ProviderRegistry
 from mathmodel_ai.providers.mock import MockProvider
+from mathmodel_ai.providers.schemas import GenerationRequest, ModelResponse
 from mathmodel_ai.reasoning.prompts import PromptRegistry
 from mathmodel_ai.routing.router import ModelRouter
 from mathmodel_ai.routing.schemas import EscalationLevel, TaskProfile, TaskType
 from mathmodel_ai.schemas.mathematical import (
     ConvexityStatus,
+    MathematicalModel,
     MathematicalModelDraft,
     MathModelerInput,
     VariableDomain,
@@ -20,6 +23,18 @@ from mathmodel_ai.schemas.model_selection import ModelFamily
 from mathmodel_ai.schemas.program import CodeAgentInput, GeneratedProgramDraft, GeneratedSourceFile
 from mathmodel_ai.schemas.solver import AlgorithmFamily, SolverFamily
 from tests.mathematical.helpers import lp_model, milp_model, nlp_model, selected_state
+
+
+class RecordingMockProvider(MockProvider):
+    def __init__(self, responses: list[str]) -> None:
+        super().__init__(responses)
+        self.last_request: GenerationRequest | None = None
+        self.requests: list[GenerationRequest] = []
+
+    async def generate(self, request: GenerationRequest) -> ModelResponse:
+        self.last_request = request
+        self.requests.append(request)
+        return await super().generate(request)
 
 
 def _agent_services(mock: MockProvider) -> dict[str, object]:
@@ -163,7 +178,7 @@ async def test_math_modeler_binds_identity_and_audits_xhigh_mock_route() -> None
             }
         )
     )
-    mock = MockProvider([draft.model_dump_json()])
+    mock = RecordingMockProvider([draft.model_dump_json()])
     agent = MathModeler(**_agent_services(mock))  # type: ignore[arg-type]
     assigned_model_id = template.model_id
 
@@ -186,9 +201,62 @@ async def test_math_modeler_binds_identity_and_audits_xhigh_mock_route() -> None
     assert run.output.model_id == assigned_model_id
     assert run.output.project_id == state.project_id
     assert run.output.source_selected_model_id == "CAND-lp"
-    assert run.prompt_version == "4.0.0"
+    assert run.prompt_version == "4.3.0"
+    assert mock.last_request is not None
+    assert mock.last_request.max_output_tokens == 65_536
     assert run.routes[0].level is EscalationLevel.FLAGSHIP_XHIGH
     assert run.is_mock is True
+
+
+@pytest.mark.asyncio
+async def test_math_modeler_retries_state_gate_with_deterministic_feedback() -> None:
+    state = selected_state()
+    template = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    invalid = template.model_copy(update={"decision_variables": []})
+
+    def draft_json(model: MathematicalModel) -> str:
+        payload = model.model_dump(
+            exclude={
+                "model_id",
+                "project_id",
+                "problem_id",
+                "version",
+                "source_selected_model_id",
+                "status",
+            }
+        )
+        return MathematicalModelDraft.model_validate(payload).model_dump_json()
+
+    mock = RecordingMockProvider([draft_json(invalid), draft_json(template)])
+    services = _agent_services(mock)
+    services["max_retries"] = 1
+    agent = MathModeler(**services)  # type: ignore[arg-type]
+
+    run = await agent.run(
+        MathModelerInput(
+            assigned_model_id=template.model_id,
+            assigned_version=1,
+            selected_model=state.selected_model,
+            problem_analysis=state.problem_analysis,
+        ),
+        state,
+        TaskProfile(
+            task_type=TaskType.MATHEMATICAL_MODELING,
+            minimum_level=EscalationLevel.FLAGSHIP_XHIGH,
+        ),
+    )
+
+    assert run.status is AgentRunStatus.SUCCEEDED
+    assert run.attempts == 2
+    assert any("MODEL_GATE_FAIL:decision_variables_present" in item for item in run.errors)
+    assert len(mock.requests) == 2
+    retry_prompt = mock.requests[1].messages[-1].content
+    assert "AUTOMATED_RETRY_FEEDBACK" in retry_prompt
+    assert "MODEL_GATE_FAIL:decision_variables_present" in retry_prompt
 
 
 @pytest.mark.asyncio
@@ -216,7 +284,7 @@ async def test_code_agent_generates_hashed_program_without_changing_model() -> N
         solver_target="custom",
         explanation="Runtime computation fixture.",
     )
-    mock = MockProvider([draft.model_dump_json()])
+    mock = RecordingMockProvider([draft.model_dump_json()])
     agent = CodeAgent(**_agent_services(mock))  # type: ignore[arg-type]
 
     run = await agent.run(
@@ -231,6 +299,7 @@ async def test_code_agent_generates_hashed_program_without_changing_model() -> N
     assert run.output.files[0].sha256 is not None
     assert len(run.output.code_hash) == 64
     assert run.output.is_mock is True
+    assert '"title":"GeneratedResultPayload"' in mock.requests[0].messages[-1].content
 
 
 @pytest.mark.asyncio
@@ -264,8 +333,21 @@ async def test_code_agent_blocks_obvious_hardcoded_result() -> None:
     assert any("CODE_GENERATION_BLOCKED" in error for error in run.errors)
 
 
+def test_generated_program_rejects_solver_target_larger_than_database_contract() -> None:
+    with pytest.raises(ValidationError, match="String should have at most 64 characters"):
+        GeneratedProgramDraft(
+            entrypoint="solve.py",
+            files=[GeneratedSourceFile(path="solve.py", content="print('ok')")],
+            solver_target="x" * 65,
+            explanation="Invalid persistence contract fixture.",
+        )
+
+
 def test_versioned_prompt_resources_exist() -> None:
     prompts = PromptRegistry()
-    assert prompts.get("math_modeler").version == "4.0.0"
-    assert prompts.get("code_agent").version == "4.0.0"
+    assert prompts.get("math_modeler").version == "4.3.0"
+    assert prompts.get("code_agent").version == "4.4.0"
+    assert (
+        "must report every MathematicalModel decision variable" in prompts.get("code_agent").system
+    )
     assert Path("src/mathmodel_ai/prompt_templates/math_modeler.prompt").is_file()

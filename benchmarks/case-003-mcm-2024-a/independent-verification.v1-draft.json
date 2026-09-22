@@ -1,0 +1,267 @@
+{
+  "benchmark_id": "BENCH-MCM2024-A",
+  "policy_version": "1-draft",
+  "review_status": "DRAFT",
+  "production_eligible": false,
+  "content_digest": "650560edde518156a05ed31b2b60357fd06826a60f60008b5c31ae174beb9384",
+  "content_digest_algorithm": "sha256 of canonical JSON with content_digest omitted (UTF-8, sorted keys, compact separators, allow_nan=false)",
+  "stop_reason": "MISSING_REVIEWED_REQUIREMENTS",
+  "source_bindings": {
+    "manifest_digest": "5e4180fb7f37533508b38894272a116c3e43bdf489bfc5da55777c87f455038b",
+    "problem_resource_id": "RESOURCE-A-PROBLEM",
+    "problem_artifact_sha256": "3c69f8f3b56c9aeebc6ff45ab70b4e97f68ca7bd779923edab16ac61e36ce75a",
+    "source_attempt_id": "1dd1e43e-99fd-4a6a-8332-81dde7b15a69",
+    "source_project_id": "0b8553b8-9119-46a2-ba0b-92ecb23d6d90",
+    "source_problem_id": "5e9c811f-f486-4280-896e-1ff424fe3c60",
+    "source_model_id": "2e44497b-4f85-4bb6-a136-561d7a210a51",
+    "source_model_version": 1,
+    "source_model_digest": "3334b664351b303aa89a0fd5e6efb2eec8862df18b579dab9f07268feb0c63cf",
+    "source_result_id": "02f16f72-274a-458a-8fdc-9b054c04c2f1",
+    "invalid_if_model_digest_changes": true
+  },
+  "scientific_scope": "Verify the resource-dependent sea-lamprey sex-ratio identities, formal variable domains, coupled ecosystem dynamics, fixed-versus-adaptive scenario conclusions, stability claims, sensitivity claims, robustness claims, and any critical numerical claims before Case A evidence can enter a paper.",
+  "fact_assumption_derivation_separation": {
+    "FACT": [
+      "Sea-lamprey sex depends on larval growth conditions and food availability.",
+      "The problem asks about the larger ecosystem, lamprey advantages and disadvantages, ecosystem stability, and effects on other organisms."
+    ],
+    "DATA": [
+      "The male fraction is approximately 0.78 under low food availability.",
+      "The male fraction is approximately 0.56 under high food availability."
+    ],
+    "ASSUMPTION": [
+      "Food availability is normalized to E in [0,1].",
+      "The response between the two observed endpoints follows a power curve with baseline exponent 1.",
+      "All demographic and interaction coefficients are provisional dimensionless values.",
+      "The parasite state represents a non-lamprey fish-parasite guild.",
+      "Ecosystem stability means local asymptotic stability of a nonnegative equilibrium."
+    ],
+    "DERIVATION": [
+      "male_ratio = sex_low - (sex_low - sex_high) * E^sex_ratio_shape",
+      "female_ratio = 1 - male_ratio",
+      "juv_capacity = cap_min + cap_slope * E",
+      "The four-state ODE right-hand side is defined by EQ-JDYN, EQ-ADYN, EQ-FDYN, and EQ-PDYN."
+    ]
+  },
+  "requirement_inventory": {
+    "A_objective_or_target_quantity": {
+      "status": "NOT_APPLICABLE_OBJECTIVE_UNRESOLVED_TARGETS",
+      "source": "MathematicalModel objective is null; expected outputs are equilibrium, stability, and scenario comparisons.",
+      "formula": null,
+      "inputs": [],
+      "expected_output": "No scalar optimization objective may be reported. Each scientific target needs its own verified metric.",
+      "verification_method": "Confirm objective is null and prevent optimality claims.",
+      "threshold_source": "Exact persisted MathematicalModel identity."
+    },
+    "B_constraints": {
+      "status": "PARTIALLY_REVIEWED",
+      "source": "Formal model contains no explicit constraint objects; E has bounds [0,1] and state domains are nonnegative continuous.",
+      "formula": "0 <= E <= 1 and J,A,F,P >= 0",
+      "inputs": ["E", "J", "A", "F", "P"],
+      "expected_output": "All formal domains pass and maximum bound violation is zero within numerical tolerance.",
+      "verification_method": "IndependentValidator domain and bound recomputation.",
+      "threshold_source": "Formal variable domains; algorithm numerical_tolerance=1e-7 for floating-point comparison."
+    },
+    "C_variable_domains": {
+      "status": "REVIEWED",
+      "source": "MathematicalModel variable declarations.",
+      "formula": "E is continuous on [0,1]; J,A,F,P are nonnegative continuous.",
+      "inputs": ["formal result variable vector"],
+      "expected_output": "All declared variables are present, finite, and satisfy their domains.",
+      "verification_method": "Independent feasibility metric from raw result artifact and exact model.",
+      "threshold_source": "Exact mathematical domains; no scientific threshold."
+    },
+    "D_dynamic_time_series_outputs": {
+      "status": "UNRESOLVED",
+      "source": "EQ-JDYN, EQ-ADYN, EQ-FDYN, EQ-PDYN define derivatives, but the model has no initial_conditions or boundary_conditions.",
+      "formula": "d(J,A,F,P)/dt = (EQ-JDYN, EQ-ADYN, EQ-FDYN, EQ-PDYN)",
+      "inputs": ["initial state", "E", "model parameters", "time interval", "integration tolerances"],
+      "expected_output": "Fresh trajectories with finite values and domain-valid states.",
+      "verification_method": "Isolated solve_ivp replay from formal AST equations.",
+      "threshold_source": "UNRESOLVED: initial state, model time unit, horizon, and sampling grid are absent."
+    },
+    "E_scientific_derived_metrics": {
+      "status": "PARTIALLY_REVIEWED",
+      "source": "Official approximate anchors and formal algebraic equations.",
+      "formula": "male_ratio(0)=sex_low; male_ratio(1)=sex_high; female_ratio=1-male_ratio",
+      "inputs": ["E", "sex_low", "sex_high", "sex_ratio_shape"],
+      "expected_output": "The formal response reproduces its two model anchors and complementary sex fractions.",
+      "verification_method": "Independent AST evaluation at E=0 and E=1.",
+      "threshold_source": "Mathematical identity with floating-point tolerance 1e-7. The observed 0.78/0.56 values remain approximate DATA, not exact ground truth.",
+      "executor_gap": "The current allowlisted MetricKey set cannot select an algebraic scalar variable from RawMetricOutput."
+    },
+    "F_scenario_dependent_conclusions": {
+      "status": "UNRESOLVED",
+      "source": "Case manifest requires fixed-ratio and resource-adaptive scenarios to be compared.",
+      "formula": "Compare J,A,F,P and stability under adaptive male_ratio(E) versus a fixed male ratio.",
+      "inputs": ["adaptive rule", "fixed-ratio control", "E", "initial state", "time horizon"],
+      "expected_output": "Direction and magnitude of lamprey, fish, parasite, and stability differences.",
+      "verification_method": "Fresh isolated executions for each treatment and deterministic comparison.",
+      "threshold_source": "UNRESOLVED: the formal MathematicalModel has no fixed-ratio control parameter or comparator equation. Generated-code-only branches are not formal evidence."
+    },
+    "G_sensitivity_claims": {
+      "status": "UNRESOLVED",
+      "source": "The model explicitly requires sensitivity over every ASSUMP-PARAM coefficient and sex_ratio_shape.",
+      "formula": "Recompute declared outputs under reviewed parameter ranges.",
+      "inputs": ["14 provisional parameters", "reviewed lower and upper values"],
+      "expected_output": "Parameter-output effects with every fresh execution bound to its inputs.",
+      "verification_method": "Scenario replay and deterministic output comparison.",
+      "threshold_source": "UNRESOLVED: no empirical range or explicit modeling range is recorded for any provisional coefficient."
+    },
+    "H_robustness_claims": {
+      "status": "UNRESOLVED",
+      "source": "AMB-3 preserves resilience and persistence interpretations in addition to local stability.",
+      "formula": "Perturb state or input, rerun, and measure recovery or persistence.",
+      "inputs": ["perturbation definition", "recovery horizon", "extinction threshold"],
+      "expected_output": "Recovery/persistence evidence for each claimed robustness statement.",
+      "verification_method": "Fresh trajectory replay from perturbed conditions.",
+      "threshold_source": "UNRESOLVED: perturbation magnitude, recovery criterion, horizon, and extinction threshold are absent."
+    },
+    "I_critical_paper_numerical_claims": {
+      "status": "NOT_YET_APPLICABLE",
+      "source": "No paper was generated for rerun 13.",
+      "formula": null,
+      "inputs": [],
+      "expected_output": "Every future critical number must resolve to a passing independent metric or scenario replay for the exact verified result.",
+      "verification_method": "EvidenceSnapshot and claim graph after verified_result_id exists.",
+      "threshold_source": "Phase 6 evidence rules; no paper claim is pre-approved."
+    }
+  },
+  "reviewed_deterministic_obligations": [
+    {
+      "obligation_id": "CASEA-DOMAIN-001",
+      "status": "REVIEWED",
+      "source_class": "DERIVATION",
+      "source": "Formal MathematicalModel variable declarations",
+      "method": "independent feasible/domain recalculation",
+      "acceptance": "All decision and state variables are present, finite, and satisfy exact declared domains."
+    },
+    {
+      "obligation_id": "CASEA-ANCHOR-001",
+      "status": "REVIEWED_SEMANTICS_EXECUTOR_MISSING",
+      "source_class": "DERIVATION_FROM_DATA_AND_ASSUMPTION",
+      "source": "EQ-SEXRULE with EVID-DATA-1 and EVID-DATA-2",
+      "method": "independent AST evaluation at E=0 and E=1",
+      "acceptance": "The equation reproduces its model anchors within numerical tolerance 1e-7; this does not assert that approximate observations are exact biological truth."
+    },
+    {
+      "obligation_id": "CASEA-DYNAMICS-001",
+      "status": "REVIEWED_SEMANTICS_INPUTS_MISSING",
+      "source_class": "DERIVATION",
+      "source": "EQ-JDYN, EQ-ADYN, EQ-FDYN, EQ-PDYN",
+      "method": "fresh isolated integration from the formal expression AST",
+      "acceptance": "Every replay evaluates the exact persisted equations and emits finite, domain-valid trajectories."
+    }
+  ],
+  "candidate_metric_specs": [
+    {
+      "metric_id": "baseline_domain_feasible",
+      "key": "feasible",
+      "version": "1",
+      "required": true,
+      "absolute_tolerance": 0.0000001,
+      "relative_tolerance": 0.0,
+      "exact": true,
+      "review_status": "REVIEWED"
+    },
+    {
+      "metric_id": "anchor_low_male_ratio",
+      "key": "UNSUPPORTED_ALGEBRAIC_SCALAR",
+      "version": "1",
+      "required": true,
+      "expected": 0.78,
+      "absolute_tolerance": 0.0000001,
+      "relative_tolerance": 0.0,
+      "review_status": "UNRESOLVED_EXECUTOR_BINDING"
+    },
+    {
+      "metric_id": "anchor_high_male_ratio",
+      "key": "UNSUPPORTED_ALGEBRAIC_SCALAR",
+      "version": "1",
+      "required": true,
+      "expected": 0.56,
+      "absolute_tolerance": 0.0000001,
+      "relative_tolerance": 0.0,
+      "review_status": "UNRESOLVED_EXECUTOR_BINDING"
+    }
+  ],
+  "candidate_scenarios": [
+    {
+      "scenario_id": "low_resource_adaptive",
+      "changed_input": "E",
+      "baseline_value": 1.0,
+      "scenario_value": 0.0,
+      "reason": "Official low-food endpoint and one boundary of the formal normalized resource domain.",
+      "expected_invariant": "Formal sex-ratio equation returns its low-food model anchor; trajectories remain finite and domain-valid.",
+      "review_status": "UNRESOLVED_INITIAL_STATE_AND_TIME_GRID"
+    },
+    {
+      "scenario_id": "high_resource_adaptive",
+      "changed_input": "E",
+      "baseline_value": 1.0,
+      "scenario_value": 1.0,
+      "reason": "Official high-food endpoint and one boundary of the formal normalized resource domain.",
+      "expected_invariant": "Formal sex-ratio equation returns its high-food model anchor; trajectories remain finite and domain-valid.",
+      "review_status": "UNRESOLVED_INITIAL_STATE_AND_TIME_GRID"
+    },
+    {
+      "scenario_id": "fixed_ratio_control",
+      "changed_input": "sex-ratio treatment",
+      "baseline_value": "adaptive male_ratio(E)",
+      "scenario_value": "fixed male ratio",
+      "reason": "Required by the Case A benchmark manifest to avoid inferring ecosystem effects from one adaptive trajectory.",
+      "expected_invariant": "Adaptive and fixed treatments use the same remaining model inputs and produce separately bound executions.",
+      "review_status": "UNRESOLVED_FORMAL_MODEL_COMPARATOR_MISSING"
+    }
+  ],
+  "unresolved_obligations": [
+    {
+      "id": "UNRESOLVED-INITIAL-STATE",
+      "blocking": true,
+      "reason": "MathematicalModel.initial_conditions is empty; no evidence-backed initial values exist for J,A,F,P."
+    },
+    {
+      "id": "UNRESOLVED-TIME-SCALE",
+      "blocking": true,
+      "reason": "The dimensionless model has no defined time unit, integration horizon, termination condition, or sampling grid."
+    },
+    {
+      "id": "UNRESOLVED-FIXED-RATIO-CONTROL",
+      "blocking": true,
+      "reason": "The formal model has no parameter/equation for a fixed-ratio treatment; the prior generated program's override is not part of the model digest."
+    },
+    {
+      "id": "UNRESOLVED-STABILITY-METRIC",
+      "blocking": true,
+      "reason": "AMB-3 has no chosen interpretation, and the independent metric registry has no Jacobian/eigenvalue calculator for the formal ODE equilibrium."
+    },
+    {
+      "id": "UNRESOLVED-SENSITIVITY-RANGES",
+      "blocking": true,
+      "reason": "All provisional demographic and interaction coefficients lack reviewed perturbation ranges."
+    },
+    {
+      "id": "UNRESOLVED-RESILIENCE-PERSISTENCE",
+      "blocking": true,
+      "reason": "No sourced perturbation magnitude, recovery criterion, extinction threshold, or evaluation horizon exists."
+    },
+    {
+      "id": "UNRESOLVED-PARASITE-INTERPRETATION",
+      "blocking": true,
+      "reason": "AMB-1 remains HUMAN_REVIEW_RECOMMENDED; the alternative interpretation is required by the model's validation requirements but is not formally parameterized."
+    },
+    {
+      "id": "UNRESOLVED-MODEL-BINDING-FOR-FRESH-RUN",
+      "blocking": true,
+      "reason": "This draft is bound to rerun-13 model digest 3334b664...; a fresh live MathModeler output with another digest invalidates it and requires a new review."
+    }
+  ],
+  "decision": {
+    "reviewed_policy_created": false,
+    "fresh_attempt_authorized_by_policy": false,
+    "can_set_verified_result_id": false,
+    "can_enter_paper": false,
+    "can_start_case_b": false,
+    "can_start_case_c": false
+  }
+}

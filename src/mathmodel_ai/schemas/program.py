@@ -62,7 +62,7 @@ class GeneratedProgramDraft(BaseModel):
     entrypoint: str = Field(min_length=1, max_length=255)
     files: list[GeneratedSourceFile] = Field(min_length=1, max_length=20)
     dependencies: list[str] = Field(default_factory=list, max_length=100)
-    solver_target: str = Field(min_length=1)
+    solver_target: str = Field(min_length=1, max_length=64)
     explanation: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -103,7 +103,7 @@ class GeneratedProgramRef(BaseModel):
     model_id: UUID
     model_version: int = Field(ge=1)
     model_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
-    solver_target: str
+    solver_target: str = Field(min_length=1, max_length=64)
     code_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
     execution_origin: ExecutionOrigin
     status: GeneratedProgramStatus

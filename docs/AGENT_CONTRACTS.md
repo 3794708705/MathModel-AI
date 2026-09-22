@@ -11,7 +11,11 @@ Concrete reasoning/data agents are:
 - `ProblemAgent`: produces typed analysis, keeps assumptions proposed, and
   preserves low-confidence interpretations for human review.
 - `ModelExplorer`: emits 2-5 structured candidates/model chains in one call and
-  removes semantic duplicates before acceptance.
+  removes semantic duplicates before acceptance. Bounded retries receive safe
+  parser/schema/EXPLORE-gate diagnostics while preserving the original input and
+  requirements. At least two candidates must be free of mandatory missing data
+  and EACH cover all subproblems before Jury; the same predicates are enforced
+  at selection. Complementary modules belong inside a single model-chain candidate.
 - `ModelJury`: obtains one qualitative assessment, then delegates weighted
   arithmetic, hard-failure enforcement, ranking, and primary/backup selection
   to deterministic Python.
@@ -57,8 +61,14 @@ Concrete reasoning/data agents are:
   output is retained as `reviewer_is_mock=true` and is not a live-jury claim.
 
 All agents use `structured_generate()` and package-resource prompts. Phase 2
-prompts are version `2.0.0`; the DataAgent prompt is version `3.0.0`; MathModeler
-and CodeAgent prompts are version `4.0.0`; Red Team and Model Repair prompts are
+prompts are version `2.0.0`, except ModelExplorer `2.4.0` (concise JSON,
+end-to-end alternatives and corrective retry feedback) and ModelJury `2.2.0`
+(complete primary/backup coverage); the DataAgent prompt is version `3.0.0`; MathModeler
+uses version `4.3.0` with deterministic retry feedback and explicit constant/equation
+reference namespaces, while CodeAgent remains
+version `4.2.0` with the actual runtime result JSON Schema, flat metrics,
+canonical generated-result status/value rules and bounded
+SOLVE retry feedback; Red Team and Model Repair prompts are
 version `5.0.0`; literature, citation, PaperAgent, and factual-audit prompts are
 version `6.0.0`. The FinalJuryAgent prompt is version `7.0.0`.
 Free-text-to-JSON regex parsing is not part of the agent contract.

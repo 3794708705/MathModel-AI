@@ -18,6 +18,7 @@ from mathmodel_ai.schemas.program import (
     GeneratedProgramStatus,
     generated_program_hash,
 )
+from mathmodel_ai.schemas.solver import GeneratedResultPayload
 
 _HARDCODED_RESULT_PATTERNS = (
     re.compile(
@@ -74,10 +75,15 @@ class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
                     role="user",
                     content=prompt.render_user(
                         mathematical_model_json=input_data.mathematical_model.model_dump_json(
-                            indent=2
+                            indent=None
                         ),
                         model_digest=mathematical_model_digest(input_data.mathematical_model),
-                        algorithm_plan_json=input_data.algorithm_plan.model_dump_json(indent=2),
+                        algorithm_plan_json=input_data.algorithm_plan.model_dump_json(indent=None),
+                        result_schema_json=json.dumps(
+                            GeneratedResultPayload.model_json_schema(),
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        ),
                         user_guidance=json.dumps(input_data.user_guidance, ensure_ascii=False),
                     ),
                 ),
@@ -100,7 +106,7 @@ class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
             prompt_version=prompt.version,
             execution_origin=ExecutionOrigin.GENERATED_PROGRAM,
             status=GeneratedProgramStatus.READY,
-            is_mock=route.selected_provider is not None and route.selected_provider.value == "mock",
+            is_mock=route.selected_provider == "mock",
         )
         return AgentExecution(
             output=program,

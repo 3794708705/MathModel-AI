@@ -14,6 +14,39 @@ class ProviderResponseError(ProviderError):
     """Raised when a provider response violates the adapter contract."""
 
 
+class ProviderAuthenticationError(ProviderError):
+    """Raised when a remote endpoint rejects configured authentication."""
+
+
+class ProviderTimeoutError(ProviderError):
+    """Raised when a bounded provider request exceeds its deadline."""
+
+
+class ProviderResponseTooLargeError(ProviderError):
+    """Raised before an endpoint response can exceed the configured byte cap."""
+
+
+class ProviderRedirectError(ProviderError):
+    """Raised when an endpoint attempts a redirect that could leak credentials."""
+
+
+class ModelDiscoveryError(ProviderError):
+    """Raised with a stable, secret-safe model discovery error code."""
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        status_code: int = 502,
+        provider_reached: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+        self.provider_reached = provider_reached
+
+
 class RoutingError(MathModelError):
     """Raised when no safe model route can be produced."""
 

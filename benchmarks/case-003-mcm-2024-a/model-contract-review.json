@@ -1,0 +1,15 @@
+{
+  "review_version": "1",
+  "model_contract_digest": "72d611664d6584299642a33a9f59ae222af32145e9153dbd5b3d3ea69dbe9d2e",
+  "model_digest": "16c3f2922ab8612e6e7ecee855b173f94c321b100b5d45be57e3546510e4bf0d",
+  "red_team_report_digest": "850acac6a9d1eecc416536a7df141372a9221ff171ecca0cb6b8a2db0a166468",
+  "red_team_critical_count": 0,
+  "model_jury_report_digest": "ef6eec0b31e075dd28f98db7c5eeab05e1d560fcd4e5c87f9b6f408d15479dfa",
+  "model_jury_score": 100,
+  "model_jury_decision": "PASS",
+  "policy_digest": "9b0781b2fdb063b60d1a86a147982371eb64c4cbd4545832dc74c74e04d8ab1d",
+  "unresolved_obligations": [],
+  "fresh_case_a_run": false,
+  "case_b_c_run": false,
+  "content_digest": "1aa16d5ca06afb20e5e5052932967125ba91a58a1aee41747001bb528617e48a"
+}

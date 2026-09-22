@@ -3,7 +3,6 @@ from collections.abc import AsyncIterator
 
 from pydantic import BaseModel
 
-from mathmodel_ai.core.types import ProviderName
 from mathmodel_ai.providers.schemas import (
     GenerationRequest,
     ModelResponse,
@@ -13,7 +12,7 @@ from mathmodel_ai.providers.schemas import (
 
 
 class BaseModelProvider(ABC):
-    name: ProviderName
+    name: str
 
     @abstractmethod
     async def generate(self, request: GenerationRequest) -> ModelResponse:

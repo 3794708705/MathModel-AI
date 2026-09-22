@@ -3,6 +3,13 @@ from __future__ import annotations
 import math
 
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
+from mathmodel_ai.paper.hashing import sha256_json
+from mathmodel_ai.schemas.execution import ExecutionStatus
+from mathmodel_ai.schemas.independent_verification import (
+    IndependentStatus,
+    ReviewedValidationEvidence,
+    ValidationRequirementBinding,
+)
 from mathmodel_ai.schemas.mathematical import (
     ConstraintRelation,
     MathematicalModel,
@@ -28,9 +35,22 @@ from mathmodel_ai.verification.evaluator import (
     IndependentExpressionEvaluator,
 )
 
+# Exact legacy contracts, not natural-language classifiers. Additional scientific
+# obligations must retain UNCHECKED until an evaluator supplies their own evidence.
+_REQUIREMENT_CONTRACTS = {
+    "recompute variable bounds": (ValidationCheckCategory.VARIABLE,),
+    "recompute every constraint": (ValidationCheckCategory.CONSTRAINT,),
+    "recompute variable bounds and constraints": (
+        ValidationCheckCategory.VARIABLE,
+        ValidationCheckCategory.CONSTRAINT,
+    ),
+    "recalculate objective metric": (ValidationCheckCategory.OBJECTIVE,),
+    "verify evidence trace": (ValidationCheckCategory.EVIDENCE,),
+}
+
 
 class IndependentValidator:
-    version = "independent-validator-5.0.0"
+    version = "independent-validator-5.1.0"
 
     def __init__(
         self,
@@ -51,6 +71,7 @@ class IndependentValidator:
         result: ResultRecord,
         solver_run: SolverRun,
         evidence: EvidenceChainReport,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> ValidationReport:
         errors: list[str] = []
         warnings: list[str] = []
@@ -74,13 +95,25 @@ class IndependentValidator:
                 *model.boundary_conditions,
             ]
         ]
-        metrics = self._metric_checks(model, result, solver_run, values)
+        reviewed_errors = self._reviewed_evidence_errors(
+            model=model,
+            result=result,
+            solver_run=solver_run,
+            reviewed_evidence=reviewed_evidence,
+        )
+        errors.extend(f"VALIDATION_FAIL:{item}" for item in reviewed_errors)
+        metrics = [
+            *self._metric_checks(model, result, solver_run, values),
+            *self._reviewed_metric_checks(reviewed_evidence),
+        ]
         requirement_checks = self._requirement_checks(
             model,
             evidence=evidence,
             variable_checks=variable_checks,
             constraint_checks=constraint_checks,
             metrics=metrics,
+            reviewed_evidence=reviewed_evidence,
+            reviewed_errors=reviewed_errors,
         )
 
         failures = [
@@ -158,6 +191,15 @@ class IndependentValidator:
                 f"result:{result.result_id}",
                 f"solver_run:{solver_run.solver_run_id}",
                 f"execution:{solver_run.execution_ref}",
+                *(
+                    [
+                        f"reviewed_policy:{sha256_json(reviewed_evidence.requirements)}",
+                        f"independent_plan:{reviewed_evidence.plan.plan_id}",
+                        f"independent_report:{reviewed_evidence.report.report_id}",
+                    ]
+                    if reviewed_evidence is not None
+                    else []
+                ),
             ],
         )
 
@@ -169,6 +211,7 @@ class IndependentValidator:
         result: ResultRecord,
         solver_run: SolverRun,
         evidence: EvidenceChainReport,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> list[str]:
         """Recompute a persisted report and compare every deterministic field."""
         recomputed = self.validate(
@@ -176,6 +219,7 @@ class IndependentValidator:
             result=result,
             solver_run=solver_run,
             evidence=evidence,
+            reviewed_evidence=reviewed_evidence,
         )
         deterministic_fields = (
             "project_id",
@@ -419,6 +463,248 @@ class IndependentValidator:
             ),
         )
 
+    @staticmethod
+    def _model_evidence_refs(model: MathematicalModel) -> set[str]:
+        return {
+            *(item.assumption_id for item in model.assumptions),
+            *(item.ambiguity_id for item in model.interpretation_resolutions),
+            *(item.set_id for item in model.sets),
+            *(item.index_id for item in model.indices),
+            *(
+                item.variable_id
+                for item in [
+                    *model.decision_variables,
+                    *model.state_variables,
+                    *model.derived_variables,
+                ]
+            ),
+            *(item.parameter_id for item in [*model.parameters, *model.constants]),
+            *(
+                item.constraint_id
+                for item in [
+                    *model.constraints,
+                    *model.initial_conditions,
+                    *model.boundary_conditions,
+                ]
+            ),
+            *(item.equation_id for item in model.equations),
+            *(item.output_id for item in model.expected_outputs),
+            *model.source_evidence,
+        }
+
+    @classmethod
+    def _reviewed_evidence_errors(
+        cls,
+        *,
+        model: MathematicalModel,
+        result: ResultRecord,
+        solver_run: SolverRun,
+        reviewed_evidence: ReviewedValidationEvidence | None,
+    ) -> list[str]:
+        if reviewed_evidence is None:
+            return []
+        policy = reviewed_evidence.requirements
+        plan = reviewed_evidence.plan
+        report = reviewed_evidence.report
+        errors: list[str] = []
+        model_digest = mathematical_model_digest(model)
+        if policy.model_digest != model_digest:
+            errors.append("REVIEWED_POLICY_MODEL_DIGEST_MISMATCH")
+        if [item.requirement for item in policy.validation_requirement_bindings] != (
+            model.validation_requirements
+        ):
+            errors.append("REVIEWED_REQUIREMENT_COVERAGE_MISMATCH")
+        if any(
+            not set(item.model_evidence_refs) <= cls._model_evidence_refs(model)
+            for item in policy.validation_requirement_bindings
+        ):
+            errors.append("REVIEWED_REQUIREMENT_MODEL_EVIDENCE_MISMATCH")
+        if (
+            plan.result_id != result.result_id
+            or report.result_id != result.result_id
+            or report.result_id != plan.result_id
+        ):
+            errors.append("REVIEWED_EVIDENCE_RESULT_MISMATCH")
+        if (
+            report.plan_id != plan.plan_id
+            or report.report_id != plan.plan_id
+            or report.attempt_id != plan.attempt_id
+            or report.plan_digest != sha256_json(plan)
+        ):
+            errors.append("REVIEWED_EVIDENCE_PLAN_MISMATCH")
+        if (
+            plan.metrics != policy.metrics
+            or plan.scenarios != policy.scenarios
+            or plan.scientific_scope != policy.scientific_scope
+        ):
+            errors.append("REVIEWED_PLAN_POLICY_MISMATCH")
+        if report.status is not IndependentStatus.PASS or report.errors:
+            errors.append("REVIEWED_INDEPENDENT_REPORT_NOT_PASS")
+
+        required_metrics = [item for item in policy.metrics if item.required]
+        if (
+            report.required_metrics != len(required_metrics)
+            or report.passed_metrics != len(required_metrics)
+            or [item.metric_id for item in report.metrics]
+            != [item.metric_id for item in policy.metrics]
+        ):
+            errors.append("REVIEWED_INDEPENDENT_METRIC_COVERAGE_MISMATCH")
+        top_metrics = {item.metric_id: item for item in report.metrics}
+        if any(
+            (verified := top_metrics.get(spec.metric_id)) is None
+            or verified.key is not spec.key
+            or verified.status is not IndependentStatus.PASS
+            or verified.source_digest != plan.source_sha256
+            for spec in required_metrics
+        ):
+            errors.append("REVIEWED_INDEPENDENT_METRIC_FAILED_OR_TAMPERED")
+
+        required_scenarios = [item for item in policy.scenarios if item.required]
+        if (
+            report.required_scenarios != len(required_scenarios)
+            or report.passed_scenarios != len(required_scenarios)
+            or [item.scenario_id for item in report.replays]
+            != [item.scenario_id for item in policy.scenarios]
+        ):
+            errors.append("REVIEWED_SCENARIO_COVERAGE_MISMATCH")
+        execution_ids = [item.execution.run_id for item in report.replays]
+        if (
+            len(execution_ids) != len(set(execution_ids))
+            or solver_run.execution_ref in execution_ids
+        ):
+            errors.append("REVIEWED_SCENARIO_EXECUTION_REUSED")
+        replay_by_id = {item.scenario_id: item for item in report.replays}
+        for spec in required_scenarios:
+            replay = replay_by_id.get(spec.scenario_id)
+            if replay is None:
+                errors.append(f"REVIEWED_SCENARIO_MISSING:{spec.scenario_id}")
+                continue
+            required_ids = [item.metric_id for item in spec.metrics if item.required]
+            metric_by_id = {item.metric_id: item for item in replay.metrics}
+            output_artifact = next(
+                (
+                    item
+                    for item in replay.artifacts
+                    if item.artifact_id == replay.output_artifact_id
+                ),
+                None,
+            )
+            if (
+                replay.scenario_digest != sha256_json(spec)
+                or replay.status is not IndependentStatus.PASS
+                or replay.error is not None
+                or replay.execution.status is not ExecutionStatus.SUCCEEDED
+                or replay.execution.is_mock
+                or not replay.execution.network_disabled
+                or not replay.execution.non_root
+                or not replay.execution.read_only_root
+                or output_artifact is None
+                or output_artifact.sha256 != replay.output_digest
+                or output_artifact.execution_run_id != replay.execution.run_id
+                or [item.metric_id for item in replay.metrics]
+                != [item.metric_id for item in spec.metrics]
+                or any(
+                    (metric := metric_by_id.get(metric_id)) is None
+                    or metric.status is not IndependentStatus.PASS
+                    or metric.source_digest != replay.output_digest
+                    for metric_id in required_ids
+                )
+            ):
+                errors.append(f"REVIEWED_SCENARIO_FAILED_OR_TAMPERED:{spec.scenario_id}")
+        return list(dict.fromkeys(errors))
+
+    @staticmethod
+    def _reviewed_metric_checks(
+        reviewed_evidence: ReviewedValidationEvidence | None,
+    ) -> list[MetricRecalculation]:
+        if reviewed_evidence is None:
+            return []
+        verified_by_id = {item.metric_id: item for item in reviewed_evidence.report.metrics}
+        checks: list[MetricRecalculation] = []
+        for spec in reviewed_evidence.requirements.metrics:
+            verified = verified_by_id.get(spec.metric_id)
+            passed = (
+                verified is not None
+                and verified.status is IndependentStatus.PASS
+                and verified.verified is not None
+            )
+            checks.append(
+                MetricRecalculation(
+                    metric_id=f"independent:{spec.metric_id}",
+                    category=ValidationCheckCategory.OUTPUT,
+                    reported_value=verified.reported if verified is not None else None,
+                    recomputed_value=verified.verified if verified is not None else None,
+                    absolute_error=(
+                        abs(verified.delta)
+                        if verified is not None and verified.delta is not None
+                        else None
+                    ),
+                    relative_error=None,
+                    absolute_tolerance=spec.absolute_tolerance,
+                    relative_tolerance=spec.relative_tolerance,
+                    status=(ValidationCheckStatus.PASS if passed else ValidationCheckStatus.FAIL),
+                    message=(
+                        f"reviewed independent metric passed: {spec.metric_id}"
+                        if passed
+                        else f"reviewed independent metric failed: {spec.metric_id}"
+                    ),
+                )
+            )
+        return checks
+
+    def _reviewed_requirement_check(
+        self,
+        model: MathematicalModel,
+        binding: ValidationRequirementBinding,
+        reviewed_evidence: ReviewedValidationEvidence,
+        reviewed_errors: list[str],
+    ) -> ValidationRequirementCheck:
+        report = reviewed_evidence.report
+        metric_statuses: dict[str, IndependentStatus] = {
+            item.metric_id: item.status for item in report.metrics
+        }
+        for replay in report.replays:
+            metric_statuses.update({item.metric_id: item.status for item in replay.metrics})
+        scenario_statuses = {item.scenario_id: item.status for item in report.replays}
+        known_model_refs = self._model_evidence_refs(model)
+        refs = [
+            *(f"independent_metric:{item}" for item in binding.metric_ids),
+            *(f"independent_scenario:{item}" for item in binding.scenario_ids),
+            *(f"model_evidence:{item}" for item in binding.model_evidence_refs),
+        ]
+        if binding.scope == "PAPER":
+            refs.append("paper_gate:required")
+        passed = (
+            not reviewed_errors
+            and all(
+                metric_statuses.get(item) is IndependentStatus.PASS for item in binding.metric_ids
+            )
+            and all(
+                scenario_statuses.get(item) is IndependentStatus.PASS
+                for item in binding.scenario_ids
+            )
+            and set(binding.model_evidence_refs) <= known_model_refs
+        )
+        if binding.scope == "PAPER":
+            message = (
+                "paper-scoped model requirement is bound to immutable reviewed evidence; "
+                "the Paper gate remains responsible for rendered-claim enforcement"
+                if passed
+                else "paper-scoped model requirement has invalid reviewed evidence"
+            )
+        else:
+            message = (
+                f"reviewed validation requirement is {'passed' if passed else 'failed'}: "
+                f"{binding.requirement}"
+            )
+        return ValidationRequirementCheck(
+            requirement=binding.requirement,
+            scope=binding.scope,
+            status=ValidationCheckStatus.PASS if passed else ValidationCheckStatus.FAIL,
+            evidence_refs=refs,
+            message=message,
+        )
+
     def _requirement_checks(
         self,
         model: MathematicalModel,
@@ -427,29 +713,58 @@ class IndependentValidator:
         variable_checks: list[VariableValidationCheck],
         constraint_checks: list[ConstraintValidationCheck],
         metrics: list[MetricRecalculation],
+        reviewed_evidence: ReviewedValidationEvidence | None,
+        reviewed_errors: list[str],
     ) -> list[ValidationRequirementCheck]:
+        objective_metrics = [
+            item for item in metrics if item.category is ValidationCheckCategory.OBJECTIVE
+        ]
+        available = {
+            ValidationCheckCategory.VARIABLE: (
+                [item.status for item in variable_checks],
+                [item.variable_id for item in variable_checks],
+            ),
+            ValidationCheckCategory.CONSTRAINT: (
+                [item.status for item in constraint_checks],
+                [item.constraint_id for item in constraint_checks],
+            ),
+            ValidationCheckCategory.OBJECTIVE: (
+                [item.status for item in objective_metrics],
+                [item.metric_id for item in objective_metrics],
+            ),
+            ValidationCheckCategory.EVIDENCE: (
+                [ValidationCheckStatus.PASS if evidence.valid else ValidationCheckStatus.FAIL],
+                [f"result:{evidence.result_id}"],
+            ),
+        }
+        reviewed_bindings = (
+            {
+                item.requirement: item
+                for item in reviewed_evidence.requirements.validation_requirement_bindings
+            }
+            if reviewed_evidence is not None
+            else {}
+        )
         checks: list[ValidationRequirementCheck] = []
         for requirement in model.validation_requirements:
-            normalized = requirement.casefold()
-            relevant: list[ValidationCheckStatus]
-            refs: list[str]
-            if "constraint" in normalized:
-                relevant = [item.status for item in constraint_checks]
-                refs = [item.constraint_id for item in constraint_checks]
-            elif any(token in normalized for token in ("bound", "domain", "variable")):
-                relevant = [item.status for item in variable_checks]
-                refs = [item.variable_id for item in variable_checks]
-            elif any(token in normalized for token in ("objective", "metric", "output")):
-                relevant = [item.status for item in metrics]
-                refs = [item.metric_id for item in metrics]
-            elif "evidence" in normalized or "trace" in normalized:
-                relevant = [
-                    ValidationCheckStatus.PASS if evidence.valid else ValidationCheckStatus.FAIL
-                ]
-                refs = [f"result:{evidence.result_id}"]
-            else:
-                relevant = [ValidationCheckStatus.UNCHECKED]
-                refs = []
+            binding = reviewed_bindings.get(requirement)
+            if binding is not None and reviewed_evidence is not None:
+                checks.append(
+                    self._reviewed_requirement_check(
+                        model,
+                        binding,
+                        reviewed_evidence,
+                        reviewed_errors,
+                    )
+                )
+                continue
+            normalized = " ".join(requirement.casefold().split())
+            relevant: list[ValidationCheckStatus] = []
+            refs: list[str] = []
+            for category in _REQUIREMENT_CONTRACTS.get(normalized, ()):
+                statuses, evidence_refs = available[category]
+                relevant.extend(statuses or [ValidationCheckStatus.UNCHECKED])
+                refs.extend(evidence_refs)
             status = (
                 ValidationCheckStatus.FAIL
                 if any(item is ValidationCheckStatus.FAIL for item in relevant)

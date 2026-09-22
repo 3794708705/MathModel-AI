@@ -34,11 +34,29 @@ def calculate_score(assessment: CandidateJuryAssessment, weights: ModelJuryWeigh
     )
 
 
+def has_missing_required_data(candidate: ModelCandidate) -> bool:
+    return any(
+        requirement.availability is DataAvailability.MISSING
+        for requirement in candidate.data_requirements
+    )
+
+
+def covers_required_subproblems(candidate: ModelCandidate, required: set[str]) -> bool:
+    return required <= set(candidate.target_subproblems)
+
+
 def build_model_selection(
     candidates: list[ModelCandidate],
     assessment: JuryAssessment,
     weights: ModelJuryWeights,
+    *,
+    required_subproblem_ids: set[str] | None = None,
 ) -> ModelSelection:
+    required = (
+        required_subproblem_ids
+        if required_subproblem_ids is not None
+        else {target for candidate in candidates for target in candidate.target_subproblems}
+    )
     candidate_ids = {candidate.candidate_id for candidate in candidates}
     assessment_ids = {item.candidate_id for item in assessment.assessments}
     if candidate_ids != assessment_ids:
@@ -52,13 +70,15 @@ def build_model_selection(
         candidate = candidates_by_id[item.candidate_id]
         hard_failures = list(item.hard_failures)
         if (
-            any(
-                requirement.availability is DataAvailability.MISSING
-                for requirement in candidate.data_requirements
-            )
+            has_missing_required_data(candidate)
             and HardFailure.DATA_NOT_AVAILABLE not in hard_failures
         ):
             hard_failures.append(HardFailure.DATA_NOT_AVAILABLE)
+        if (
+            not covers_required_subproblems(candidate, required)
+            and HardFailure.VIOLATES_PROBLEM_REQUIREMENT not in hard_failures
+        ):
+            hard_failures.append(HardFailure.VIOLATES_PROBLEM_REQUIREMENT)
         normalized_assessments.append(item.model_copy(update={"hard_failures": hard_failures}))
 
     scores = [calculate_score(item, weights) for item in normalized_assessments]

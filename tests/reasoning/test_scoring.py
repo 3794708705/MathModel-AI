@@ -1,12 +1,17 @@
+import pytest
+
+from mathmodel_ai.reasoning.quality_gates import explore_quality_gate, select_quality_gate
 from mathmodel_ai.reasoning.scoring import build_model_selection, calculate_score
 from mathmodel_ai.schemas.model_selection import (
     CandidateJuryAssessment,
     HardFailure,
     JuryAssessment,
+    ModelExploration,
     ModelFamily,
     ModelJuryWeights,
 )
 from mathmodel_ai.schemas.problem_analysis import DataAvailability
+from mathmodel_ai.schemas.quality import QualityGateStatus
 from tests.reasoning.helpers import candidate_fixture, candidate_set, jury_fixture
 
 
@@ -78,3 +83,49 @@ def test_missing_required_data_is_a_deterministic_hard_failure() -> None:
     assert HardFailure.DATA_NOT_AVAILABLE in missing_score.hard_failures
     assert selection.selected_model_id != "CAND-missing"
     assert selection.backup_model_id != "CAND-missing"
+
+
+def test_optimistic_jury_scores_cannot_select_an_incomplete_candidate() -> None:
+    candidates = candidate_set()
+    candidates[0] = candidates[0].model_copy(update={"target_subproblems": ["Q1"]})
+    selection = build_model_selection(
+        candidates,
+        jury_fixture(),
+        ModelJuryWeights(),
+        required_subproblem_ids={"Q1", "Q2", "Q3"},
+    )
+    rejected = next(score for score in selection.score_matrix if score.candidate_id == "CAND-chain")
+    assert not rejected.eligible
+    assert HardFailure.VIOLATES_PROBLEM_REQUIREMENT in rejected.hard_failures
+    assert selection.selected_model_id != "CAND-chain"
+    assert selection.backup_model_id != "CAND-chain"
+
+
+def test_complementary_partial_modules_cannot_be_primary_and_backup() -> None:
+    candidates = [
+        candidate.model_copy(update={"target_subproblems": [f"Q{index}"]})
+        for index, candidate in enumerate(candidate_set(), start=1)
+    ]
+    exploration = ModelExploration(
+        candidates=candidates, exploration_summary="Complementary modules"
+    )
+    gate = explore_quality_gate(exploration, {"Q1", "Q2", "Q3"})
+    assert gate.checks["all_subproblems_covered"]
+    assert not gate.checks["two_end_to_end_candidates"]
+    assert gate.status is QualityGateStatus.RETRY
+    with pytest.raises(ValueError, match="at least two eligible"):
+        build_model_selection(candidates, jury_fixture(), ModelJuryWeights())
+
+
+def test_select_gate_rechecks_coverage_despite_unchanged_eligible_scores() -> None:
+    candidates = candidate_set()
+    selection = build_model_selection(candidates, jury_fixture(), ModelJuryWeights())
+    modified = [
+        candidate.model_copy(update={"target_subproblems": [f"Q{index}"]})
+        for index, candidate in enumerate(candidates, start=1)
+    ]
+    gate = select_quality_gate(selection, modified, {"Q1", "Q2", "Q3"})
+    assert gate.checks["primary_eligible"] and gate.checks["backup_eligible"]
+    assert not gate.checks["primary_covers_all_subproblems"]
+    assert not gate.checks["backup_covers_all_subproblems"]
+    assert gate.status is QualityGateStatus.RETRY

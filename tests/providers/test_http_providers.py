@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from mathmodel_ai.core.errors import ProviderError
 from mathmodel_ai.providers.anthropic import AnthropicProvider
 from mathmodel_ai.providers.google import GoogleProvider
+from mathmodel_ai.providers.http import create_secure_async_client
 from mathmodel_ai.providers.openai import OpenAIProvider
 from mathmodel_ai.providers.schemas import GenerationRequest, MediaPart, ModelMessage
 
@@ -32,6 +33,31 @@ def client(handler: Callable[[httpx.Request], httpx.Response]) -> httpx.AsyncCli
     return httpx.AsyncClient(
         transport=httpx.MockTransport(handler), base_url="https://provider.example/v1"
     )
+
+
+@pytest.mark.asyncio
+async def test_secure_default_client_never_inherits_ambient_proxy_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actual_client = httpx.AsyncClient
+    captured: dict[str, Any] = {}
+
+    def client_factory(**kwargs: Any) -> httpx.AsyncClient:
+        captured.update(kwargs)
+        return actual_client(transport=httpx.MockTransport(lambda _: httpx.Response(200)))
+
+    monkeypatch.setattr(httpx, "AsyncClient", client_factory)
+    secure_client = create_secure_async_client(
+        timeout=httpx.Timeout(1),
+        verify=True,
+        base_url="https://provider.example/v1",
+    )
+    try:
+        assert captured["trust_env"] is False
+        assert captured["follow_redirects"] is False
+        assert captured["verify"] is True
+    finally:
+        await secure_client.aclose()
 
 
 @pytest.mark.asyncio

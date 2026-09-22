@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -108,6 +109,16 @@ class AgentRunRecord(Base):
     output_state_version: Mapped[int | None]
     provider: Mapped[str | None] = mapped_column(String(50))
     model: Mapped[str | None] = mapped_column(String(255))
+    provider_id: Mapped[str | None] = mapped_column(String(100), index=True)
+    provider_config_digest: Mapped[str | None] = mapped_column(String(64), index=True)
+    model_id: Mapped[str | None] = mapped_column(String(100), index=True)
+    remote_model: Mapped[str | None] = mapped_column(String(500))
+    model_config_digest: Mapped[str | None] = mapped_column(String(64), index=True)
+    protocol: Mapped[str | None] = mapped_column(String(50))
+    structured_output_mode: Mapped[str | None] = mapped_column(String(40))
+    reasoning_requested: Mapped[str | None] = mapped_column(String(32))
+    reasoning_effective: Mapped[str | None] = mapped_column(String(100))
+    endpoint_trust: Mapped[str | None] = mapped_column(String(40))
     reasoning_level: Mapped[str | None] = mapped_column(String(32))
     prompt_version: Mapped[str | None] = mapped_column(String(64))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -119,6 +130,104 @@ class AgentRunRecord(Base):
     error: Mapped[str | None] = mapped_column(Text)
     is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
     route_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON_TYPE)
+
+
+class EncryptedSecretRecordModel(Base):
+    __tablename__ = "encrypted_secrets"
+
+    secret_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    nonce: Mapped[bytes] = mapped_column(LargeBinary(12), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class ProviderEndpointRecordModel(Base):
+    __tablename__ = "provider_endpoints"
+
+    provider_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(255))
+    protocol: Mapped[str] = mapped_column(String(50), index=True)
+    base_url: Mapped[str] = mapped_column(String(2048))
+    credential_ref: Mapped[str | None] = mapped_column(String(132))
+    enabled: Mapped[bool] = mapped_column(Boolean, index=True)
+    trust_level: Mapped[str] = mapped_column(String(40), index=True)
+    timeout_seconds: Mapped[float] = mapped_column(Float)
+    connect_timeout_seconds: Mapped[float] = mapped_column(Float)
+    max_response_bytes: Mapped[int] = mapped_column(BigInteger)
+    verify_tls: Mapped[bool] = mapped_column(Boolean)
+    allow_redirects: Mapped[bool] = mapped_column(Boolean)
+    additional_headers: Mapped[dict[str, str]] = mapped_column(JSON_TYPE)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSON_TYPE)
+    health_status: Mapped[str] = mapped_column(String(32), index=True)
+    consecutive_failures: Mapped[int]
+    cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    config_digest: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ModelProfileRecordModel(Base):
+    __tablename__ = "model_profiles"
+
+    model_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    provider_id: Mapped[str] = mapped_column(
+        ForeignKey("provider_endpoints.provider_id", ondelete="RESTRICT"), index=True
+    )
+    display_name: Mapped[str] = mapped_column(String(255))
+    remote_model: Mapped[str] = mapped_column(String(500))
+    enabled: Mapped[bool] = mapped_column(Boolean, index=True)
+    quality_tier: Mapped[str] = mapped_column(String(32), index=True)
+    quality_tier_source: Mapped[str] = mapped_column(String(32))
+    declared_capabilities: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    observed_capabilities: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    structured_output_strategy: Mapped[str] = mapped_column(String(40))
+    tool_calling_strategy: Mapped[str] = mapped_column(String(32))
+    reasoning_mapping: Mapped[dict[str, str]] = mapped_column(JSON_TYPE)
+    context_window: Mapped[int | None]
+    max_output_tokens: Mapped[int | None]
+    pricing_json: Mapped[dict[str, Any]] = mapped_column("pricing", JSON_TYPE)
+    trust_level: Mapped[str] = mapped_column(String(40), index=True)
+    configuration: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    config_digest: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CapabilityProbeRunRecordModel(Base):
+    __tablename__ = "capability_probe_runs"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    provider_id: Mapped[str] = mapped_column(
+        ForeignKey("provider_endpoints.provider_id", ondelete="RESTRICT"), index=True
+    )
+    model_id: Mapped[str] = mapped_column(
+        ForeignKey("model_profiles.model_id", ondelete="RESTRICT"), index=True
+    )
+    provider_config_digest: Mapped[str] = mapped_column(String(64), index=True)
+    model_config_digest: Mapped[str] = mapped_column(String(64), index=True)
+    probe_digest: Mapped[str] = mapped_column(String(64), index=True)
+    capabilities: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    authentication_status: Mapped[str] = mapped_column(String(32), index=True)
+    latency_ms: Mapped[int]
+    usage_json: Mapped[dict[str, Any]] = mapped_column("usage", JSON_TYPE)
+    errors: Mapped[list[str]] = mapped_column(JSON_TYPE)
+    performed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AgentRoutePolicyRecordModel(Base):
+    __tablename__ = "agent_route_policies"
+
+    agent_name: Mapped[str] = mapped_column(String(100), primary_key=True)
+    primary_model_id: Mapped[str] = mapped_column(
+        ForeignKey("model_profiles.model_id", ondelete="RESTRICT"), index=True
+    )
+    fallback_model_ids: Mapped[list[str]] = mapped_column(JSON_TYPE)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class ModelDecisionRecord(Base):
@@ -1003,3 +1112,150 @@ class CorrectionPlanRecord(Base):
     scope: Mapped[str] = mapped_column(String(32), index=True)
     priority: Mapped[int]
     plan_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class BenchmarkRunRecordModel(Base):
+    __tablename__ = "benchmark_runs"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    code_commit: Mapped[str] = mapped_column(String(40), index=True)
+    source_tree_digest: Mapped[str] = mapped_column(String(64), index=True)
+    working_tree_dirty: Mapped[bool] = mapped_column(Boolean, index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    provider: Mapped[str] = mapped_column(String(64), index=True)
+    model: Mapped[str] = mapped_column(String(255))
+    provider_id: Mapped[str | None] = mapped_column(String(100), index=True)
+    provider_config_digest: Mapped[str | None] = mapped_column(String(64), index=True)
+    model_id: Mapped[str | None] = mapped_column(String(100), index=True)
+    model_config_digest: Mapped[str | None] = mapped_column(String(64), index=True)
+    protocol: Mapped[str | None] = mapped_column(String(50))
+    endpoint_trust: Mapped[str | None] = mapped_column(String(40))
+    model_identity_confidence: Mapped[str | None] = mapped_column(String(40))
+    live_provider_status: Mapped[str] = mapped_column(String(16), index=True)
+    live_literature_status: Mapped[str] = mapped_column(String(16), index=True)
+    run_digest: Mapped[str] = mapped_column(String(64), index=True)
+    run_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class BenchmarkAttemptRecordModel(Base):
+    __tablename__ = "benchmark_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "benchmark_id",
+            "attempt_number",
+            name="uq_benchmark_attempts_run_case_number",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("benchmark_runs.id", ondelete="RESTRICT"), index=True
+    )
+    benchmark_id: Mapped[str] = mapped_column(String(100), index=True)
+    attempt_number: Mapped[int]
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), index=True
+    )
+    official: Mapped[bool] = mapped_column(Boolean, index=True)
+    solve_input_digest: Mapped[str] = mapped_column(String(64), index=True)
+    attempt_digest: Mapped[str] = mapped_column(String(64), index=True)
+    attempt_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class BenchmarkCaseResultRecordModel(Base):
+    __tablename__ = "benchmark_case_results"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    attempt_id: Mapped[UUID] = mapped_column(
+        ForeignKey("benchmark_attempts.id", ondelete="RESTRICT"), unique=True, index=True
+    )
+    benchmark_id: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    score: Mapped[float] = mapped_column(Float)
+    result_digest: Mapped[str] = mapped_column(String(64), index=True)
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class BenchmarkMetricRecordModel(Base):
+    __tablename__ = "benchmark_metrics"
+    __table_args__ = (
+        UniqueConstraint("attempt_id", "name", name="uq_benchmark_metrics_attempt_name"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    attempt_id: Mapped[UUID] = mapped_column(
+        ForeignKey("benchmark_attempts.id", ondelete="RESTRICT"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), index=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    value: Mapped[float] = mapped_column(Float)
+    metric_digest: Mapped[str] = mapped_column(String(64), index=True)
+    metric_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class BenchmarkFailureRecordModel(Base):
+    __tablename__ = "benchmark_failures"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    attempt_id: Mapped[UUID] = mapped_column(
+        ForeignKey("benchmark_attempts.id", ondelete="RESTRICT"), index=True
+    )
+    category: Mapped[str] = mapped_column(String(40), index=True)
+    severity: Mapped[str] = mapped_column(String(8), index=True)
+    generic_issue: Mapped[bool] = mapped_column(Boolean, index=True)
+    failure_digest: Mapped[str] = mapped_column(String(64), index=True)
+    failure_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class IndependentVerificationPlanRecord(Base):
+    __tablename__ = "independent_verification_plans"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    attempt_id: Mapped[UUID] = mapped_column(
+        ForeignKey("benchmark_attempts.id", ondelete="RESTRICT"), unique=True
+    )
+    result_id: Mapped[UUID] = mapped_column(ForeignKey("results.id", ondelete="RESTRICT"))
+    plan_digest: Mapped[str] = mapped_column(String(64))
+    requirements_digest: Mapped[str] = mapped_column(String(64))
+    plan_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class IndependentVerificationJobRecord(Base):
+    __tablename__ = "independent_verification_jobs"
+    __table_args__ = (UniqueConstraint("plan_id", "operation", name="uq_independent_job_key"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    plan_id: Mapped[UUID] = mapped_column(
+        ForeignKey("independent_verification_plans.id", ondelete="RESTRICT")
+    )
+    operation: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(32))
+    payload_digest: Mapped[str | None] = mapped_column(String(64))
+    payload_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE)
+    execution_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("execution_records.id", ondelete="RESTRICT")
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class BenchmarkHumanInterventionRecordModel(Base):
+    __tablename__ = "benchmark_human_interventions"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    attempt_id: Mapped[UUID] = mapped_column(
+        ForeignKey("benchmark_attempts.id", ondelete="RESTRICT"), index=True
+    )
+    intervention_type: Mapped[str] = mapped_column(String(40), index=True)
+    intervention_digest: Mapped[str] = mapped_column(String(64), index=True)
+    intervention_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

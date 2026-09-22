@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from mathmodel_ai.agents import AgentRunResult, AgentRunStatus, CodeAgent, MathModeler
 from mathmodel_ai.core.errors import AgentRunError, QualityGateError
+from mathmodel_ai.core.types import ReasoningEffort
 from mathmodel_ai.mathematical.algorithms import AlgorithmSelector
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.mathematical.evidence import EvidenceIntegrityVerifier
@@ -92,7 +93,10 @@ class MathematicalWorkflow:
         strategy_selector: ExecutionStrategySelector,
         generated_executor: GeneratedProgramExecutor,
         evidence_verifier: EvidenceIntegrityVerifier,
+        max_generated_solve_attempts: int = 3,
     ) -> None:
+        if not 1 <= max_generated_solve_attempts <= 3:
+            raise ValueError("generated solve attempts must be in [1, 3]")
         self._reasoning_repository = reasoning_repository
         self._repository = repository
         self._math_modeler = math_modeler
@@ -102,6 +106,7 @@ class MathematicalWorkflow:
         self._strategy_selector = strategy_selector
         self._generated_executor = generated_executor
         self._evidence_verifier = evidence_verifier
+        self._max_generated_solve_attempts = max_generated_solve_attempts
 
     async def build_model(
         self,
@@ -170,6 +175,94 @@ class MathematicalWorkflow:
             gate=gate,
         )
 
+    async def bind_reviewed_model(
+        self,
+        project_id: UUID,
+        *,
+        template: MathematicalModel,
+        expected_model_digest: str,
+        model_contract_digest: str,
+        policy_digest: str,
+        subproblem_identity_digest: str | None = None,
+    ) -> ModelStageOutcome:
+        """Persist an identity-rebound reviewed model without LLM regeneration."""
+
+        state = self._reasoning_repository.load_current(project_id)
+        ensure_transition(state.current_stage, WorkflowStage.MODEL)
+        if state.selected_model is None or state.problem_analysis is None:
+            raise QualityGateError("MODEL requires accepted problem analysis and model selection")
+        if mathematical_model_digest(template) != expected_model_digest:
+            raise QualityGateError("REVIEWED_MODEL_TEMPLATE_DIGEST_MISMATCH")
+        if subproblem_identity_digest is not None and (
+            state.subproblem_identity is None
+            or state.subproblem_identity.contract_digest != subproblem_identity_digest
+        ):
+            raise QualityGateError("REVIEWED_SUBPROBLEM_IDENTITY_BINDING_MISMATCH")
+        model_id, next_version = self._repository.next_model_identity(project_id)
+        if next_version != 1:
+            raise QualityGateError("REVIEWED_MODEL_BINDING_REQUIRES_FRESH_PROJECT")
+        model = template.model_copy(
+            update={
+                "project_id": state.project_id,
+                "problem_id": state.problem_id,
+                "model_id": model_id,
+                "version": template.version,
+                "source_selected_model_id": state.selected_model.candidate_id,
+            }
+        )
+        if mathematical_model_digest(model) != expected_model_digest:
+            raise QualityGateError("REVIEWED_MODEL_IDENTITY_REBIND_CHANGED_DIGEST")
+        gate = model_quality_gate(model, state)
+        if gate.status is not QualityGateStatus.PASS:
+            raise QualityGateError(
+                f"REVIEWED_MODEL_INCOMPATIBLE_WITH_FRESH_SELECTION: {', '.join(gate.errors)}"
+            )
+        plan = self._algorithm_selector.select(model)
+        now = datetime.now(UTC)
+        run = AgentRunResult[MathematicalModel](
+            agent_name="reviewed_model_binder",
+            status=AgentRunStatus.SUCCEEDED,
+            output=model,
+            attempts=0,
+            is_mock=False,
+            input_state_version=state.version,
+            reasoning="DETERMINISTIC",
+            prompt_version=f"reviewed-v{template.version}:{policy_digest[:48]}",
+            latency_ms=0,
+            started_at=now,
+            ended_at=now,
+        )
+        record_id = uuid4()
+        reason = (
+            "reviewed MathematicalModel bound without regeneration; "
+            f"model_digest={expected_model_digest}; "
+            f"model_contract_digest={model_contract_digest}; "
+            f"policy_digest={policy_digest}"
+            f"; subproblem_identity_digest={subproblem_identity_digest or 'not-bound'}"
+        )
+        next_state = self._model_state(
+            state,
+            model=model,
+            model_record_id=record_id,
+            plan=plan,
+            run=run,
+            gate=gate,
+            reason=reason,
+        )
+        stored_run = self._repository.persist_model_with_state(
+            record_id=record_id,
+            model=model,
+            state=next_state,
+            run=run,
+        )
+        return ModelStageOutcome(
+            state=next_state,
+            model=model,
+            plan=plan,
+            run=stored_run,
+            gate=gate,
+        )
+
     async def solve(
         self,
         project_id: UUID,
@@ -212,6 +305,7 @@ class MathematicalWorkflow:
                     coding_requirement=4,
                     blast_radius=4,
                     minimum_level=EscalationLevel.FLAGSHIP_HIGH,
+                    maximum_reasoning_effort=ReasoningEffort.LOW,
                 ),
             )
             program = self._require_code_output(state, code_agent_run)
@@ -328,13 +422,91 @@ class MathematicalWorkflow:
         execution_strategy: ExecutionStrategy = ExecutionStrategy.AUTO,
     ) -> MathematicalRunOutcome:
         model_stage = await self.build_model(project_id, user_guidance=user_guidance)
+        guidance = list(user_guidance or [])
         solve_stage = await self.solve(
             project_id,
             options=options,
             execution_strategy=execution_strategy,
-            user_guidance=user_guidance,
+            user_guidance=guidance,
         )
+        attempts = 1
+        while (
+            solve_stage.gate.status is not QualityGateStatus.PASS
+            and solve_stage.strategy.selected is ExecutionStrategy.GENERATED
+            and attempts < self._max_generated_solve_attempts
+        ):
+            attempts += 1
+            solve_stage = await self.solve(
+                project_id,
+                options=options,
+                execution_strategy=execution_strategy,
+                user_guidance=[*guidance, *self._solve_retry_guidance(solve_stage)],
+            )
+        if solve_stage.gate.status is not QualityGateStatus.PASS:
+            detail = "; ".join([*solve_stage.gate.errors, solve_stage.execution.result.message])
+            raise QualityGateError(
+                f"SOLVE quality gate rejected {attempts} persisted attempt(s): {detail[:3000]}"
+            )
         return MathematicalRunOutcome(model_stage=model_stage, solve_stage=solve_stage)
+
+    async def run_reviewed(
+        self,
+        project_id: UUID,
+        *,
+        template: MathematicalModel,
+        expected_model_digest: str,
+        model_contract_digest: str,
+        policy_digest: str,
+        subproblem_identity_digest: str | None = None,
+        user_guidance: list[str] | None = None,
+        options: SolverOptions | None = None,
+        execution_strategy: ExecutionStrategy = ExecutionStrategy.AUTO,
+    ) -> MathematicalRunOutcome:
+        model_stage = await self.bind_reviewed_model(
+            project_id,
+            template=template,
+            expected_model_digest=expected_model_digest,
+            model_contract_digest=model_contract_digest,
+            policy_digest=policy_digest,
+            subproblem_identity_digest=subproblem_identity_digest,
+        )
+        guidance = list(user_guidance or [])
+        solve_stage = await self.solve(
+            project_id,
+            options=options,
+            execution_strategy=execution_strategy,
+            user_guidance=guidance,
+        )
+        attempts = 1
+        while (
+            solve_stage.gate.status is not QualityGateStatus.PASS
+            and solve_stage.strategy.selected is ExecutionStrategy.GENERATED
+            and attempts < self._max_generated_solve_attempts
+        ):
+            attempts += 1
+            solve_stage = await self.solve(
+                project_id,
+                options=options,
+                execution_strategy=execution_strategy,
+                user_guidance=[*guidance, *self._solve_retry_guidance(solve_stage)],
+            )
+        if solve_stage.gate.status is not QualityGateStatus.PASS:
+            detail = "; ".join([*solve_stage.gate.errors, solve_stage.execution.result.message])
+            raise QualityGateError(
+                f"SOLVE quality gate rejected {attempts} persisted attempt(s): {detail[:3000]}"
+            )
+        return MathematicalRunOutcome(model_stage=model_stage, solve_stage=solve_stage)
+
+    @staticmethod
+    def _solve_retry_guidance(outcome: SolveStageOutcome) -> list[str]:
+        return [
+            "AUTOMATED_SOLVE_RETRY_FEEDBACK: the previous generated program and its "
+            "ExecutionRecord were retained, but the deterministic SOLVE gate rejected it.",
+            *[f"SOLVE gate: {error}" for error in outcome.gate.errors[:20]],
+            f"Generated result parser: {outcome.execution.result.message[:2000]}",
+            "Generate a corrected new program. Preserve the MathematicalModel exactly and "
+            "emit the canonical result.json contract; do not copy the failed result payload.",
+        ]
 
     def _require_output(
         self,
@@ -375,6 +547,7 @@ class MathematicalWorkflow:
         plan: AlgorithmPlan,
         run: AgentRunResult[MathematicalModel],
         gate: QualityGateResult,
+        reason: str = "structured mathematical model passed MODEL quality gate",
     ) -> ProblemState:
         next_version = state.version + 1
         model_ref = MathematicalModelRef(
@@ -452,8 +625,8 @@ class MathematicalWorkflow:
             status=WorkflowStatus.SUCCEEDED.value,
             input_version=state.version,
             output_version=next_version,
-            updated_by="math_modeler",
-            reason="structured mathematical model passed MODEL quality gate",
+            updated_by=run.agent_name,
+            reason=reason,
             agent_run_id=run.run_id,
         )
         payload = state.model_dump()
@@ -474,8 +647,8 @@ class MathematicalWorkflow:
                 "algorithm": algorithm,
                 "quality_gates": [*state.quality_gates, gate],
                 "stage_history": [*state.stage_history, history],
-                "updated_by": "math_modeler",
-                "update_reason": "structured mathematical model accepted",
+                "updated_by": run.agent_name,
+                "update_reason": reason,
                 "updated_at": datetime.now(UTC),
             }
         )
