@@ -33,3 +33,23 @@ No test or coverage gate is disabled.
   The developer database was not cleared.
 
 GitHub Actions on the pushed commit is the final Linux execution check.
+
+## Linux execution follow-up
+
+Run 35696103005 passed static checks, migrations, and all image builds, then
+exposed a POSIX cleanup bug: the sandbox workspace is intentionally mode 0555,
+but the old Windows-oriented retry only made the child writable and could strip
+directory search permission. All 29 failing tests reported this cleanup error.
+Cleanup now restores owner read/write/search permissions on directories inside
+the validated per-run tree before deletion, preserves existing file mode bits,
+and does not traverse symlink targets. Runtime read-only container boundaries
+remain unchanged. Regression tests cover nested read-only directories, external
+symlink preservation, and rejection of an out-of-root cleanup target.
+
+The actual cleanup methods also passed a standalone Linux reproduction inside
+the sandbox image as UID 65532 (nested mode-0555 directories, external symlink
+targets retaining their contents/modes, and out-of-root rejection). Local Ruff,
+strict mypy, and the executor unit tests passed; the POSIX-only symlink test is
+intentionally skipped on Windows and runs in Linux CI.
+The sandbox, solver, and scenario-replay subset passed: 49 passed, 2 skipped
+(POSIX-only regression on Windows and optional licensed Gurobi integration).

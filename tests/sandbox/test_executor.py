@@ -1,4 +1,6 @@
 import io
+import os
+import stat
 import subprocess
 import tarfile
 from pathlib import Path
@@ -188,3 +190,69 @@ def test_secret_mount_rejects_missing_source_and_unsafe_names(tmp_path: Path) ->
             target_name="gurobi.lic",
             environment_name="lowercase",
         )
+
+
+def test_cleanup_removes_nested_read_only_workspace(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    executor = SandboxExecutor(
+        store=LocalFileStore(tmp_path / "store"),
+        root=root,
+        image="sandbox:test",
+        limits=limits(),
+    )
+    run_root = root / uuid4().hex
+    workspace = run_root / "workspace"
+    nested = workspace / "package" / "nested"
+    nested.mkdir(parents=True)
+    (nested / "helper.py").write_text("print(1)", encoding="utf-8")
+    output = run_root / "output"
+    output.mkdir()
+    executor._restrict_workspace(workspace, output)
+
+    executor._cleanup(run_root)
+
+    assert not run_root.exists()
+    assert root.is_dir()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink permission regression")
+def test_cleanup_does_not_follow_symlinks_outside_run(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    executor = SandboxExecutor(
+        store=LocalFileStore(tmp_path / "store"),
+        root=root,
+        image="sandbox:test",
+        limits=limits(),
+    )
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    sentinel.chmod(0o444)
+    original_mode = stat.S_IMODE(sentinel.stat().st_mode)
+    run_root = root / uuid4().hex
+    run_root.mkdir(parents=True)
+    (run_root / "linked-directory").symlink_to(outside, target_is_directory=True)
+    (run_root / "linked-file").symlink_to(sentinel)
+
+    executor._cleanup(run_root)
+
+    assert not run_root.exists()
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+    assert stat.S_IMODE(sentinel.stat().st_mode) == original_mode
+
+
+def test_cleanup_rejects_path_outside_sandbox_root(tmp_path: Path) -> None:
+    executor = SandboxExecutor(
+        store=LocalFileStore(tmp_path / "store"),
+        root=tmp_path / "runs",
+        image="sandbox:test",
+        limits=limits(),
+    )
+    outside = tmp_path / uuid4().hex
+    outside.mkdir()
+
+    with pytest.raises(SandboxError, match="unexpected sandbox path"):
+        executor._cleanup(outside)
+
+    assert outside.exists()

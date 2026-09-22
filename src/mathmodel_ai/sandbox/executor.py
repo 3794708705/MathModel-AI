@@ -707,10 +707,16 @@ class SandboxExecutor:
         def restore_write_and_retry(
             function: Callable[[str], object], path: str, _exc: object
         ) -> None:
-            os.chmod(path, stat.S_IWRITE)
+            if not os.path.islink(path):
+                os.chmod(path, os.stat(path).st_mode | stat.S_IWRITE)
             function(path)
 
         try:
+            # POSIX unlink needs write/search permission on the parent directory;
+            # clearing a file's Windows read-only flag alone cannot restore it.
+            # Restore only this validated run tree, without following symlinks.
+            for directory, _subdirectories, _files in os.walk(resolved, followlinks=False):
+                os.chmod(directory, os.stat(directory).st_mode | stat.S_IRWXU)
             shutil.rmtree(resolved, onexc=restore_write_and_retry)
         except OSError as exc:
             raise SandboxError("failed to clean isolated execution workspace") from exc
