@@ -4788,6 +4788,8 @@ export interface components {
         /** PaperRunRequest */
         PaperRunRequest: {
             competition_profile?: components["schemas"]["mathmodel_ai__schemas__paper__CompetitionProfile"];
+            /** Expected Science Hash */
+            expected_science_hash?: string | null;
         };
         /** PaperRunResponse */
         PaperRunResponse: {
@@ -6191,7 +6193,7 @@ export interface components {
         /** RobustnessReport */
         RobustnessReport: {
             /** Baseline Objective */
-            baseline_objective: number;
+            baseline_objective?: number | null;
             config: components["schemas"]["RobustnessConfig"];
             /**
              * Created At
@@ -6227,6 +6229,16 @@ export interface components {
              * Format: uuid
              */
             result_id: string;
+            /** Reviewed Metric Values */
+            reviewed_metric_values?: {
+                [key: string]: number;
+            };
+            /** Reviewed Replay Ids */
+            reviewed_replay_ids?: {
+                [key: string]: string;
+            };
+            /** Reviewed Report Id */
+            reviewed_report_id?: string | null;
             /**
              * Robustness Id
              * Format: uuid
@@ -6564,7 +6576,7 @@ export interface components {
         /** SensitivityReport */
         SensitivityReport: {
             /** Baseline Objective */
-            baseline_objective: number;
+            baseline_objective?: number | null;
             config: components["schemas"]["SensitivityConfig"];
             /**
              * Created At
@@ -6611,6 +6623,16 @@ export interface components {
              * Format: uuid
              */
             result_id: string;
+            /** Reviewed Metric Values */
+            reviewed_metric_values?: {
+                [key: string]: number;
+            };
+            /** Reviewed Replay Ids */
+            reviewed_replay_ids?: {
+                [key: string]: string;
+            };
+            /** Reviewed Report Id */
+            reviewed_report_id?: string | null;
             /**
              * Sensitivity Id
              * Format: uuid
@@ -8686,7 +8708,9 @@ export interface operations {
     };
     probe_model_api_v1_models__model_id__probe_post: {
         parameters: {
-            query?: never;
+            query?: {
+                long_context?: boolean;
+            };
             header?: never;
             path: {
                 model_id: string;

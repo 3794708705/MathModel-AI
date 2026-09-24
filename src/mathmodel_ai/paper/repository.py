@@ -399,11 +399,9 @@ class PaperRepository:
             if existing is None:
                 canonical.append(reference)
                 continue
-            if (
-                existing.project_id != project_id
-                or existing.model_dump(mode="json", exclude={"retrieved_at"})
-                != reference.model_dump(mode="json", exclude={"retrieved_at"})
-            ):
+            if existing.project_id != project_id or existing.model_dump(
+                mode="json", exclude={"retrieved_at"}
+            ) != reference.model_dump(mode="json", exclude={"retrieved_at"}):
                 raise ValueError("retrieved literature metadata conflicts with immutable reference")
             canonical.append(existing)
         return canonical

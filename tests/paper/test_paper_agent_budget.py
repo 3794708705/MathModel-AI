@@ -35,9 +35,7 @@ from tests.submission.helpers import covered_paper, subproblem
 class CapturingProvider:
     async def structured_generate(self, request, _schema):
         self.request = request
-        return SimpleNamespace(
-            parsed=SimpleNamespace(root={}), response=SimpleNamespace()
-        )
+        return SimpleNamespace(parsed=SimpleNamespace(root={}), response=SimpleNamespace())
 
 
 def test_paper_prompt_requires_nonempty_sections_and_verbatim_symbol_meanings():
@@ -54,13 +52,18 @@ async def test_paper_agent_requests_room_for_full_structured_document():
     agent = PaperAgent(router=None, providers=None, prompts=PromptRegistry())
     await agent.execute(
         PaperAgentInput(
-            project_id=evidence.project_id, assigned_paper_id=uuid4(),
-            assigned_version=1, title="Verified model", evidence=[evidence],
+            project_id=evidence.project_id,
+            assigned_paper_id=uuid4(),
+            assigned_version=1,
+            title="Verified model",
+            evidence=[evidence],
             evidence_snapshot=evidence_snapshot(evidence),
         ),
         ProblemState(
-            project_id=evidence.project_id, problem_id=evidence.problem_id,
-            title="Verified model", raw_problem="Model description",
+            project_id=evidence.project_id,
+            problem_id=evidence.problem_id,
+            title="Verified model",
+            raw_problem="Model description",
         ),
         provider,
         SimpleNamespace(selected_model="test-model", selected_reasoning=None),
@@ -70,8 +73,7 @@ async def test_paper_agent_requests_room_for_full_structured_document():
     assert "baseline_source_field and verified_source_field" in provider.request.messages[0].content
     assert "not an evidence ID" in provider.request.messages[0].content
     assert (
-        "limitations claim's structured_value.finding_ids"
-        in provider.request.messages[0].content
+        "limitations claim's structured_value.finding_ids" in provider.request.messages[0].content
     )
     assert "abstract KEY_RESULT must be a CLAIM block" in provider.request.messages[0].content
     author_schema = _PaperIRPrevalidation.model_json_schema()
@@ -87,16 +89,23 @@ async def test_paper_agent_attaches_only_canonical_system_snapshot():
     provider = CapturingProvider()
     agent = PaperAgent(router=None, providers=None, prompts=PromptRegistry())
     input_data = PaperAgentInput(
-        project_id=evidence.project_id, assigned_paper_id=uuid4(),
-        assigned_version=1, title="Verified model", evidence=[evidence],
+        project_id=evidence.project_id,
+        assigned_paper_id=uuid4(),
+        assigned_version=1,
+        title="Verified model",
+        evidence=[evidence],
         evidence_snapshot=snapshot,
     )
     state = ProblemState(
-        project_id=evidence.project_id, problem_id=evidence.problem_id,
-        title="Verified model", raw_problem="Model description",
+        project_id=evidence.project_id,
+        problem_id=evidence.problem_id,
+        title="Verified model",
+        raw_problem="Model description",
     )
     result = await agent.execute(
-        input_data, state, provider,
+        input_data,
+        state,
+        provider,
         SimpleNamespace(selected_model="test-model", selected_reasoning=None),
     )
     assert result.output["evidence_snapshot"] == snapshot.model_dump(mode="json")
@@ -109,7 +118,9 @@ async def test_paper_agent_attaches_only_canonical_system_snapshot():
 
     with pytest.raises(ProviderResponseError, match="conflicting evidence snapshot"):
         await agent.execute(
-            input_data, state, ConflictingProvider(),
+            input_data,
+            state,
+            ConflictingProvider(),
             SimpleNamespace(selected_model="test-model", selected_reasoning=None),
         )
 
@@ -118,14 +129,19 @@ def test_paper_agent_retry_receives_schema_feedback():
     evidence = result_evidence()
     agent = PaperAgent(router=None, providers=None, prompts=PromptRegistry())
     input_data = PaperAgentInput(
-        project_id=evidence.project_id, assigned_paper_id=uuid4(),
-        assigned_version=1, title="Verified model", evidence=[evidence],
+        project_id=evidence.project_id,
+        assigned_paper_id=uuid4(),
+        assigned_version=1,
+        title="Verified model",
+        evidence=[evidence],
         evidence_snapshot=evidence_snapshot(evidence),
         repair_feedback=["prior quality gate: missing limitations"],
     )
     state = ProblemState(
-        project_id=evidence.project_id, problem_id=evidence.problem_id,
-        title="Verified model", raw_problem="Model description",
+        project_id=evidence.project_id,
+        problem_id=evidence.problem_id,
+        title="Verified model",
+        raw_problem="Model description",
     )
     repaired = agent.prepare_attempt_input(
         input_data, state, ("claims.9:comparison percentage invalid",)
@@ -138,7 +154,8 @@ def test_paper_agent_retry_receives_schema_feedback():
     with pytest.raises(PaperWorkflowError, match=r"claims\.9"):
         PaperWorkflow._require_output(
             SimpleNamespace(
-                status=AgentRunStatus.ESCALATED, output=None,
+                status=AgentRunStatus.ESCALATED,
+                output=None,
                 errors=repaired.repair_feedback,
             ),
             "PaperAgent",
@@ -184,8 +201,7 @@ def test_paper_agent_preflight_rejects_unresolvable_claim_source_field():
         evidence_snapshot=paper.evidence_snapshot,
     )
     assert not any(
-        error.startswith("SOURCE_FIELD:")
-        for error in _paper_draft_errors(paper, input_data)
+        error.startswith("SOURCE_FIELD:") for error in _paper_draft_errors(paper, input_data)
     )
 
     invalid = paper.model_copy(deep=True)
@@ -209,9 +225,12 @@ def test_comparison_arithmetic_recomputes_only_derived_fields():
         "claim_type": "COMPARISON",
         "text": "The verified value increased by 25%.",
         "structured_value": {
-            "baseline_value": 4.0, "verified_value": 5.0,
-            "percentage_change": 20.0, "direction": "DECREASE",
-            "baseline_source_field": "a", "verified_source_field": "b",
+            "baseline_value": 4.0,
+            "verified_value": 5.0,
+            "percentage_change": 20.0,
+            "direction": "DECREASE",
+            "baseline_source_field": "a",
+            "verified_source_field": "b",
         },
     }
     raw = {"claims": [claim]}
@@ -222,21 +241,25 @@ def test_comparison_arithmetic_recomputes_only_derived_fields():
     assert claim["structured_value"]["direction"] == "INCREASE"
     assert claim["text"] == "The verified value increased by 25%."
 
-    incomplete = {
-        "claim_type": "COMPARISON", "structured_value": {"baseline_value": 0.0}
-    }
+    incomplete = {"claim_type": "COMPARISON", "structured_value": {"baseline_value": 0.0}}
     _normalize_comparison_arithmetic({"claims": [incomplete]})
     assert incomplete["structured_value"] == {"baseline_value": 0.0}
 
 
 def test_claim_diagnostics_expose_nested_value_errors_without_accepting_claim():
-    raw = {"claims": [{
-        "claim_type": "COMPARISON",
-        "structured_value": {
-            "baseline_value": 4.0, "verified_value": 5.0,
-            "percentage_change": 25.0, "direction": "INCREASE",
-        },
-    }]}
+    raw = {
+        "claims": [
+            {
+                "claim_type": "COMPARISON",
+                "structured_value": {
+                    "baseline_value": 4.0,
+                    "verified_value": 5.0,
+                    "percentage_change": 25.0,
+                    "direction": "INCREASE",
+                },
+            }
+        ]
+    }
     details = _claim_value_errors(raw)
     assert "claims.0.structured_value.baseline_source_field:missing" in details
     assert "claims.0.structured_value.verified_source_field:missing" in details
@@ -249,11 +272,14 @@ def test_failed_paper_feedback_is_scoped_to_same_science_snapshot():
         get_version=lambda *args: SimpleNamespace(evidence_snapshot=snapshot),
         get_quality=lambda *args: SimpleNamespace(
             status=PaperQualityStatus.FAILED,
-            issues=[SimpleNamespace(
-                code="MISSING_SUBPROBLEM", object_ref="Q2",
-                message="coverage points to missing paper objects",
-                severity=PaperValidationSeverity.ERROR,
-            )],
+            issues=[
+                SimpleNamespace(
+                    code="MISSING_SUBPROBLEM",
+                    object_ref="Q2",
+                    message="coverage points to missing paper objects",
+                    severity=PaperValidationSeverity.ERROR,
+                )
+            ],
         ),
     )
     workflow = object.__new__(PaperWorkflow)
@@ -266,11 +292,14 @@ def test_failed_paper_feedback_is_scoped_to_same_science_snapshot():
     assert "MISSING_SUBPROBLEM (Q2)" in feedback[0]
     repository.get_quality = lambda *args: SimpleNamespace(
         status=PaperQualityStatus.HUMAN_REVIEW,
-        issues=[SimpleNamespace(
-            code="INDEPENDENT_FACTUAL_FINDING", object_ref="CLAIM-006",
-            message="The claim overstates a hypothesized mechanism.",
-            severity=PaperValidationSeverity.ERROR,
-        )],
+        issues=[
+            SimpleNamespace(
+                code="INDEPENDENT_FACTUAL_FINDING",
+                object_ref="CLAIM-006",
+                message="The claim overstates a hypothesized mechanism.",
+                severity=PaperValidationSeverity.ERROR,
+            )
+        ],
     )
     feedback = workflow._previous_paper_feedback(bundle, uuid4(), 2)
     assert "INDEPENDENT_FACTUAL_FINDING (CLAIM-006)" in feedback[0]
@@ -288,9 +317,7 @@ def test_paper_retry_restores_reference_order_without_accepting_changed_identity
     snapshot = evidence_snapshot(result_evidence()).model_copy(
         update={"citation_reference_ids": [second.reference_id, first.reference_id]}
     )
-    assert PaperWorkflow._references_in_snapshot_order([first, second], snapshot) == [
-        second, first
-    ]
+    assert PaperWorkflow._references_in_snapshot_order([first, second], snapshot) == [second, first]
     with pytest.raises(PaperWorkflowError, match="reference identities"):
         PaperWorkflow._references_in_snapshot_order([first], snapshot)
     with pytest.raises(PaperWorkflowError, match="reference identities"):

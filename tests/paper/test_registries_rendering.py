@@ -627,8 +627,10 @@ async def test_crossref_adapter_retries_bounded_rate_limit(monkeypatch) -> None:
     source = CrossrefLiteratureSource(client=client)
     records = await source.search(
         LiteratureSearchNeed(
-            need_id="LITNEED-rate", need_type=LiteratureNeedType.THEORY,
-            query="population dynamics", purpose="rate limit regression",
+            need_id="LITNEED-rate",
+            need_type=LiteratureNeedType.THEORY,
+            query="population dynamics",
+            purpose="rate limit regression",
         ),
         uuid4(),
     )

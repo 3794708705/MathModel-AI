@@ -61,7 +61,8 @@ def csv_delimiter(text: str) -> str:
     for delimiter in (",", ";", "\t", "|"):
         try:
             rows = [
-                row for row in csv.reader(
+                row
+                for row in csv.reader(
                     io.StringIO(text, newline=""), delimiter=delimiter, strict=True
                 )
                 if row
@@ -229,9 +230,7 @@ class FileValidator:
             try:
                 delimiter = csv_delimiter(text)
                 rows = list(
-                    csv.reader(
-                        io.StringIO(text, newline=""), delimiter=delimiter, strict=True
-                    )
+                    csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, strict=True)
                 )
             except (csv.Error, ValueError) as exc:
                 raise FileValidationError("CSV dialect could not be validated") from exc

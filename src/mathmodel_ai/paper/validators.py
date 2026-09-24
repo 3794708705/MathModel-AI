@@ -323,8 +323,7 @@ class SymbolNarrativeValidator:
 
     def validate(self, paper: PaperIR, model: MathematicalModel) -> list[PaperValidationIssue]:
         expected = {
-            item.symbol: item.meaning
-            for item in SymbolRegistry.from_model(model).definitions
+            item.symbol: item.meaning for item in SymbolRegistry.from_model(model).definitions
         }
         return self.validate_meanings(paper, expected)
 
@@ -332,8 +331,7 @@ class SymbolNarrativeValidator:
         self, paper: PaperIR, definitions: dict[str, str]
     ) -> list[PaperValidationIssue]:
         expected = {
-            symbol: " ".join(meaning.casefold().split())
-            for symbol, meaning in definitions.items()
+            symbol: " ".join(meaning.casefold().split()) for symbol, meaning in definitions.items()
         }
         issues: list[PaperValidationIssue] = []
         texts = [

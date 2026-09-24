@@ -370,9 +370,7 @@ class FinalSubmissionWorkflow:
 
     @staticmethod
     def _section_types(paper: PaperIR) -> list[str]:
-        section_types = [
-            item.section_type.value for item in [*paper.sections, *paper.appendices]
-        ]
+        section_types = [item.section_type.value for item in [*paper.sections, *paper.appendices]]
         if paper.abstract:
             section_types.insert(0, PaperSectionType.ABSTRACT.value)
         return section_types
@@ -382,9 +380,7 @@ class FinalSubmissionWorkflow:
         artifacts: list[SubmissionArtifact], profile: CompetitionProfile
     ) -> list[SubmissionArtifact]:
         """Exclude internal paper sources that the contest does not accept."""
-        return [
-            item for item in artifacts if is_allowed_path(item.relative_path, profile)
-        ]
+        return [item for item in artifacts if is_allowed_path(item.relative_path, profile)]
 
     @staticmethod
     def _convert_artifact(artifact: PaperArtifact) -> SubmissionArtifact | None:

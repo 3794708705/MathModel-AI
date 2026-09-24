@@ -379,18 +379,22 @@ class BenchmarkRepository:
             if reviewed_binding
             else cls.REQUIRED_LIVE_AGENT_NAMES
         )
-        bound_paper_runs = set(session.scalars(
-            select(PaperVersionRecord.paper_agent_run_id).where(
-                PaperVersionRecord.project_id == project_id,
-                PaperVersionRecord.paper_agent_run_id.is_not(None),
+        bound_paper_runs = set(
+            session.scalars(
+                select(PaperVersionRecord.paper_agent_run_id).where(
+                    PaperVersionRecord.project_id == project_id,
+                    PaperVersionRecord.paper_agent_run_id.is_not(None),
+                )
             )
-        ))
-        bound_jury_runs = set(session.scalars(
-            select(FinalJuryReportRecord.agent_run_id).where(
-                FinalJuryReportRecord.project_id == project_id,
-                FinalJuryReportRecord.agent_run_id.is_not(None),
+        )
+        bound_jury_runs = set(
+            session.scalars(
+                select(FinalJuryReportRecord.agent_run_id).where(
+                    FinalJuryReportRecord.project_id == project_id,
+                    FinalJuryReportRecord.agent_run_id.is_not(None),
+                )
             )
-        ))
+        )
         accepted = {
             row.agent_name: row
             for row in rows

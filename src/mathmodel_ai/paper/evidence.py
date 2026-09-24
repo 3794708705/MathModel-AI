@@ -142,12 +142,21 @@ class VerifiedEvidenceBuilder:
             return current
         science = self._verification.load_accepted_science(current.project_id)
         paper_fields = {
-            "schema_version", "version", "paper_state", "paper_versions",
-            "submission_state", "submission_snapshots", "current_stage", "status",
-            "updated_by", "update_reason", "updated_at",
+            "schema_version",
+            "version",
+            "paper_state",
+            "paper_versions",
+            "submission_state",
+            "submission_snapshots",
+            "current_stage",
+            "status",
+            "updated_by",
+            "update_reason",
+            "updated_at",
         }
         changed = [
-            name for name in ProblemState.model_fields
+            name
+            for name in ProblemState.model_fields
             if name not in paper_fields and getattr(current, name) != getattr(science, name)
         ]
         if changed:

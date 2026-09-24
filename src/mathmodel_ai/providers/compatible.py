@@ -394,7 +394,8 @@ class OpenAICompatibleProvider(SecureEndpointProvider):
                     f"{error['type']}"
                     + (
                         f":{redact_sensitive_text(str(error['msg']))[:160]}"
-                        if error["type"] == "value_error" else ""
+                        if error["type"] == "value_error"
+                        else ""
                     )
                 )
                 for error in exc.errors(include_input=False, include_url=False)[:8]

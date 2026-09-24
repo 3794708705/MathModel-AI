@@ -45,14 +45,12 @@ def test_pdf_claim_match_tolerates_line_hyphenation_but_not_changed_numbers() ->
     )
     possessive = "the model's conclusions below 1e-10"
     pdf_possessive = "the model\ufffd\ufffds conclusions below 1e-10"
-    assert _normalize_pdf_claim_text(possessive) == _normalize_pdf_claim_text(
-        pdf_possessive
-    )
+    assert _normalize_pdf_claim_text(possessive) == _normalize_pdf_claim_text(pdf_possessive)
     assert _normalize_pdf_claim_text(possessive) != _normalize_pdf_claim_text(
         pdf_possessive.replace("1e-10", "1e-9")
     )
     claim_with_quotes = 'P: "Dimensionless coefficients at 0.05."'
-    pdf_with_ligature = 'P: \u201dDimensionless coe\ufb03cients at 0.05.\u201d'
+    pdf_with_ligature = "P: \u201dDimensionless coe\ufb03cients at 0.05.\u201d"
     assert _normalize_pdf_claim_text(claim_with_quotes) == _normalize_pdf_claim_text(
         pdf_with_ligature
     )
@@ -86,17 +84,21 @@ def test_pdf_claim_fallback_uses_independent_extraction_without_losing_number_ch
     assert ArtifactIntegrityValidator._pdf_content(paper, pdf, 1) == []
     changed = claim.model_copy(update={"text": "The verified objective is 31."})
     wrong_paper = paper.model_copy(update={"claims": [changed]})
-    assert [item.code for item in ArtifactIntegrityValidator._pdf_content(
-        wrong_paper, pdf, 1
-    )] == ["DOCUMENT_INTEGRITY_ERROR"]
+    assert [item.code for item in ArtifactIntegrityValidator._pdf_content(wrong_paper, pdf, 1)] == [
+        "DOCUMENT_INTEGRITY_ERROR"
+    ]
 
 
 def test_separate_abstract_and_bibliography_satisfy_required_sections() -> None:
     evidence = result_evidence()
     claim = numeric_claim(evidence)
-    paper = paper_ir(evidence, claim, profile=CompetitionProfile(
-        required_sections=[PaperSectionType.ABSTRACT, PaperSectionType.REFERENCES]
-    )).model_copy(update={"bibliography": ["REF-verified"]})
+    paper = paper_ir(
+        evidence,
+        claim,
+        profile=CompetitionProfile(
+            required_sections=[PaperSectionType.ABSTRACT, PaperSectionType.REFERENCES]
+        ),
+    ).model_copy(update={"bibliography": ["REF-verified"]})
     issues = DocumentCompletenessValidator().validate(paper)
     assert not any(issue.code == "MISSING_REQUIRED_SECTION" for issue in issues)
     empty_references = paper.model_copy(update={"bibliography": []})

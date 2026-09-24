@@ -406,10 +406,8 @@ class ProviderCompatibilityProbe:
         """Opt-in, costly behavioral check; never infer capacity from a model label."""
         marker = uuid4().hex
         filler = "\n".join(
-            f"Record {index:05d}: " + " ".join(
-                f"{(index * 7919 + offset * 104729) % 999983:06d}"
-                for offset in range(8)
-            )
+            f"Record {index:05d}: "
+            + " ".join(f"{(index * 7919 + offset * 104729) % 999983:06d}" for offset in range(8))
             for index in range(1800)
         )
         try:
@@ -442,9 +440,7 @@ class ProviderCompatibilityProbe:
         except ProviderTimeoutError as exc:
             errors.append(safe_error(exc))
         except ProviderError as exc:
-            capabilities[ModelCapability.LONG_CONTEXT] = _unsupported(
-                "long-context request failed"
-            )
+            capabilities[ModelCapability.LONG_CONTEXT] = _unsupported("long-context request failed")
             errors.append(safe_error(exc))
 
     def _persist(

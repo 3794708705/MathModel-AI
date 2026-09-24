@@ -21,9 +21,7 @@ from tests.paper.helpers import numeric_claim, paper_ir, reference_record, resul
 
 def test_paper_retry_reuses_immutable_verified_reference(monkeypatch):
     original = reference_record(uuid4())
-    fresh = original.model_copy(update={
-        "retrieved_at": datetime.now(UTC) + timedelta(seconds=5)
-    })
+    fresh = original.model_copy(update={"retrieved_at": datetime.now(UTC) + timedelta(seconds=5)})
     repository = object.__new__(PaperRepository)
     monkeypatch.setattr(repository, "list_references", lambda _project_id: [original])
     assert repository.canonicalize_references(original.project_id, [fresh]) == [original]
@@ -35,11 +33,10 @@ def test_paper_retry_reuses_immutable_verified_reference(monkeypatch):
 
 def test_paper_retry_reuses_immutable_evidence_with_original_timestamp(monkeypatch):
     original = result_evidence()
-    fresh = original.model_copy(update={
-        "created_at": original.created_at + timedelta(seconds=5)
-    })
+    fresh = original.model_copy(update={"created_at": original.created_at + timedelta(seconds=5)})
     row = SimpleNamespace(
-        id=original.evidence_id, project_id=original.project_id,
+        id=original.evidence_id,
+        project_id=original.project_id,
         record_json=original.model_dump(mode="json"),
     )
 
@@ -72,9 +69,7 @@ def test_deterministic_rerender_reuses_only_a_proven_pdf_extraction_false_positi
 ) -> None:
     evidence = result_evidence()
     claim = numeric_claim(evidence)
-    prior_ir = paper_ir(evidence, claim).model_copy(
-        update={"status": PaperQualityStatus.FAILED}
-    )
+    prior_ir = paper_ir(evidence, claim).model_copy(update={"status": PaperQualityStatus.FAILED})
     previous = PaperVersion(
         paper_id=prior_ir.paper_id,
         project_id=evidence.project_id,
@@ -139,9 +134,12 @@ def test_deterministic_rerender_reuses_only_a_proven_pdf_extraction_false_positi
     with pytest.raises(PaperWorkflowError, match="still reproduces"):
         workflow._reuse_previous_author(bundle, prior_ir.paper_id, 2, prior_ir.competition_profile)
 
-    coverage_issue = issue.model_copy(update={
-        "code": "FINAL_REQUIREMENT_COVERAGE", "message": "old classifier rejected model claim"
-    })
+    coverage_issue = issue.model_copy(
+        update={
+            "code": "FINAL_REQUIREMENT_COVERAGE",
+            "message": "old classifier rejected model claim",
+        }
+    )
     quality.issues = [coverage_issue]
     monkeypatch.setattr(workflow, "_subproblems", lambda _state: [])
     monkeypatch.setattr(workflow, "_submission_coverage_issues", lambda *_args: [])
@@ -149,8 +147,6 @@ def test_deterministic_rerender_reuses_only_a_proven_pdf_extraction_false_positi
         bundle, prior_ir.paper_id, 2, prior_ir.competition_profile
     )
     assert rebased.version == 2
-    monkeypatch.setattr(
-        workflow, "_submission_coverage_issues", lambda *_args: [coverage_issue]
-    )
+    monkeypatch.setattr(workflow, "_submission_coverage_issues", lambda *_args: [coverage_issue])
     with pytest.raises(PaperWorkflowError, match="coverage still fails"):
         workflow._reuse_previous_author(bundle, prior_ir.paper_id, 2, prior_ir.competition_profile)

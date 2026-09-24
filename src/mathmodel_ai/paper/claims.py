@@ -76,7 +76,10 @@ class PaperNumericFormattingPolicy:
     max_decimal_places: int = 2
 
     def matches(
-        self, displayed: float, expected: float, decimal_places: int,
+        self,
+        displayed: float,
+        expected: float,
+        decimal_places: int,
         scientific_exponent: int | None = None,
     ) -> bool:
         if scientific_exponent is not None:
@@ -117,19 +120,33 @@ class PaperNumericFormattingPolicy:
         if isinstance(value, ComparisonClaimValue):
             percentage_matches = any(
                 unit == "%"
-                and self.matches(
-                    abs(number), abs(value.percentage_change), decimals, exponent
-                )
+                and self.matches(abs(number), abs(value.percentage_change), decimals, exponent)
                 for number, decimals, exponent, unit in tokens
             )
             text = claim.text.casefold()
             increasing = any(
-                term in text for term in
-                ("increase", "increased", "rose", "higher", "exceeds", "above", "greater than")
+                term in text
+                for term in (
+                    "increase",
+                    "increased",
+                    "rose",
+                    "higher",
+                    "exceeds",
+                    "above",
+                    "greater than",
+                )
             )
             decreasing = any(
-                term in text for term in
-                ("decrease", "decreased", "reduced", "reduction", "lower", "below", "less than")
+                term in text
+                for term in (
+                    "decrease",
+                    "decreased",
+                    "reduced",
+                    "reduction",
+                    "lower",
+                    "below",
+                    "less than",
+                )
             )
             direction_matches = (
                 (value.direction.value == "INCREASE" and increasing and not decreasing)

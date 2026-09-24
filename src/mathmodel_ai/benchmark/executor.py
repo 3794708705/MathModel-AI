@@ -497,10 +497,7 @@ class PipelineBenchmarkExecutor:
             stage=stage,
             category=category,
             severity=FailureSeverity.P1,
-            cause=(
-                f"live pipeline stopped with {type(error).__name__}: "
-                f"{safe_error(error)}"
-            ),
+            cause=(f"live pipeline stopped with {type(error).__name__}: {safe_error(error)}"),
             proposed_fix=(
                 "inspect persisted stage evidence, apply a generic fix, and append a rerun"
             ),
@@ -564,7 +561,8 @@ class PipelineBenchmarkExecutor:
             "central_model_valid",
         )
         passed_gates = {
-            item.gate for item in state.quality_gates
+            item.gate
+            for item in state.quality_gates
             if item.status is QualityGateStatus.PASS and not item.errors
         }
         gate_metrics = {
@@ -580,25 +578,34 @@ class PipelineBenchmarkExecutor:
                 attempt_id,
                 name,
                 float(gate_metrics[name] in passed_gates) if name in gate_metrics else 0,
-                evidence_status=(
-                    "PASS" if gate_metrics[name] in passed_gates else "NOT_EVALUATED"
-                ) if name in gate_metrics else (
-                    "UPSTREAM_BLOCKED" if name in {
-                        "citation_validity", "citation_support_accuracy",
-                        "paper_factual_consistency", "competition_compliance",
+                evidence_status=("PASS" if gate_metrics[name] in passed_gates else "NOT_EVALUATED")
+                if name in gate_metrics
+                else (
+                    "UPSTREAM_BLOCKED"
+                    if name
+                    in {
+                        "citation_validity",
+                        "citation_support_accuracy",
+                        "paper_factual_consistency",
+                        "competition_compliance",
                         "submission_completeness",
-                    } else "NOT_EVALUATED"
+                    }
+                    else "NOT_EVALUATED"
                 ),
             )
             for name in quality_names
         ]
         metrics.extend(
             self._metric(
-                attempt_id, name, value, kind=BenchmarkMetricKind.COUNT,
+                attempt_id,
+                name,
+                value,
+                kind=BenchmarkMetricKind.COUNT,
                 evidence_status=(
-                    "PASS" if name == "unverified_central_result_count"
-                    and "VERIFIED" in passed_gates else
-                    "UPSTREAM_BLOCKED" if name == "wrong_submission_artifact_count"
+                    "PASS"
+                    if name == "unverified_central_result_count" and "VERIFIED" in passed_gates
+                    else "UPSTREAM_BLOCKED"
+                    if name == "wrong_submission_artifact_count"
                     else "NOT_EVALUATED"
                 ),
             )
@@ -643,11 +650,14 @@ class PipelineBenchmarkExecutor:
                     unit=request.config.pricing.currency,
                     evidence_status=(
                         "NOT_EVALUATED"
-                        if not any((
-                            request.config.pricing.input_per_million,
-                            request.config.pricing.cached_input_per_million,
-                            request.config.pricing.output_per_million,
-                        )) and provider_calls
+                        if not any(
+                            (
+                                request.config.pricing.input_per_million,
+                                request.config.pricing.cached_input_per_million,
+                                request.config.pricing.output_per_million,
+                            )
+                        )
+                        and provider_calls
                         else "PASS"
                     ),
                 ),
@@ -781,11 +791,14 @@ class PipelineBenchmarkExecutor:
                     unit=request.config.pricing.currency,
                     evidence_status=(
                         "NOT_EVALUATED"
-                        if not any((
-                            request.config.pricing.input_per_million,
-                            request.config.pricing.cached_input_per_million,
-                            request.config.pricing.output_per_million,
-                        )) and usage[3]
+                        if not any(
+                            (
+                                request.config.pricing.input_per_million,
+                                request.config.pricing.cached_input_per_million,
+                                request.config.pricing.output_per_million,
+                            )
+                        )
+                        and usage[3]
                         else "PASS"
                     ),
                 ),
@@ -824,7 +837,8 @@ class PipelineBenchmarkExecutor:
             unit=unit,
             evidence_ref=(
                 f"{evidence_status}:phase1-7-records:{name}"
-                if evidence_status else f"phase1-7-records:{name}"
+                if evidence_status
+                else f"phase1-7-records:{name}"
             ),
             deterministic=True,
             metric_digest=ZERO,

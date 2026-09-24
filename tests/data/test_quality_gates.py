@@ -87,19 +87,38 @@ def test_data_gate_rejects_agent_column_or_dataset_invention() -> None:
 async def test_data_agent_retries_with_exact_invalid_column_feedback() -> None:
     dataset_id = uuid4()
     profile = DataProfile(
-        dataset_id=dataset_id, source_file_id=uuid4(), dataset_name="observations",
-        row_count=1, column_count=1,
-        columns=[ColumnProfile(
-            name="observed", source_name="observed", physical_dtype="Int64",
-            semantic_type=DataSemanticType.INTEGER, missing_count=0, missing_rate=0,
-            unique_count=1, unique_rate=1,
-        )],
-        duplicate_row_count=0, duplicate_row_rate=0, quality_score=100,
+        dataset_id=dataset_id,
+        source_file_id=uuid4(),
+        dataset_name="observations",
+        row_count=1,
+        column_count=1,
+        columns=[
+            ColumnProfile(
+                name="observed",
+                source_name="observed",
+                physical_dtype="Int64",
+                semantic_type=DataSemanticType.INTEGER,
+                missing_count=0,
+                missing_rate=0,
+                unique_count=1,
+                unique_rate=1,
+            )
+        ],
+        duplicate_row_count=0,
+        duplicate_row_rate=0,
+        quality_score=100,
     )
     input_data = DataAgentInput(raw_problem="Analyze observations", profiles=[profile])
-    invented = DataUnderstanding(datasets=[DatasetUnderstanding(
-        dataset_id=dataset_id, purpose="test", potential_features=["imagined"],
-    )], confidence=0.5)
+    invented = DataUnderstanding(
+        datasets=[
+            DatasetUnderstanding(
+                dataset_id=dataset_id,
+                purpose="test",
+                potential_features=["imagined"],
+            )
+        ],
+        confidence=0.5,
+    )
 
     class Provider:
         async def structured_generate(self, _request, _schema):
@@ -108,7 +127,9 @@ async def test_data_agent_retries_with_exact_invalid_column_feedback() -> None:
     agent = DataAgent(router=None, providers=None, prompts=PromptRegistry())
     with pytest.raises(ProviderResponseError, match="unknown columns: imagined") as exc:
         await agent.execute(
-            input_data, None, Provider(),
+            input_data,
+            None,
+            Provider(),
             SimpleNamespace(selected_model="fixture", selected_reasoning=None),
         )
     repaired = agent.prepare_attempt_input(input_data, None, (str(exc.value),))

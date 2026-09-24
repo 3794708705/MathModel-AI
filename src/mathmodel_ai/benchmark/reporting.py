@@ -167,9 +167,7 @@ class BenchmarkReportRenderer:
     def render_markdown(self, report: BenchmarkReport) -> str:
         assert_public_report(report)
         result_by_attempt = {item.attempt_id: item for item in report.results}
-        metric_by_attempt = {
-            (item.attempt_id, item.name): item for item in report.metrics
-        }
+        metric_by_attempt = {(item.attempt_id, item.name): item for item in report.metrics}
         lines = [
             "# MathModel AI Phase 8 Benchmark Report",
             "",
@@ -199,8 +197,7 @@ class BenchmarkReportRenderer:
             cost_metric = metric_by_attempt.get((attempt.attempt_id, "estimated_cost"))
             cost_display = (
                 "UNKNOWN"
-                if cost_metric is not None
-                and cost_metric.evidence_ref.startswith("NOT_EVALUATED:")
+                if cost_metric is not None and cost_metric.evidence_ref.startswith("NOT_EVALUATED:")
                 else f"{result.estimated_cost:.6f}"
             )
             lines.append(
@@ -231,11 +228,17 @@ class BenchmarkReportRenderer:
                 f"- {item.dimension}: {item.score:.2f}/{item.maximum:.2f}"
                 for item in result.dimensions
             )
-            lines.extend([
-                "", "Diagnostic metric labels `NOT_EVALUATED` and `UPSTREAM_BLOCKED` "
-                "are not observed failures; their numeric zero is only a fail-closed "
-                "readiness-scoring placeholder.", "", "Hard failures:", "",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "Diagnostic metric labels `NOT_EVALUATED` and `UPSTREAM_BLOCKED` "
+                    "are not observed failures; their numeric zero is only a fail-closed "
+                    "readiness-scoring placeholder.",
+                    "",
+                    "Hard failures:",
+                    "",
+                ]
+            )
             lines.extend(f"- {item}" for item in result.hard_failures)
             if not result.hard_failures:
                 lines.append("- None")

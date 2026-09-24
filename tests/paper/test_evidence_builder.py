@@ -257,12 +257,15 @@ def test_failed_paper_retry_reuses_accepted_science_revision_and_hash() -> None:
             "version": chain.state.version + 1,
             "current_stage": WorkflowStage.PAPER,
             "status": WorkflowStatus.FAILED,
-            "paper_versions": [PaperVersionRef(
-                paper_id=uuid4(), version=1,
-                verified_result_id=chain.state.verified_result_id,
-                evidence_snapshot_hash=original.snapshot.snapshot_hash,
-                status=PaperQualityStatus.FAILED,
-            )],
+            "paper_versions": [
+                PaperVersionRef(
+                    paper_id=uuid4(),
+                    version=1,
+                    verified_result_id=chain.state.verified_result_id,
+                    evidence_snapshot_hash=original.snapshot.snapshot_hash,
+                    status=PaperQualityStatus.FAILED,
+                )
+            ],
         }
     )
     chain.state = current

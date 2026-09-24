@@ -59,13 +59,16 @@ def test_csv_dialect_accepts_quoted_delimiters_and_rejects_ragged_rows(
 ) -> None:
     pipeline = pipeline_for(tmp_path / "store")
     quoted = (
-        b'variables,explanation,example\r\n'
+        b"variables,explanation,example\r\n"
         b'player1,"first, last name","Carlos Alcaraz"\r\n'
         b'match_id,"round 7, match 01","2023-wimbledon-1701"\r\n'
     )
     result = pipeline.ingest(
-        stream(quoted), project_id=uuid4(), problem_id=uuid4(),
-        original_name="data_dictionary.csv", declared_mime_type="text/csv",
+        stream(quoted),
+        project_id=uuid4(),
+        problem_id=uuid4(),
+        original_name="data_dictionary.csv",
+        declared_mime_type="text/csv",
     )
     assert result.datasets[0].row_count == 2
     assert result.datasets[0].column_count == 3

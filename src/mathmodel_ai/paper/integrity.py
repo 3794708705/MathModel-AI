@@ -365,7 +365,10 @@ class AssetSemanticIntegrityValidator:
                     valid = (
                         isinstance(values, dict)
                         and isinstance(replay_ids, dict)
-                        and len(metric_ids) == len(scenario_ids) == len(x) == len(y)
+                        and len(metric_ids)
+                        == len(scenario_ids)
+                        == len(x)
+                        == len(y)
                         == len(execution_ids)
                         and len(metric_ids) >= 2
                         and len(set(metric_ids)) == len(metric_ids)
@@ -781,9 +784,7 @@ class ArtifactIntegrityValidator:
             try:
                 with pymupdf.open(stream=pdf, filetype="pdf") as document:  # type: ignore[no-untyped-call]
                     alternate = (
-                        _normalize_pdf_claim_text(
-                            " ".join(page.get_text() for page in document)
-                        )
+                        _normalize_pdf_claim_text(" ".join(page.get_text() for page in document))
                         if len(document) == page_count
                         else ""
                     )

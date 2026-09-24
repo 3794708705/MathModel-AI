@@ -62,34 +62,35 @@ def reject_header_only_csv_usage(program: GeneratedProgramDraft) -> None:
             ):
                 continue
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            readers.update(
-                target.id for target in targets if isinstance(target, ast.Name)
-            )
+            readers.update(target.id for target in targets if isinstance(target, ast.Name))
     if not readers:
         return
 
     for tree in trees:
         for node in ast.walk(tree):
             if isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)) and any(
-                isinstance(item, ast.Name) and item.id in readers
-                for item in ast.walk(node.iter)
+                isinstance(item, ast.Name) and item.id in readers for item in ast.walk(node.iter)
             ):
                 return
             if not isinstance(node, ast.Call):
                 continue
-            if isinstance(node.func, ast.Attribute) and node.func.attr in {
-                "read_csv",
-                "scan_csv",
-            } and not any(
-                keyword.arg == "nrows"
-                and isinstance(keyword.value, ast.Constant)
-                and keyword.value.value == 0
-                for keyword in node.keywords
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr
+                in {
+                    "read_csv",
+                    "scan_csv",
+                }
+                and not any(
+                    keyword.arg == "nrows"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value == 0
+                    for keyword in node.keywords
+                )
             ):
                 return
-            if (
-                any(isinstance(arg, ast.Name) and arg.id in readers for arg in node.args)
-                and not (isinstance(node.func, ast.Name) and node.func.id == "next")
+            if any(isinstance(arg, ast.Name) and arg.id in readers for arg in node.args) and not (
+                isinstance(node.func, ast.Name) and node.func.id == "next"
             ):
                 return
     raise ValueError("CODE_GENERATION_BLOCKED: CSV readers consume headers but no data rows")
@@ -122,8 +123,7 @@ class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
         if not previous_errors:
             return input_data
         feedback = [
-            f"AUTOMATED_SOLVE_RETRY_FEEDBACK: {message[:400]}"
-            for message in previous_errors[-2:]
+            f"AUTOMATED_SOLVE_RETRY_FEEDBACK: {message[:400]}" for message in previous_errors[-2:]
         ]
         return input_data.model_copy(
             update={"user_guidance": [*input_data.user_guidance, *feedback]}
@@ -167,8 +167,7 @@ class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
         response = await provider.structured_generate(request, GeneratedProgramDraft)
         reject_hardcoded_results(response.parsed)
         if input_data.mathematical_model.data_bindings and any(
-            item.get("path", "").lower().endswith(".csv")
-            for item in input_data.input_manifest
+            item.get("path", "").lower().endswith(".csv") for item in input_data.input_manifest
         ):
             reject_header_only_csv_usage(response.parsed)
         files = [item.with_digest() for item in response.parsed.files]

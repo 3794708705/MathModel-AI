@@ -455,15 +455,17 @@ def test_model_gate_rejects_data_literal_not_stated_in_cited_evidence() -> None:
         update={"content": "The observed win rate is 50.46% in the stated source."}
     )
     supported_state = state.model_copy(update={"evidence_items": [stated]})
-    assert "MODEL_GATE_FAIL:data_literals_have_numeric_evidence" in model_quality_gate(
-        model, supported_state
-    ).errors
+    assert (
+        "MODEL_GATE_FAIL:data_literals_have_numeric_evidence"
+        in model_quality_gate(model, supported_state).errors
+    )
     supported_state = supported_state.model_copy(
         update={"raw_problem": f"{state.raw_problem} The observed win rate is 50.46%."}
     )
-    assert "MODEL_GATE_FAIL:data_literals_have_numeric_evidence" not in model_quality_gate(
-        model, supported_state
-    ).errors
+    assert (
+        "MODEL_GATE_FAIL:data_literals_have_numeric_evidence"
+        not in model_quality_gate(model, supported_state).errors
+    )
 
 
 def test_model_gate_rejects_objective_constant_through_derived_equation() -> None:
@@ -493,12 +495,13 @@ def test_model_gate_rejects_objective_constant_through_derived_equation() -> Non
         }
     )
 
-    assert "MODEL_GATE_FAIL:objective_depends_on_decision" in model_quality_gate(
-        model, state
-    ).errors
-    assert "MODEL_GATE_FAIL:objective_depends_on_decision" not in model_quality_gate(
-        base, state
-    ).errors
+    assert (
+        "MODEL_GATE_FAIL:objective_depends_on_decision" in model_quality_gate(model, state).errors
+    )
+    assert (
+        "MODEL_GATE_FAIL:objective_depends_on_decision"
+        not in model_quality_gate(base, state).errors
+    )
     coupled = model.model_copy(
         update={
             "equations": [
@@ -507,9 +510,10 @@ def test_model_gate_rejects_objective_constant_through_derived_equation() -> Non
             ]
         }
     )
-    assert "MODEL_GATE_FAIL:objective_depends_on_decision" not in model_quality_gate(
-        coupled, state
-    ).errors
+    assert (
+        "MODEL_GATE_FAIL:objective_depends_on_decision"
+        not in model_quality_gate(coupled, state).errors
+    )
 
 
 def test_model_gate_blocks_unresolved_critical_ambiguity() -> None:

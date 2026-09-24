@@ -32,9 +32,7 @@ class _PaperIRPrevalidation(RootModel[dict[str, Any]]):
     def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
         schema = PaperIR.model_json_schema(*args, **kwargs)
         schema["properties"].pop("evidence_snapshot")
-        schema["required"] = [
-            field for field in schema["required"] if field != "evidence_snapshot"
-        ]
+        schema["required"] = [field for field in schema["required"] if field != "evidence_snapshot"]
         return schema
 
 
@@ -162,10 +160,7 @@ def _paper_draft_errors(paper: PaperIR, input_data: PaperAgentInput) -> list[str
             continue
         linked = [evidence_by_id[ref] for ref in claim.evidence_refs]
         for field in source_fields:
-            if not any(
-                _source_field_resolves(item.structured_payload, field)
-                for item in linked
-            ):
+            if not any(_source_field_resolves(item.structured_payload, field) for item in linked):
                 elsewhere = [
                     str(item.evidence_id)
                     for item in input_data.evidence
@@ -183,18 +178,15 @@ def _paper_draft_errors(paper: PaperIR, input_data: PaperAgentInput) -> list[str
                     f"{location}; relink only if the evidence supports the same claim"
                 )
     if (paper.paper_id, paper.version) != (
-        input_data.assigned_paper_id, input_data.assigned_version
+        input_data.assigned_paper_id,
+        input_data.assigned_version,
     ):
         errors.append("use the assigned paper_id and version")
-    for issue in SubproblemCoverageValidator().validate(
-        paper, input_data.required_subproblems
-    ):
+    for issue in SubproblemCoverageValidator().validate(paper, input_data.required_subproblems):
         errors.append(f"{issue.code}:{issue.object_ref}:{issue.message}")
     for issue in DocumentCompletenessValidator().validate(paper):
         errors.append(f"{issue.code}:{issue.object_ref}:{issue.message}")
-    for issue in SymbolNarrativeValidator().validate_meanings(
-        paper, input_data.symbol_definitions
-    ):
+    for issue in SymbolNarrativeValidator().validate_meanings(paper, input_data.symbol_definitions):
         errors.append(f"{issue.code}:{issue.object_ref}:use the exact supplied symbol meaning")
     blocks = [
         *paper.abstract,
@@ -212,17 +204,15 @@ def _paper_draft_errors(paper: PaperIR, input_data: PaperAgentInput) -> list[str
             for block in blocks
         ):
             errors.append(f"TABLE:{table_id}:include a visible TABLE block")
-    cited = {
-        reference
-        for claim in paper.claims
-        for reference in claim.citation_refs
-    } | {
-        reference
-        for section in [*paper.sections, *paper.appendices]
-        for reference in section.citation_refs
-    } | {
-        reference for block in blocks for reference in block.citation_refs
-    }
+    cited = (
+        {reference for claim in paper.claims for reference in claim.citation_refs}
+        | {
+            reference
+            for section in [*paper.sections, *paper.appendices]
+            for reference in section.citation_refs
+        }
+        | {reference for block in blocks for reference in block.citation_refs}
+    )
     for reference in sorted(set(paper.bibliography) - cited):
         errors.append(f"BIBLIOGRAPHY:{reference}:remove uncited entry")
     for reference in sorted(cited - set(paper.bibliography)):
@@ -230,7 +220,8 @@ def _paper_draft_errors(paper: PaperIR, input_data: PaperAgentInput) -> list[str
     formatting = PaperNumericFormattingPolicy()
     for claim in paper.claims:
         if claim.claim_type in {
-            ClaimType.NUMERIC, ClaimType.COMPARISON
+            ClaimType.NUMERIC,
+            ClaimType.COMPARISON,
         } and not formatting.text_matches(claim):
             errors.append(
                 f"NUMERIC_CLAIM_MISMATCH:{claim.claim_id}:correct printed value and direction"
@@ -275,8 +266,11 @@ def _normalize_comparison_arithmetic(raw: dict[str, Any]) -> None:
         if not isinstance(tolerance, int | float) or isinstance(tolerance, bool):
             continue
         value["direction"] = (
-            "INCREASE" if percentage > tolerance else
-            "DECREASE" if percentage < -tolerance else "CHANGE"
+            "INCREASE"
+            if percentage > tolerance
+            else "DECREASE"
+            if percentage < -tolerance
+            else "CHANGE"
         )
 
 

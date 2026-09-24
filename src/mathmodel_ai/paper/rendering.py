@@ -248,8 +248,7 @@ class LaTeXRenderer:
             if len(table.rows) > 12:
                 widths = (
                     (0.09, 0.31, 0.17, 0.12, 0.16)
-                    if len(table.columns) == 5
-                    and table.columns[1].casefold() == "meaning"
+                    if len(table.columns) == 5 and table.columns[1].casefold() == "meaning"
                     else (0.85 / len(table.columns),) * len(table.columns)
                 )
                 long_alignment = "".join(

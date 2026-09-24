@@ -46,9 +46,7 @@ class ProblemAgent(BaseAgent[ProblemAgentInput, ProblemAnalysis]):
             return input_data
         return input_data.model_copy(
             update={
-                "repair_feedback": [
-                    *input_data.repair_feedback[:2], previous_errors[-1][:4096]
-                ]
+                "repair_feedback": [*input_data.repair_feedback[:2], previous_errors[-1][:4096]]
             }
         )
 

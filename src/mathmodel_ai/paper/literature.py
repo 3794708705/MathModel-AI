@@ -136,7 +136,7 @@ class CrossrefLiteratureSource:
             try:
                 delay = float(retry_after)
             except ValueError:
-                delay = 2.0 * (2 ** attempt)
+                delay = 2.0 * (2**attempt)
             await asyncio.sleep(min(max(delay, 1.0), 30.0))
         raise AssertionError("unreachable")
 

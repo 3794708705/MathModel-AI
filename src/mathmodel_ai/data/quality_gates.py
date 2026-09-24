@@ -42,8 +42,8 @@ def data_quality_gate(
     understanding_ids = (
         {item.dataset_id for item in understanding.datasets} if understanding is not None else set()
     )
-    references_valid = (
-        understanding is None or not data_column_reference_errors(profiles, understanding)
+    references_valid = understanding is None or not data_column_reference_errors(
+        profiles, understanding
     )
     checks = {
         "data_evidence_present": bool(profiles) or media_present,
@@ -71,12 +71,12 @@ def data_quality_gate(
 
 
 def data_column_reference_errors(
-    profiles: list[DataProfile], understanding: DataUnderstanding,
+    profiles: list[DataProfile],
+    understanding: DataUnderstanding,
 ) -> list[str]:
     """Describe invented column bindings without relaxing the DATA gate."""
     known = {
-        profile.dataset_id: {column.name for column in profile.columns}
-        for profile in profiles
+        profile.dataset_id: {column.name for column in profile.columns} for profile in profiles
     }
     errors: list[str] = []
     for dataset in understanding.datasets:
@@ -89,8 +89,7 @@ def data_column_reference_errors(
         unknown = sorted(referenced - columns)
         if unknown:
             errors.append(
-                f"dataset {dataset.dataset_id} references unknown columns: "
-                + ", ".join(unknown)
+                f"dataset {dataset.dataset_id} references unknown columns: " + ", ".join(unknown)
             )
     return errors
 

@@ -133,9 +133,15 @@ def _allowed_claim_types(output: str, task_types: list[ProblemTaskType]) -> list
     conceptual_output = any(
         marker in normalized
         for marker in (
-            "analysis", "definition", "criterion", "discussion", "interpretation",
+            "analysis",
+            "definition",
+            "criterion",
+            "discussion",
+            "interpretation",
             "treatment",
-            "model", "formulation", "equation",
+            "model",
+            "formulation",
+            "equation",
         )
     ) or (
         any(marker in normalized for marker in ("identification", "identify"))

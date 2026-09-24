@@ -239,9 +239,7 @@ def _unavailable_scalar_verifier_inputs(model: MathematicalModel) -> set[str]:
     return referenced - available
 
 
-_NUMERIC_LITERAL = re.compile(
-    r"(?<![\w.])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?\s*%?(?!\w)"
-)
+_NUMERIC_LITERAL = re.compile(r"(?<![\w.])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?\s*%?(?!\w)")
 
 
 def _unsupported_data_literals(model: MathematicalModel, state: ProblemState) -> set[str]:
@@ -264,9 +262,8 @@ def _unsupported_data_literals(model: MathematicalModel, state: ProblemState) ->
             continue
         if not _text_states_numeric_value(cited.content, float(parameter.value)):
             unsupported.add(parameter.symbol)
-        elif (
-            cited.source is EvidenceSource.PROBLEM_TEXT
-            and not _text_states_numeric_value(state.raw_problem, float(parameter.value))
+        elif cited.source is EvidenceSource.PROBLEM_TEXT and not _text_states_numeric_value(
+            state.raw_problem, float(parameter.value)
         ):
             unsupported.add(parameter.symbol)
     return unsupported

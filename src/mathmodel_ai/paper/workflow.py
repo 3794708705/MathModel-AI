@@ -181,9 +181,7 @@ class PaperWorkflow:
         ensure_transition(bundle.state.current_stage, WorkflowStage.PAPER)
         paper_id, paper_version = self._repository.next_identity(project_id)
         repair_feedback = self._previous_paper_feedback(bundle, paper_id, paper_version)
-        cached = self._repository.latest_literature(
-            project_id, source=self._literature_source.name
-        )
+        cached = self._repository.latest_literature(project_id, source=self._literature_source.name)
         if cached is None:
             references, metadata_checks, literature_run = await self._literature(bundle)
             literature_plan = self._require_output(literature_run, "LiteratureAgent")
@@ -209,9 +207,7 @@ class PaperWorkflow:
             ]
         if bundle.state.paper_versions:
             previous = self._repository.get_version(project_id, paper_id, paper_version - 1)
-            references = self._references_in_snapshot_order(
-                references, previous.evidence_snapshot
-            )
+            references = self._references_in_snapshot_order(references, previous.evidence_snapshot)
         bundle = self._evidence_builder.attach_references(bundle, references)
         if (
             bundle.state.paper_versions
@@ -241,8 +237,7 @@ class PaperWorkflow:
                 repair_feedback,
             )
         revision_reason = (
-            f"deterministic revalidation of paper v{paper_version - 1} "
-            "after validator correction"
+            f"deterministic revalidation of paper v{paper_version - 1} after validator correction"
             if reuse_previous_paper
             else "evidence-grounded Phase 6 paper build"
         )
@@ -251,9 +246,7 @@ class PaperWorkflow:
         try:
             graph = self._claim_graph(paper.claims, list(bundle.records))
         except PaperWorkflowError as exc:
-            raise PaperWorkflowError(
-                f"{exc}; PaperIR preserved at {draft_key}"
-            ) from exc
+            raise PaperWorkflowError(f"{exc}; PaperIR preserved at {draft_key}") from exc
         claims = ClaimEvidenceValidator().apply_statuses(graph)
         paper = paper.model_copy(update={"claims": claims})
         registry = self._document_registry(bundle, paper, references, figures, tables)
@@ -493,9 +486,7 @@ class PaperWorkflow:
             references.append(verifier.verified_copy(candidate, check))
         if not references:
             raise PaperWorkflowError("paper workflow requires retrieved literature metadata")
-        references = self._repository.canonicalize_references(
-            bundle.state.project_id, references
-        )
+        references = self._repository.canonicalize_references(bundle.state.project_id, references)
         CitationRegistry(references)
         return references, checks, run
 
@@ -623,8 +614,13 @@ class PaperWorkflow:
                     tuple(sorted(scenario.decision_values.items())),
                 )
                 groups.setdefault(signature, []).append(
-                    (scenario.scenario_id, metric.metric_id, value, parameter,
-                     str(report.reviewed_replay_ids[scenario.scenario_id]))
+                    (
+                        scenario.scenario_id,
+                        metric.metric_id,
+                        value,
+                        parameter,
+                        str(report.reviewed_replay_ids[scenario.scenario_id]),
+                    )
                 )
         candidates = [(key, rows) for key, rows in groups.items() if len(rows) >= 2]
         if not candidates:
@@ -736,16 +732,12 @@ class PaperWorkflow:
         previous = self._repository.get_version(
             bundle.state.project_id, paper_id, paper_version - 1
         )
-        quality = self._repository.get_quality(
-            bundle.state.project_id, paper_id, paper_version - 1
-        )
+        quality = self._repository.get_quality(bundle.state.project_id, paper_id, paper_version - 1)
         if (
             previous.evidence_snapshot.model_dump(
                 mode="json", exclude={"snapshot_id", "created_at"}
             )
-            != bundle.snapshot.model_dump(
-                mode="json", exclude={"snapshot_id", "created_at"}
-            )
+            != bundle.snapshot.model_dump(mode="json", exclude={"snapshot_id", "created_at"})
             or previous.paper_ir.competition_profile != profile
             or previous.paper_agent_run_id is None
             or previous.paper_agent_is_mock
@@ -753,9 +745,7 @@ class PaperWorkflow:
         ):
             raise PaperWorkflowError("prior paper is not eligible for deterministic re-render")
         errors = [
-            issue
-            for issue in quality.issues
-            if issue.severity is PaperValidationSeverity.ERROR
+            issue for issue in quality.issues if issue.severity is PaperValidationSeverity.ERROR
         ]
         pdf_extraction_only = bool(errors) and all(
             issue.code == "DOCUMENT_INTEGRITY_ERROR"
@@ -826,23 +816,17 @@ class PaperWorkflow:
             bundle.state.project_id, paper_id, paper_version - 1
         )
         if (
-            previous.evidence_snapshot.verified_result_id
-            != bundle.snapshot.verified_result_id
-            or not set(bundle.snapshot.evidence_ids) <= set(
-                previous.evidence_snapshot.evidence_ids
-            )
+            previous.evidence_snapshot.verified_result_id != bundle.snapshot.verified_result_id
+            or not set(bundle.snapshot.evidence_ids) <= set(previous.evidence_snapshot.evidence_ids)
         ):
             return []
-        quality = self._repository.get_quality(
-            bundle.state.project_id, paper_id, paper_version - 1
-        )
+        quality = self._repository.get_quality(bundle.state.project_id, paper_id, paper_version - 1)
         if quality.status is PaperQualityStatus.READY_FOR_FINAL_JURY:
             issues = self._submission_coverage_issues(
                 previous.paper_ir, self._subproblems(bundle.state)
             )
             errors = [
-                f"{issue.code} ({issue.object_ref or 'paper'}): {issue.message}"
-                for issue in issues
+                f"{issue.code} ({issue.object_ref or 'paper'}): {issue.message}" for issue in issues
             ]
             return [
                 f"Previous paper version {paper_version - 1} passed paper checks but "
