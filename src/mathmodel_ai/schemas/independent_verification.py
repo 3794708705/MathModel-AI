@@ -354,6 +354,19 @@ class VerificationRequirements(FrozenContract):
                 raise ValueError("scenario input_changes must exactly name changed inputs")
         return self
 
+    def matches_observation(self, plan: VerificationPlan) -> bool:
+        """Require the same reviewed target source at every evidence handoff."""
+        expected_digest = (
+            self.csv_observation.source_csv_sha256
+            if self.csv_observation is not None
+            else self.observation_sha256
+        )
+        return (
+            plan.csv_observation == self.csv_observation
+            and plan.observation_sha256 == expected_digest
+            and (plan.observation_file_id is None) == (expected_digest is None)
+        )
+
 
 class MetricBatch(FrozenContract):
     metrics: list[VerifiedMetric]

@@ -34,6 +34,7 @@ def reviewed_response_summary(
         or plan.scenarios != policy.scenarios
         or plan.metrics != policy.metrics
         or plan.scientific_scope != policy.scientific_scope
+        or not policy.matches_observation(plan)
         or report.status is not IndependentStatus.PASS
         or report.errors
         or report.required_scenarios != sum(s.required for s in plan.scenarios)

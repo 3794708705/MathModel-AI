@@ -536,6 +536,7 @@ class IndependentValidator:
             plan.metrics != policy.metrics
             or plan.scenarios != policy.scenarios
             or plan.scientific_scope != policy.scientific_scope
+            or not policy.matches_observation(plan)
         ):
             errors.append("REVIEWED_PLAN_POLICY_MISMATCH")
         if report.status is not IndependentStatus.PASS or report.errors:

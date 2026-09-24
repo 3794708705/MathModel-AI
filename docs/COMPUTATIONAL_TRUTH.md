@@ -99,6 +99,9 @@ but still does not independently reproduce generated predictions or prove
 cross-match training isolation.
 The calculator digest includes the CSV observation parser so a change to label
 derivation invalidates newly computed metric evidence.
+The same reviewed observation source is checked again when the independent
+report enters validation and objective-free response analysis; a passing report
+paired with a different policy is rejected at those later handoffs.
 
 Every accepted sensitivity or robustness scenario follows:
 

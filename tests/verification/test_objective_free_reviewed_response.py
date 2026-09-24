@@ -3,8 +3,11 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.schemas.independent_verification import (
+    CsvObservationSpec,
     IndependentStatus,
     IndependentVerificationReport,
     MetricSpec,
@@ -27,6 +30,7 @@ from mathmodel_ai.verification.quality_gates import (
     sensitivity_quality_gate,
     verified_result_quality_gate,
 )
+from mathmodel_ai.verification.reviewed_response import reviewed_response_summary
 from mathmodel_ai.verification.robustness import RobustnessAnalyzer
 from mathmodel_ai.verification.sensitivity import SensitivityAnalyzer
 from tests.verification.helpers import experiment_engine, valid_report
@@ -141,6 +145,23 @@ def test_objective_free_response_requires_exact_independent_evidence():
     result = result.model_copy(update={"objective": None, "model_digest": digest})
     validation = validation.model_copy(update={"model_digest": digest})
     evidence = _evidence(digest, result.result_id)
+    changed_policy = evidence.requirements.model_copy(
+        update={
+            "csv_observation": CsvObservationSpec(
+                source_csv_sha256="e" * 64,
+                source_column="outcome",
+                positive_value="1",
+                negative_value="0",
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="not bound to the passing formal result"):
+        reviewed_response_summary(
+            evidence.model_copy(update={"requirements": changed_policy}),
+            model_digest=digest,
+            result_id=result.result_id,
+            parameter_only=False,
+        )
     engine = experiment_engine()
     sensitivity, executions = SensitivityAnalyzer(engine).analyze(
         model=model,

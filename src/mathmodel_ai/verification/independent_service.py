@@ -123,17 +123,11 @@ class IndependentVerificationService:
 
     @staticmethod
     def _check_policy(plan: VerificationPlan, policy: VerificationRequirements) -> None:
-        expected_observation_digest = (
-            policy.csv_observation.source_csv_sha256
-            if policy.csv_observation is not None
-            else policy.observation_sha256
-        )
         if (
             plan.metrics != policy.metrics
             or plan.scenarios != policy.scenarios
             or plan.scientific_scope != policy.scientific_scope
-            or plan.csv_observation != policy.csv_observation
-            or plan.observation_sha256 != expected_observation_digest
+            or not policy.matches_observation(plan)
         ):
             raise ValueError("PLAN_DOES_NOT_COVER_EXACT_REVIEWED_REQUIREMENTS")
 

@@ -6,6 +6,7 @@ import pytest
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.schemas.files import ArtifactKind, ArtifactRecord
 from mathmodel_ai.schemas.independent_verification import (
+    CsvObservationSpec,
     IndependentStatus,
     IndependentVerificationReport,
     MetricSpec,
@@ -203,6 +204,24 @@ def test_reviewed_evidence_bridge_checks_exact_plan_report_and_requirements() ->
     assert all(item.status is ValidationCheckStatus.PASS for item in report.requirement_checks)
     assert f"independent_report:{reviewed.report.report_id}" in report.evidence_refs
     assert validation_quality_gate(report).status.value == "PASS"
+
+    source = CsvObservationSpec(
+        source_csv_sha256="d" * 64,
+        source_column="outcome",
+        positive_value="1",
+        negative_value="0",
+    )
+    changed_policy = reviewed.requirements.model_copy(update={"csv_observation": source})
+    mismatched = reviewed.model_copy(update={"requirements": changed_policy})
+    rejected = IndependentValidator().validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        reviewed_evidence=mismatched,
+    )
+    assert rejected.status is ValidationStatus.FAIL
+    assert "VALIDATION_FAIL:REVIEWED_PLAN_POLICY_MISMATCH" in rejected.errors
 
 
 @pytest.mark.parametrize(
