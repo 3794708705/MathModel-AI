@@ -1,0 +1,98 @@
+import hashlib
+import json
+
+import pytest
+
+from mathmodel_ai.verification.causal_binary import CausalBinarySpec, CausalFeature
+from mathmodel_ai.verification.causal_holdout import (
+    causal_trace_payload,
+    evaluate_causal_holdout,
+    heldout_groups,
+    verify_causal_trace,
+)
+
+
+class RecordingPredictor:
+    def __init__(self) -> None:
+        self.fit_groups: list[str] = []
+        self.queries: list[CausalFeature] = []
+
+    def fit(self, feature: CausalFeature, outcome: float) -> None:
+        assert outcome in {0.0, 1.0}
+        self.fit_groups.append(feature.group)
+
+    def predict(self, feature: CausalFeature) -> float:
+        self.queries.append(feature)
+        return (1 + feature.prior_condition_positive) / (2 + feature.prior_condition_count)
+
+
+def _fixture() -> tuple[bytes, CausalBinarySpec]:
+    source = (
+        b"match,server,winner,after_point\n"
+        b"A,1,1,1\nA,1,2,2\nA,2,1,3\n"
+        b"B,2,2,1\nB,2,1,2\nB,1,2,3\n"
+        b"C,1,1,1\nC,2,1,2\nC,1,2,3\n"
+        b"D,2,2,1\nD,1,2,2\nD,2,1,3\n"
+    )
+    spec = CausalBinarySpec(
+        source_sha256=hashlib.sha256(source).hexdigest(),
+        group_column="match",
+        condition_column="server",
+        outcome_column="winner",
+        positive_value="1",
+        negative_value="2",
+        history_window=2,
+    )
+    return source, spec
+
+
+def test_group_holdout_is_identity_only_and_sequential() -> None:
+    source, spec = _fixture()
+    predictor = RecordingPredictor()
+    result = evaluate_causal_holdout(source, spec, predictor, fraction=0.25, salt="blind-v1")
+    assert len(result.heldout_groups) == 1
+    assert len(result.training_groups) == 3
+    assert set(predictor.fit_groups) == set(result.training_groups)
+    assert set(predictor.fit_groups).isdisjoint(result.heldout_groups)
+    assert len(predictor.queries) == len(result.predictions) == len(result.observations) == 3
+    assert all(query.group in result.heldout_groups for query in predictor.queries)
+    assert [query.point_index for query in predictor.queries] == [0, 1, 2]
+    assert result.predictions == result.baseline_predictions
+    assert result.brier == pytest.approx(result.baseline_brier)
+    assert heldout_groups({"A", "B", "C", "D"}, fraction=0.25, salt="blind-v1") == (
+        result.heldout_groups
+    )
+
+
+def test_holdout_rejects_invalid_design_and_probabilities() -> None:
+    source, spec = _fixture()
+    with pytest.raises(ValueError, match="GROUP_HOLDOUT_DESIGN_INVALID"):
+        heldout_groups({"A"}, fraction=0.5, salt="blind-v1")
+    with pytest.raises(ValueError, match="GROUP_HOLDOUT_DESIGN_INVALID"):
+        heldout_groups({"A", "B"}, fraction=1, salt="blind-v1")
+
+    class InvalidPredictor(RecordingPredictor):
+        def predict(self, feature: CausalFeature) -> float:
+            del feature
+            return float("nan")
+
+    with pytest.raises(ValueError, match="HELDOUT_PREDICTION_NOT_A_PROBABILITY"):
+        evaluate_causal_holdout(source, spec, InvalidPredictor(), fraction=0.25, salt="blind-v1")
+
+
+def test_trace_recomputes_labels_split_baseline_and_loss() -> None:
+    source, spec = _fixture()
+    result = evaluate_causal_holdout(source, spec, RecordingPredictor(), fraction=0.25, salt="v1")
+    payload = causal_trace_payload(spec, result, fraction=0.25, salt="v1")
+    assert verify_causal_trace(source, payload) == result
+    changed = json.loads(payload)
+    changed["observations"][0] = 1 - changed["observations"][0]
+    with pytest.raises(ValueError, match="CAUSAL_TRACE_RECOMPUTATION_MISMATCH"):
+        verify_causal_trace(source, json.dumps(changed).encode())
+    changed = json.loads(payload)
+    changed["brier"] = 0
+    with pytest.raises(ValueError, match="CAUSAL_TRACE_RECOMPUTATION_MISMATCH"):
+        verify_causal_trace(source, json.dumps(changed).encode())
+    altered_source = source.replace(b"A,1,1,1", b"A,1,2,1")
+    with pytest.raises(ValueError, match="CAUSAL_CSV_SIZE_OR_HASH_MISMATCH"):
+        verify_causal_trace(altered_source, payload)

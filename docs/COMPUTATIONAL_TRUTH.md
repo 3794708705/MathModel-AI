@@ -103,6 +103,23 @@ The same reviewed observation source is checked again when the independent
 report enters validation and objective-free response analysis; a passing report
 paired with a different policy is rejected at those later handoffs.
 
+An isolated pointwise holdout protocol now exists as a separate diagnostic
+building block. A SHA-256-bound grouped CSV is parsed by the trusted host;
+features contain only pre-outcome group/condition history, and entire groups are
+selected for holdout by a salted hash of group identity, not by outcomes.
+Training labels are streamed to a networkless, non-root, read-only Docker
+predictor; held-out features are sent one at a time, without the current label
+or raw CSV mount. The host records each prediction before advancing to the
+next point, persists a non-Mock `ExecutionRecord` and trace artifact, then an
+independent replay recomputes the group split, observations, baseline and Brier
+loss from the original CSV. The official 2024 C CSV has passed this protocol
+with a reviewed causal baseline. This proves the protocol can run on that input,
+not that a generated model solved C: the baseline is not the LLM's generated
+solver, this trace is not wired into the benchmark's verification requirements,
+and the current benchmark still exposes the full CSV to its solver. A new
+versioned input split and model-to-trace contract are required before claiming
+held-out prediction or end-to-end C acceptance.
+
 Every accepted sensitivity or robustness scenario follows:
 
 ```text
