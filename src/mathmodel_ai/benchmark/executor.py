@@ -13,6 +13,7 @@ from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.data.workflow import DataExecutionWorkflow
 from mathmodel_ai.mathematical.workflow import MathematicalWorkflow
 from mathmodel_ai.paper.workflow import PaperWorkflow
+from mathmodel_ai.providers.security import safe_error
 from mathmodel_ai.reasoning.repository import ReasoningRepository
 from mathmodel_ai.reasoning.workflow import ReasoningWorkflow
 from mathmodel_ai.schemas.benchmark import (
@@ -496,7 +497,10 @@ class PipelineBenchmarkExecutor:
             stage=stage,
             category=category,
             severity=FailureSeverity.P1,
-            cause=f"live pipeline stopped with {type(error).__name__}",
+            cause=(
+                f"live pipeline stopped with {type(error).__name__}: "
+                f"{safe_error(error)}"
+            ),
             proposed_fix=(
                 "inspect persisted stage evidence, apply a generic fix, and append a rerun"
             ),
@@ -559,15 +563,51 @@ class PipelineBenchmarkExecutor:
             "submission_completeness",
             "central_model_valid",
         )
-        metrics = [self._metric(attempt_id, name, 0) for name in quality_names]
+        passed_gates = {
+            item.gate for item in state.quality_gates
+            if item.status is QualityGateStatus.PASS and not item.errors
+        }
+        gate_metrics = {
+            "mathematical_validity": "VALIDATE",
+            "solver_success": "SOLVE",
+            "validation_pass": "VALIDATE",
+            "sensitivity_completion": "SENSITIVITY",
+            "robustness_completion": "ROBUSTNESS",
+            "central_model_valid": "VERIFIED",
+        }
+        metrics = [
+            self._metric(
+                attempt_id,
+                name,
+                float(gate_metrics[name] in passed_gates) if name in gate_metrics else 0,
+                evidence_status=(
+                    "PASS" if gate_metrics[name] in passed_gates else "NOT_EVALUATED"
+                ) if name in gate_metrics else (
+                    "UPSTREAM_BLOCKED" if name in {
+                        "citation_validity", "citation_support_accuracy",
+                        "paper_factual_consistency", "competition_compliance",
+                        "submission_completeness",
+                    } else "NOT_EVALUATED"
+                ),
+            )
+            for name in quality_names
+        ]
         metrics.extend(
-            self._metric(attempt_id, name, value, kind=BenchmarkMetricKind.COUNT)
+            self._metric(
+                attempt_id, name, value, kind=BenchmarkMetricKind.COUNT,
+                evidence_status=(
+                    "PASS" if name == "unverified_central_result_count"
+                    and "VERIFIED" in passed_gates else
+                    "UPSTREAM_BLOCKED" if name == "wrong_submission_artifact_count"
+                    else "NOT_EVALUATED"
+                ),
+            )
             for name, value in {
-                "major_unanswered_subproblem_count": 1,
+                "major_unanswered_subproblem_count": 0,
                 "fabricated_result_count": 0,
-                "unverified_central_result_count": 1,
+                "unverified_central_result_count": int("VERIFIED" not in passed_gates),
                 "fabricated_critical_citation_count": 0,
-                "wrong_submission_artifact_count": 1,
+                "wrong_submission_artifact_count": 0,
                 "blocking_competition_violation_count": 0,
                 "secret_leak_count": 0,
                 "solver_calls": self._formal_solver_call_count(state),
@@ -601,6 +641,15 @@ class PipelineBenchmarkExecutor:
                     cost,
                     kind=BenchmarkMetricKind.COST,
                     unit=request.config.pricing.currency,
+                    evidence_status=(
+                        "NOT_EVALUATED"
+                        if not any((
+                            request.config.pricing.input_per_million,
+                            request.config.pricing.cached_input_per_million,
+                            request.config.pricing.output_per_million,
+                        )) and provider_calls
+                        else "PASS"
+                    ),
                 ),
             ]
         )
@@ -730,6 +779,15 @@ class PipelineBenchmarkExecutor:
                     cost,
                     kind=BenchmarkMetricKind.COST,
                     unit=request.config.pricing.currency,
+                    evidence_status=(
+                        "NOT_EVALUATED"
+                        if not any((
+                            request.config.pricing.input_per_million,
+                            request.config.pricing.cached_input_per_million,
+                            request.config.pricing.output_per_million,
+                        )) and usage[3]
+                        else "PASS"
+                    ),
                 ),
             ]
         )
@@ -756,6 +814,7 @@ class PipelineBenchmarkExecutor:
         *,
         kind: BenchmarkMetricKind = BenchmarkMetricKind.QUALITY,
         unit: str = "ratio",
+        evidence_status: str | None = None,
     ) -> BenchmarkMetric:
         metric = BenchmarkMetric(
             attempt_id=attempt_id,
@@ -763,7 +822,10 @@ class PipelineBenchmarkExecutor:
             kind=kind,
             value=value,
             unit=unit,
-            evidence_ref=f"phase1-7-records:{name}",
+            evidence_ref=(
+                f"{evidence_status}:phase1-7-records:{name}"
+                if evidence_status else f"phase1-7-records:{name}"
+            ),
             deterministic=True,
             metric_digest=ZERO,
         )

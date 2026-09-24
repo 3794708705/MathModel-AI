@@ -135,7 +135,7 @@ class LaTeXRenderer:
             r"\usepackage{fontspec}",
             r"\usepackage{xeCJK}",
             r"\setCJKmainfont{Noto Serif CJK SC}",
-            r"\usepackage{amsmath,amssymb,booktabs,graphicx,geometry,tabularx,url}",
+            r"\usepackage{amsmath,amssymb,booktabs,graphicx,geometry,tabularx,longtable,array,url}",
             rf"\geometry{{margin={paper.competition_profile.margin}}}",
             r"\graphicspath{{figures/}}",
             rf"\title{{{escape_latex(paper.title)}}}",
@@ -145,8 +145,9 @@ class LaTeXRenderer:
             r"\maketitle",
             r"\begin{abstract}",
         ]
+        rendered_tables: set[str] = set()
         body = [
-            self._render_block(block, claim_map, equations, figures, tables)
+            self._render_block(block, claim_map, equations, figures, tables, rendered_tables)
             for block in paper.abstract
         ]
         body.extend(
@@ -155,7 +156,7 @@ class LaTeXRenderer:
         for section in sorted([*paper.sections, *paper.appendices], key=lambda item: item.order):
             body.append(rf"\section{{{escape_latex(section.title)}}}\label{{{section.section_id}}}")
             body.extend(
-                self._render_block(block, claim_map, equations, figures, tables)
+                self._render_block(block, claim_map, equations, figures, tables, rendered_tables)
                 for block in section.blocks
             )
         if citations.records():
@@ -182,6 +183,7 @@ class LaTeXRenderer:
         equations: EquationRegistry,
         figures: FigureRegistry,
         tables: TableRegistry,
+        rendered_tables: set[str] | None = None,
     ) -> str:
         citations = self._citations(block.citation_refs)
         if block.block_type in {PaperBlockType.PARAGRAPH, PaperBlockType.SUBSECTION}:
@@ -233,12 +235,43 @@ class LaTeXRenderer:
             )
             if table is None:
                 raise LatexRenderError(f"unknown table: {block.table_ref}")
+            if rendered_tables is not None:
+                if table.table_id in rendered_tables:
+                    return rf"Table~\ref{{{table.table_id}}}" + citations
+                rendered_tables.add(table.table_id)
             alignment = r">{\raggedright\arraybackslash}X" * len(table.columns)
             header = " & ".join(_escape_table_cell(item) for item in table.columns) + r" \\"
             rows = "\n".join(
                 " & ".join(_escape_table_cell(str(value)) for value in row) + r" \\"
                 for row in table.rows
             )
+            if len(table.rows) > 12:
+                widths = (
+                    (0.09, 0.31, 0.17, 0.12, 0.16)
+                    if len(table.columns) == 5
+                    and table.columns[1].casefold() == "meaning"
+                    else (0.85 / len(table.columns),) * len(table.columns)
+                )
+                long_alignment = "".join(
+                    rf">{{\raggedright\arraybackslash}}p{{{width:.3f}\linewidth}}"
+                    for width in widths
+                )
+                return (
+                    "{\\small\\setlength{\\tabcolsep}{3pt}\n"
+                    + rf"\begin{{longtable}}{{{long_alignment}}}"
+                    + "\n"
+                    + rf"\caption{{{escape_latex(table.caption)}}}\label{{{table.table_id}}}\\"
+                    + "\n\\toprule\n"
+                    + header
+                    + "\n\\midrule\n\\endfirsthead\n"
+                    + "\\toprule\n"
+                    + header
+                    + "\n\\midrule\n\\endhead\n"
+                    + "\\bottomrule\n\\endfoot\n"
+                    + rows
+                    + "\n\\end{longtable}\n}"
+                    + citations
+                )
             return (
                 "\\begin{table}[htbp]\n\\centering\n"
                 + rf"\caption{{{escape_latex(table.caption)}}}\label{{{table.table_id}}}"

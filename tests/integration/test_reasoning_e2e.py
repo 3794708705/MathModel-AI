@@ -69,7 +69,7 @@ def test_mock_reasoning_api_persists_complete_phase_two_chain() -> None:
         assert [run["output_state_version"] for run in payload["agent_runs"]] == [1, 2, 3]
         assert all(run["is_mock"] for run in payload["agent_runs"])
         assert [run["prompt_version"] for run in payload["agent_runs"]] == [
-            "2.0.0",
+            "2.1.0",
             "2.5.0",
             "2.2.0",
         ]

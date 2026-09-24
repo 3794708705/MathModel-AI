@@ -21,8 +21,10 @@ from mathmodel_ai.routing.schemas import EscalationLevel, TaskProfile, TaskType
 from mathmodel_ai.schemas.paper import (
     PaperArtifact,
     PaperArtifactKind,
+    PaperIR,
     PaperManifest,
     PaperQualityStatus,
+    PaperSectionType,
     PaperVersion,
 )
 from mathmodel_ai.schemas.problem_state import ProblemState, WorkflowStage, WorkflowStatus
@@ -50,7 +52,7 @@ from mathmodel_ai.submission.package import SubmissionPackage, SubmissionPackage
 from mathmodel_ai.submission.profiles import CompetitionProfileRegistry
 from mathmodel_ai.submission.repository import SubmissionRepository
 from mathmodel_ai.submission.requirements import RequirementCoverageValidator, RequirementRegistry
-from mathmodel_ai.submission.rules import RuleEngine
+from mathmodel_ai.submission.rules import RuleEngine, is_allowed_path
 
 
 class FinalSubmissionError(ValueError):
@@ -321,11 +323,12 @@ class FinalSubmissionWorkflow:
             for kind, (expected_id, expected_hash) in required_artifacts.items()
         ):
             raise FinalSubmissionError("Phase 6 manifest artifact bindings changed")
-        selected = [
+        converted_artifacts = [
             converted
             for artifact in artifacts
             if (converted := self._convert_artifact(artifact)) is not None
         ]
+        selected = self._formal_artifacts(converted_artifacts, profile)
         pdf = [item for item in selected if item.role is SubmissionArtifactRole.PAPER_PDF]
         if len(pdf) != 1:
             raise FinalSubmissionError("approved paper requires one PDF artifact")
@@ -357,16 +360,31 @@ class FinalSubmissionWorkflow:
             verified_result_id=paper.evidence_snapshot.verified_result_id,
             phase5_verified=self._phase5_verified(state),
             page_count=page_count,
-            section_types=[
-                item.section_type.value
-                for item in [*paper.paper_ir.sections, *paper.paper_ir.appendices]
-            ],
+            section_types=self._section_types(paper.paper_ir),
             paper_text="\n".join([self._paper_ir_text(paper), pdf_text]),
             paper_metadata=metadata,
             artifacts=selected,
         )
         selected_bytes = {item.artifact_id: all_bytes[item.artifact_id] for item in selected}
         return candidate, selected_bytes
+
+    @staticmethod
+    def _section_types(paper: PaperIR) -> list[str]:
+        section_types = [
+            item.section_type.value for item in [*paper.sections, *paper.appendices]
+        ]
+        if paper.abstract:
+            section_types.insert(0, PaperSectionType.ABSTRACT.value)
+        return section_types
+
+    @staticmethod
+    def _formal_artifacts(
+        artifacts: list[SubmissionArtifact], profile: CompetitionProfile
+    ) -> list[SubmissionArtifact]:
+        """Exclude internal paper sources that the contest does not accept."""
+        return [
+            item for item in artifacts if is_allowed_path(item.relative_path, profile)
+        ]
 
     @staticmethod
     def _convert_artifact(artifact: PaperArtifact) -> SubmissionArtifact | None:

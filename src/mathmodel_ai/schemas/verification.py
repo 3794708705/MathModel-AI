@@ -228,7 +228,10 @@ class SensitivityReport(BaseModel):
     model_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     result_id: UUID
     validation_id: UUID
-    baseline_objective: float = Field(allow_inf_nan=False)
+    baseline_objective: float | None = Field(default=None, allow_inf_nan=False)
+    reviewed_report_id: UUID | None = None
+    reviewed_replay_ids: dict[str, UUID] = Field(default_factory=dict)
+    reviewed_metric_values: dict[str, float] = Field(default_factory=dict)
     config: SensitivityConfig
     experiments: list[ExperimentRun] = Field(default_factory=list)
     parameter_elasticities: dict[str, float] = Field(default_factory=dict)
@@ -248,10 +251,18 @@ class SensitivityReport(BaseModel):
         failed = sum(item.status is ExperimentStatus.FAIL for item in self.experiments)
         if (self.successful_runs, self.failed_runs) != (successful, failed):
             raise ValueError("sensitivity run counts must match experiments")
-        if self.status is ExperimentReportStatus.PASS and (
-            not self.experiments or failed or successful != len(self.experiments)
+        if (
+            self.status is ExperimentReportStatus.PASS
+            and not self.reviewed_report_id
+            and (not self.experiments or failed or successful != len(self.experiments))
         ):
             raise ValueError("PASS sensitivity requires every experiment to pass")
+        if self.reviewed_report_id is not None and (
+            self.experiments or self.baseline_objective is not None
+        ):
+            raise ValueError(
+                "reviewed response evidence cannot masquerade as objective experiments"
+            )
         return self
 
 
@@ -321,7 +332,10 @@ class RobustnessReport(BaseModel):
     result_id: UUID
     validation_id: UUID
     sensitivity_id: UUID
-    baseline_objective: float = Field(allow_inf_nan=False)
+    baseline_objective: float | None = Field(default=None, allow_inf_nan=False)
+    reviewed_report_id: UUID | None = None
+    reviewed_replay_ids: dict[str, UUID] = Field(default_factory=dict)
+    reviewed_metric_values: dict[str, float] = Field(default_factory=dict)
     method: RobustnessMethod
     config: RobustnessConfig
     experiments: list[ExperimentRun] = Field(default_factory=list)
@@ -345,12 +359,22 @@ class RobustnessReport(BaseModel):
             item.status is ExperimentStatus.FAIL for item in self.experiments
         ):
             raise ValueError("robustness failed_runs must match experiments")
-        if self.status is ExperimentReportStatus.PASS and (
-            not self.experiments
-            or self.summary.failed_runs
-            or self.summary.successful_runs != len(self.experiments)
+        if (
+            self.status is ExperimentReportStatus.PASS
+            and not self.reviewed_report_id
+            and (
+                not self.experiments
+                or self.summary.failed_runs
+                or self.summary.successful_runs != len(self.experiments)
+            )
         ):
             raise ValueError("PASS robustness requires every experiment to pass")
+        if self.reviewed_report_id is not None and (
+            self.experiments or self.baseline_objective is not None
+        ):
+            raise ValueError(
+                "reviewed response evidence cannot masquerade as objective experiments"
+            )
         return self
 
 

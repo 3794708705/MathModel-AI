@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import ValidationError
@@ -13,6 +14,7 @@ from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.mathematical.expressions import evaluate_expression, scalar_parameter_values
 from mathmodel_ai.sandbox.executor import SandboxExecutor
 from mathmodel_ai.schemas.execution import ExecutionStatus
+from mathmodel_ai.schemas.files import RegisteredFile
 from mathmodel_ai.schemas.mathematical import MathematicalModel
 from mathmodel_ai.schemas.program import (
     GeneratedProgram,
@@ -56,6 +58,7 @@ class GeneratedProgramExecutor:
         program: GeneratedProgram,
         model: MathematicalModel,
         options: SolverOptions,
+        input_files: Sequence[RegisteredFile] = (),
     ) -> SolverExecution:
         self._validate(program, model)
         entrypoint = self._entrypoint(program)
@@ -71,6 +74,7 @@ class GeneratedProgramExecutor:
             generated_program_id=program.program_id,
             entrypoint=program.entrypoint,
             source_files=supporting,
+            input_files=input_files,
         )
         finalized_files = [
             item.model_copy(

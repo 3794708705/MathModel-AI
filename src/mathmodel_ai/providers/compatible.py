@@ -33,7 +33,7 @@ from mathmodel_ai.providers.secrets import (
 from mathmodel_ai.providers.secrets import (
     credential_supplier as build_credential_supplier,
 )
-from mathmodel_ai.providers.security import EndpointSecurityPolicy
+from mathmodel_ai.providers.security import EndpointSecurityPolicy, redact_sensitive_text
 from mathmodel_ai.schemas.provider_registry import (
     CustomAuthScheme,
     CustomJSONConfiguration,
@@ -389,7 +389,14 @@ class OpenAICompatibleProvider(SecureEndpointProvider):
                         f"column={decode_error.colno}; position={decode_error.pos}; "
                     )
             details = ", ".join(
-                f"{'.'.join(str(part) for part in error['loc']) or '<root>'}:{error['type']}"
+                (
+                    f"{'.'.join(str(part) for part in error['loc']) or '<root>'}:"
+                    f"{error['type']}"
+                    + (
+                        f":{redact_sensitive_text(str(error['msg']))[:160]}"
+                        if error["type"] == "value_error" else ""
+                    )
+                )
                 for error in exc.errors(include_input=False, include_url=False)[:8]
             )
             raise ProviderResponseError(

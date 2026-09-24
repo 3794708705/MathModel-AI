@@ -5,7 +5,11 @@ import pytest
 from pydantic import ValidationError
 
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
-from mathmodel_ai.mathematical.quality_gates import model_quality_gate, solve_quality_gate
+from mathmodel_ai.mathematical.quality_gates import (
+    _state_relations_sufficient,
+    model_quality_gate,
+    solve_quality_gate,
+)
 from mathmodel_ai.mathematical.registry import (
     EquationRegistry,
     ParameterRegistry,
@@ -27,6 +31,7 @@ from mathmodel_ai.schemas.execution import (
 from mathmodel_ai.schemas.mathematical import (
     BaseDimension,
     ConstantDefinition,
+    DataBinding,
     ExpressionKind,
     IndexDefinition,
     MathExpression,
@@ -35,6 +40,13 @@ from mathmodel_ai.schemas.mathematical import (
     SetDefinition,
     UnitCheckStatus,
     UnitExpression,
+    VariableRole,
+)
+from mathmodel_ai.schemas.problem_analysis import (
+    EvidenceItem,
+    EvidenceSource,
+    EvidenceStatus,
+    EvidenceType,
 )
 from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.results import ResultRecord
@@ -50,7 +62,7 @@ from mathmodel_ai.schemas.solver import (
     SolverRun,
     SolverStatus,
 )
-from tests.mathematical.helpers import add, lp_model, selected_state, symbol
+from tests.mathematical.helpers import add, constant, lp_model, selected_state, symbol, variable
 
 
 def test_mathematical_model_round_trips_with_typed_expression_tree() -> None:
@@ -324,6 +336,180 @@ def test_model_gate_accepts_valid_lp_and_rejects_required_failures() -> None:
         }
     )
     assert model_quality_gate(conflict_model, state).status is QualityGateStatus.RETRY
+
+
+def test_model_gate_rejects_three_latent_states_with_only_one_sum_relation() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    latent = [
+        variable(name).model_copy(update={"role": VariableRole.STATE})
+        for name in ("cold", "neutral", "hot")
+    ]
+    sum_equation = base.equations[0].model_copy(
+        update={
+            "equation_id": "EQ-state-sum",
+            "lhs": add(*(symbol(item.symbol) for item in latent)),
+            "rhs": constant(1),
+        }
+    )
+    underdetermined = base.model_copy(
+        update={
+            "state_variables": latent,
+            "equations": [*base.equations, sum_equation],
+        }
+    )
+    gate = model_quality_gate(underdetermined, state)
+    assert "MODEL_GATE_FAIL:state_relations_sufficient" in gate.errors
+
+    transitions = [
+        sum_equation.model_copy(
+            update={
+                "equation_id": f"EQ-state-{item.symbol}",
+                "lhs": symbol(item.symbol),
+            }
+        )
+        for item in latent
+    ]
+    complete = underdetermined.model_copy(
+        update={
+            "equations": [*base.equations, *transitions],
+        }
+    )
+    assert _state_relations_sufficient(complete)
+
+
+def test_model_gate_rejects_unmaterialized_data_bound_constraint_parameter() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    baseline = ParameterDefinition(
+        parameter_id="PAR-baseline",
+        symbol="baseline",
+        description="Row-level observation unavailable to the scalar verifier",
+        data_binding=DataBinding(binding_id="BIND-baseline", dataset_id=uuid4(), column="observed"),
+        source_type=ParameterSourceType.DATA,
+        source_ref="EVID-fact-1",
+        confidence=1,
+    )
+    constraint = base.constraints[0].model_copy(update={"rhs": symbol("baseline")})
+    model = base.model_copy(update={"parameters": [baseline], "constraints": [constraint]})
+
+    gate = model_quality_gate(model, state)
+
+    assert "MODEL_GATE_FAIL:scalar_verifier_inputs_available" in gate.errors
+    assert "MODEL_GATE_FAIL:UNAVAILABLE_SCALAR_INPUT:baseline" in gate.errors
+    materialized = model.model_copy(
+        update={"parameters": [baseline.model_copy(update={"value": 2.0})]}
+    )
+    assert (
+        "MODEL_GATE_FAIL:scalar_verifier_inputs_available"
+        not in model_quality_gate(materialized, state).errors
+    )
+
+
+def test_model_gate_rejects_data_literal_not_stated_in_cited_evidence() -> None:
+    state = selected_state()
+    state = state.model_copy(
+        update={
+            "evidence_items": [
+                EvidenceItem(
+                    evidence_id="EVID-data-file",
+                    type=EvidenceType.DATA,
+                    content="The supplied CSV contains match-level point records.",
+                    source=EvidenceSource.PROBLEM_TEXT,
+                    confidence=1,
+                    status=EvidenceStatus.ACCEPTED,
+                )
+            ]
+        }
+    )
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    parameter = ParameterDefinition(
+        parameter_id="PAR-win-rate",
+        symbol="win_rate",
+        description="Claimed observed rate",
+        value=0.5046,
+        source_type=ParameterSourceType.DATA,
+        source_ref="EVID-data-file",
+        confidence=0.9,
+    )
+    model = base.model_copy(update={"parameters": [parameter]})
+
+    gate = model_quality_gate(model, state)
+
+    assert "MODEL_GATE_FAIL:data_literals_have_numeric_evidence" in gate.errors
+    assert "MODEL_GATE_FAIL:UNSUPPORTED_DATA_LITERAL:win_rate" in gate.errors
+
+    stated = state.evidence_items[0].model_copy(
+        update={"content": "The observed win rate is 50.46% in the stated source."}
+    )
+    supported_state = state.model_copy(update={"evidence_items": [stated]})
+    assert "MODEL_GATE_FAIL:data_literals_have_numeric_evidence" in model_quality_gate(
+        model, supported_state
+    ).errors
+    supported_state = supported_state.model_copy(
+        update={"raw_problem": f"{state.raw_problem} The observed win rate is 50.46%."}
+    )
+    assert "MODEL_GATE_FAIL:data_literals_have_numeric_evidence" not in model_quality_gate(
+        model, supported_state
+    ).errors
+
+
+def test_model_gate_rejects_objective_constant_through_derived_equation() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    assert base.objective is not None
+    score = variable("score").model_copy(update={"role": VariableRole.DERIVED})
+    definition = base.equations[0].model_copy(
+        update={
+            "equation_id": "EQ-fixed-score",
+            "lhs": symbol("score"),
+            "rhs": constant(1),
+        }
+    )
+    fixed_objective = base.objective.model_copy(
+        update={"expression": symbol("score"), "equation_ref": "EQ-fixed-score"}
+    )
+    model = base.model_copy(
+        update={
+            "derived_variables": [score],
+            "equations": [*base.equations, definition],
+            "objective": fixed_objective,
+        }
+    )
+
+    assert "MODEL_GATE_FAIL:objective_depends_on_decision" in model_quality_gate(
+        model, state
+    ).errors
+    assert "MODEL_GATE_FAIL:objective_depends_on_decision" not in model_quality_gate(
+        base, state
+    ).errors
+    coupled = model.model_copy(
+        update={
+            "equations": [
+                *base.equations,
+                definition.model_copy(update={"rhs": add(symbol("x"), constant(1))}),
+            ]
+        }
+    )
+    assert "MODEL_GATE_FAIL:objective_depends_on_decision" not in model_quality_gate(
+        coupled, state
+    ).errors
 
 
 def test_model_gate_blocks_unresolved_critical_ambiguity() -> None:

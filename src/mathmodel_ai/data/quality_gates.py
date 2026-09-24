@@ -42,19 +42,9 @@ def data_quality_gate(
     understanding_ids = (
         {item.dataset_id for item in understanding.datasets} if understanding is not None else set()
     )
-    known_columns = {
-        profile.dataset_id: {column.name for column in profile.columns} for profile in profiles
-    }
-    references_valid = True
-    if understanding is not None:
-        for dataset in understanding.datasets:
-            columns = known_columns.get(dataset.dataset_id, set())
-            if not set(dataset.potential_features) <= columns:
-                references_valid = False
-            if not set(dataset.potential_targets) <= columns:
-                references_valid = False
-            if any(item.column not in columns for item in dataset.key_columns):
-                references_valid = False
+    references_valid = (
+        understanding is None or not data_column_reference_errors(profiles, understanding)
+    )
     checks = {
         "data_evidence_present": bool(profiles) or media_present,
         "profiles_deterministic": all(profile.deterministic for profile in profiles),
@@ -78,6 +68,31 @@ def data_quality_gate(
         errors=errors,
         warnings=warnings,
     )
+
+
+def data_column_reference_errors(
+    profiles: list[DataProfile], understanding: DataUnderstanding,
+) -> list[str]:
+    """Describe invented column bindings without relaxing the DATA gate."""
+    known = {
+        profile.dataset_id: {column.name for column in profile.columns}
+        for profile in profiles
+    }
+    errors: list[str] = []
+    for dataset in understanding.datasets:
+        columns = known.get(dataset.dataset_id, set())
+        referenced = {
+            *dataset.potential_features,
+            *dataset.potential_targets,
+            *(item.column for item in dataset.key_columns),
+        }
+        unknown = sorted(referenced - columns)
+        if unknown:
+            errors.append(
+                f"dataset {dataset.dataset_id} references unknown columns: "
+                + ", ".join(unknown)
+            )
+    return errors
 
 
 def execution_quality_gate(

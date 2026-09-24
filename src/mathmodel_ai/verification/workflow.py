@@ -201,6 +201,7 @@ class VerificationWorkflow:
         project_id: UUID,
         *,
         config: SensitivityConfig | None = None,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> SensitivityStageOutcome:
         state = self._reasoning_repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.SENSITIVITY)
@@ -211,8 +212,9 @@ class VerificationWorkflow:
             result=context.result,
             validation=validation,
             config=config or SensitivityConfig(),
+            reviewed_evidence=reviewed_evidence,
         )
-        gate = sensitivity_quality_gate(report)
+        gate = sensitivity_quality_gate(report, reviewed_evidence)
         next_state = self._sensitivity_state(
             state,
             report,
@@ -228,6 +230,7 @@ class VerificationWorkflow:
         project_id: UUID,
         *,
         config: RobustnessConfig | None = None,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> RobustnessStageOutcome:
         state = self._reasoning_repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.ROBUSTNESS)
@@ -240,8 +243,9 @@ class VerificationWorkflow:
             validation=validation,
             sensitivity=sensitivity,
             config=config or RobustnessConfig(),
+            reviewed_evidence=reviewed_evidence,
         )
-        gate = robustness_quality_gate(report)
+        gate = robustness_quality_gate(report, reviewed_evidence)
         next_state = self._robustness_state(
             state,
             report,
@@ -325,6 +329,7 @@ class VerificationWorkflow:
             validation_integrity_errors=validation_errors,
             sensitivity_integrity_errors=sensitivity_errors,
             robustness_integrity_errors=robustness_errors,
+            reviewed_evidence=reviewed_evidence,
         )
         next_state = self._red_team_state(
             state,
@@ -464,9 +469,13 @@ class VerificationWorkflow:
     ) -> VerificationRunOutcome:
         validation = self.validate(project_id, reviewed_evidence=reviewed_evidence)
         self._require_pass(validation.gate)
-        sensitivity = self.sensitivity(project_id, config=sensitivity_config)
+        sensitivity = self.sensitivity(
+            project_id, config=sensitivity_config, reviewed_evidence=reviewed_evidence
+        )
         self._require_pass(sensitivity.gate)
-        robustness = self.robustness(project_id, config=robustness_config)
+        robustness = self.robustness(
+            project_id, config=robustness_config, reviewed_evidence=reviewed_evidence
+        )
         self._require_pass(robustness.gate)
         red_team = await self.red_team(
             project_id,

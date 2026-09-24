@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from mathmodel_ai.schemas.independent_verification import ReviewedValidationEvidence
 from mathmodel_ai.schemas.mathematical import MathematicalModel
 from mathmodel_ai.schemas.results import ResultRecord
 from mathmodel_ai.schemas.verification import (
@@ -13,6 +14,7 @@ from mathmodel_ai.schemas.verification import (
     ValidationStatus,
 )
 from mathmodel_ai.verification.experiments import ExperimentEngine, ExperimentOutcome
+from mathmodel_ai.verification.reviewed_response import reviewed_response_summary
 
 
 class SensitivityAnalyzer:
@@ -26,10 +28,38 @@ class SensitivityAnalyzer:
         result: ResultRecord,
         validation: ValidationReport,
         config: SensitivityConfig,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> tuple[SensitivityReport, list[ExperimentOutcome]]:
         if validation.status is not ValidationStatus.PASS:
             return self._blocked(model, result, validation, config, "validation did not pass"), []
         if result.objective is None:
+            if reviewed_evidence is not None:
+                try:
+                    replay_ids, values = reviewed_response_summary(
+                        reviewed_evidence,
+                        model_digest=result.model_digest,
+                        result_id=result.result_id,
+                        parameter_only=True,
+                    )
+                except ValueError as exc:
+                    return self._blocked(model, result, validation, config, str(exc)), []
+                return SensitivityReport(
+                    project_id=model.project_id,
+                    problem_id=model.problem_id,
+                    model_id=model.model_id,
+                    model_version=model.version,
+                    model_digest=result.model_digest,
+                    result_id=result.result_id,
+                    validation_id=validation.validation_id,
+                    baseline_objective=None,
+                    reviewed_report_id=reviewed_evidence.report.report_id,
+                    reviewed_replay_ids=replay_ids,
+                    reviewed_metric_values=values,
+                    config=config,
+                    successful_runs=0,
+                    failed_runs=0,
+                    status=ExperimentReportStatus.PASS,
+                ), []
             return self._blocked(
                 model, result, validation, config, "baseline objective is absent"
             ), []
@@ -139,7 +169,7 @@ class SensitivityAnalyzer:
             model_digest=result.model_digest,
             result_id=result.result_id,
             validation_id=validation.validation_id,
-            baseline_objective=result.objective or 0.0,
+            baseline_objective=result.objective,
             config=config,
             successful_runs=0,
             failed_runs=0,

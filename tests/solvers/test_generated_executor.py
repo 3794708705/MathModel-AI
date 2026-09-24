@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
 
@@ -11,6 +12,7 @@ from mathmodel_ai.files.storage import FileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.sandbox.executor import SandboxExecutor
 from mathmodel_ai.schemas.execution import ExecutionOrigin, ExecutionStatus
+from mathmodel_ai.schemas.files import FileKind, RegisteredFile
 from mathmodel_ai.schemas.program import (
     GeneratedProgram,
     GeneratedProgramStatus,
@@ -130,6 +132,43 @@ def test_generated_executor_preserves_result_schema_diagnostics_for_retry() -> N
     assert "solver_name" in error
     assert "status" in error
     assert "variable_values.scenario" in error
+
+
+def test_generated_executor_mounts_registered_input_files() -> None:
+    sandbox = Mock(spec=SandboxExecutor)
+    sandbox.execute.return_value = SimpleNamespace(
+        record=SimpleNamespace(
+            status=ExecutionStatus.FAILED,
+            code_artifact_id=uuid4(),
+            runtime_seconds=0.1,
+            error="fixture execution failed",
+            run_id=uuid4(),
+        ),
+        artifact_records=[],
+    )
+    executor = _executor(sandbox)
+    program = _program(content="print('solve')", dependencies=[])
+    model = lp_model(
+        project_id=program.project_id,
+        problem_id=program.problem_id,
+        model_id=program.model_id,
+    )
+    data_file = RegisteredFile(
+        project_id=program.project_id,
+        problem_id=program.problem_id,
+        original_name="observations.csv",
+        safe_name="observations.csv",
+        extension=".csv",
+        kind=FileKind.CSV,
+        detected_mime_type="text/csv",
+        size_bytes=4,
+        sha256="a" * 64,
+        storage_key="fixture.csv",
+    )
+
+    executor.execute(program, model, SolverOptions(), input_files=[data_file])
+
+    assert sandbox.execute.call_args.kwargs["input_files"] == [data_file]
 
 
 @pytest.mark.parametrize("nested", [{"x": 1.0}, [1.0, 2.0]])

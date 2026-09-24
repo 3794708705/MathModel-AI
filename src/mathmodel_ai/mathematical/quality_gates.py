@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+import math
+import re
+
 from mathmodel_ai.mathematical.evidence import EvidenceIntegrityVerifier
+from mathmodel_ai.mathematical.expressions import referenced_symbols, scalar_parameter_values
 from mathmodel_ai.mathematical.registry import EquationRegistry, SymbolRegistry
 from mathmodel_ai.mathematical.units import UnitChecker
 from mathmodel_ai.schemas.execution import ExecutionRecord, ExecutionStatus
 from mathmodel_ai.schemas.mathematical import (
+    ConstraintRelation,
+    ExpressionKind,
     InterpretationResolutionStatus,
     MathematicalModel,
+    ParameterSourceType,
     UnitCheckStatus,
 )
 from mathmodel_ai.schemas.model_selection import ModelFamily
+from mathmodel_ai.schemas.problem_analysis import EvidenceSource, EvidenceStatus
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.program import GeneratedProgram
 from mathmodel_ai.schemas.quality import QualityGateResult, QualityGateStatus
@@ -86,6 +94,9 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         item in {capability.value for capability in SolverCapability}
         for item in model.solver_requirements.required_capabilities
     )
+    unavailable_scalar_inputs = _unavailable_scalar_verifier_inputs(model)
+    unsupported_data_literals = _unsupported_data_literals(model, state)
+    objective_decision_coupling = _objective_depends_on_decision(model)
     checks = {
         "selected_model_exists": state.selected_model is not None,
         "selected_model_matches": (
@@ -95,12 +106,16 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         "target_subproblems_known": set(model.target_subproblems) <= known_subproblems,
         "decision_variables_present": bool(model.decision_variables),
         "optimization_objective_present": not optimization or model.objective is not None,
+        "objective_depends_on_decision": objective_decision_coupling,
         "symbol_registry_valid": symbols.report.valid,
         "parameter_sources_present": all(
             bool(item.source_ref) for item in [*model.parameters, *model.constants]
         ),
         "data_bindings_resolve": data_bindings_valid and parameter_bindings_valid,
         "equation_registry_valid": equations.report.valid,
+        "state_relations_sufficient": _state_relations_sufficient(model),
+        "scalar_verifier_inputs_available": not unavailable_scalar_inputs,
+        "data_literals_have_numeric_evidence": not unsupported_data_literals,
         "required_equations_present": required_equations <= equation_ids,
         "no_explicit_unit_failure": unit_report.status is not UnitCheckStatus.FAIL,
         "critical_ambiguities_resolved": not unresolved_critical,
@@ -108,6 +123,14 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         "solver_requirements_valid": solver_requirements_valid,
     }
     errors = [f"MODEL_GATE_FAIL:{name}" for name, passed in checks.items() if not passed]
+    errors.extend(
+        f"MODEL_GATE_FAIL:UNAVAILABLE_SCALAR_INPUT:{symbol}"
+        for symbol in sorted(unavailable_scalar_inputs)
+    )
+    errors.extend(
+        f"MODEL_GATE_FAIL:UNSUPPORTED_DATA_LITERAL:{symbol}"
+        for symbol in sorted(unsupported_data_literals)
+    )
     errors.extend(
         f"MODEL_GATE_FAIL:{item.code.value}:{item.reference}"
         for item in [*symbols.report.issues, *equations.report.issues]
@@ -133,6 +156,133 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         errors=list(dict.fromkeys(errors)),
         warnings=list(dict.fromkeys(warnings)),
     )
+
+
+def _state_relations_sufficient(model: MathematicalModel) -> bool:
+    """Reject state symbols with fewer defining relations than unknown states."""
+    states = {item.symbol for item in model.state_variables}
+    if not states:
+        return True
+    objective_equation = model.objective.equation_ref if model.objective else None
+    constraint_equations = {item.equation_ref for item in model.constraints}
+    equality_equations = {
+        item.equation_ref for item in model.constraints if item.relation is ConstraintRelation.EQ
+    }
+    relations = {
+        equation.equation_id
+        for equation in model.equations
+        if equation.equation_id != objective_equation
+        and (
+            equation.equation_id not in constraint_equations
+            or equation.equation_id in equality_equations
+        )
+        and referenced_symbols(equation.lhs) & states
+    }
+    relations.update(
+        item.equation_ref
+        for item in [*model.initial_conditions, *model.boundary_conditions]
+        if item.relation is ConstraintRelation.EQ and referenced_symbols(item.expression) & states
+    )
+    return len(relations) >= len(states)
+
+
+def _objective_depends_on_decision(model: MathematicalModel) -> bool:
+    """Reject an objective proven constant with respect to every decision variable."""
+    if model.objective is None:
+        return True
+    decisions = {item.symbol for item in model.decision_variables}
+    parameters = {item.symbol for item in [*model.parameters, *model.constants]}
+    definitions: dict[str, set[str]] = {}
+    for equation in model.equations:
+        if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol is not None:
+            definitions.setdefault(equation.lhs.symbol, set()).update(
+                referenced_symbols(equation.rhs)
+            )
+    frontier = list(referenced_symbols(model.objective.expression))
+    seen: set[str] = set()
+    while frontier:
+        symbol = frontier.pop()
+        if symbol in decisions:
+            return True
+        if symbol in seen:
+            continue
+        seen.add(symbol)
+        if symbol in definitions:
+            frontier.extend(definitions[symbol] - seen)
+        elif symbol not in parameters:
+            # An implicit or externally defined symbol may depend on a decision;
+            # this check rejects only objectives proven decision-independent.
+            return True
+    return False
+
+
+def _unavailable_scalar_verifier_inputs(model: MathematicalModel) -> set[str]:
+    """The scalar result contract cannot verify unmaterialized data-bound inputs."""
+    available = {
+        *(item.symbol for item in model.decision_variables),
+        *(item.symbol for item in model.state_variables),
+        *(item.symbol for item in model.derived_variables),
+        *scalar_parameter_values([*model.parameters, *model.constants]),
+    }
+    expressions = [
+        expression
+        for constraint in [
+            *model.constraints,
+            *model.initial_conditions,
+            *model.boundary_conditions,
+        ]
+        for expression in (constraint.expression, constraint.rhs)
+    ]
+    if model.objective is not None:
+        expressions.append(model.objective.expression)
+    referenced = set().union(*(referenced_symbols(expression) for expression in expressions))
+    return referenced - available
+
+
+_NUMERIC_LITERAL = re.compile(
+    r"(?<![\w.])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?\s*%?(?!\w)"
+)
+
+
+def _unsupported_data_literals(model: MathematicalModel, state: ProblemState) -> set[str]:
+    """Do not accept a model-generated DATA scalar with only a dataset-name citation."""
+    evidence = {item.evidence_id: item for item in state.evidence_items}
+    if state.problem_analysis is not None:
+        evidence.update({item.evidence_id: item for item in state.problem_analysis.all_evidence()})
+    unsupported: set[str] = set()
+    for parameter in [*model.parameters, *model.constants]:
+        if (
+            parameter.source_type is not ParameterSourceType.DATA
+            or parameter.data_binding is not None
+            or isinstance(parameter.value, bool)
+            or not isinstance(parameter.value, (int, float))
+        ):
+            continue
+        cited = evidence.get(parameter.source_ref)
+        if cited is None or cited.status is not EvidenceStatus.ACCEPTED:
+            unsupported.add(parameter.symbol)
+            continue
+        if not _text_states_numeric_value(cited.content, float(parameter.value)):
+            unsupported.add(parameter.symbol)
+        elif (
+            cited.source is EvidenceSource.PROBLEM_TEXT
+            and not _text_states_numeric_value(state.raw_problem, float(parameter.value))
+        ):
+            unsupported.add(parameter.symbol)
+    return unsupported
+
+
+def _text_states_numeric_value(text: str, value: float) -> bool:
+    for match in _NUMERIC_LITERAL.finditer(text):
+        literal = match.group().strip()
+        percent = literal.endswith("%")
+        try:
+            stated = float(literal.rstrip("%")) / (100 if percent else 1)
+        except ValueError:
+            continue
+        if math.isclose(value, stated, rel_tol=1e-9, abs_tol=1e-12):
+            return True
+    return False
 
 
 def solve_quality_gate(

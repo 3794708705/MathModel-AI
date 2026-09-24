@@ -172,6 +172,19 @@ ClaimStructuredValue = NumericClaimValue | ComparisonClaimValue | dict[str, Any]
 class Claim(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="before")
+    @classmethod
+    def parse_typed_structured_value(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        claim_type = value.get("claim_type")
+        structured = value.get("structured_value")
+        if claim_type == ClaimType.NUMERIC and structured is not None:
+            return {**value, "structured_value": NumericClaimValue.model_validate(structured)}
+        if claim_type == ClaimType.COMPARISON and structured is not None:
+            return {**value, "structured_value": ComparisonClaimValue.model_validate(structured)}
+        return value
+
     claim_id: str = Field(pattern=r"^CLAIM-[A-Za-z0-9_-]+$")
     project_id: UUID
     paper_id: UUID
@@ -618,11 +631,13 @@ class PaperAgentInput(BaseModel):
     evidence: list[EvidenceRecord] = Field(min_length=1)
     evidence_snapshot: EvidenceSnapshot
     equation_ids: list[str] = Field(default_factory=list)
+    symbol_definitions: dict[str, str] = Field(default_factory=dict)
     figure_ids: list[str] = Field(default_factory=list)
     table_ids: list[str] = Field(default_factory=list)
     reference_ids: list[str] = Field(default_factory=list)
     required_subproblems: list[ProblemRequirement] = Field(default_factory=list)
     competition_profile: CompetitionProfile = Field(default_factory=CompetitionProfile)
+    repair_feedback: list[str] = Field(default_factory=list, max_length=3)
 
 
 class PaperFactualAuditInput(BaseModel):

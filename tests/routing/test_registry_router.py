@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+import pytest
+
 from mathmodel_ai.core.config import Settings
 from mathmodel_ai.core.types import Environment, ProviderName, ReasoningEffort
 from mathmodel_ai.db.base import Base
@@ -8,7 +10,7 @@ from mathmodel_ai.providers.repository import ProviderModelRegistry
 from mathmodel_ai.providers.secrets import EnvironmentSecretResolver
 from mathmodel_ai.providers.security import EndpointSecurityPolicy
 from mathmodel_ai.routing.router import ModelRouter
-from mathmodel_ai.routing.schemas import RouteAction, TaskProfile, TaskType
+from mathmodel_ai.routing.schemas import EscalationLevel, RouteAction, TaskProfile, TaskType
 from mathmodel_ai.schemas.provider_registry import (
     AgentRoutePolicy,
     CapabilityEvidence,
@@ -53,6 +55,7 @@ class RegistryHarness:
         *,
         enabled: bool = True,
         statuses: dict[ModelCapability, CapabilityStatus] | None = None,
+        quality_tier: QualityTier = QualityTier.FLAGSHIP_MAX,
     ) -> ModelProfile:
         selected = statuses or {
             ModelCapability.TEXT: CapabilityStatus.SUPPORTED,
@@ -66,7 +69,7 @@ class RegistryHarness:
                 display_name=model_id,
                 remote_model=f"remote-{model_id}",
                 enabled=enabled,
-                quality_tier=QualityTier.FLAGSHIP_MAX,
+                quality_tier=quality_tier,
                 declared_capabilities={
                     capability: CapabilityEvidence(
                         status=status,
@@ -545,3 +548,48 @@ def test_all_unavailable_models_return_explicit_no_eligible_model() -> None:
     assert decision.action is RouteAction.HUMAN_REVIEW
     assert decision.selected_provider is None
     assert "NO_ELIGIBLE_MODEL" in decision.reason
+
+
+@pytest.mark.parametrize("tier", list(QualityTier))
+def test_red_team_accepts_every_quality_tier_when_live_capabilities_pass(
+    tier: QualityTier,
+) -> None:
+    harness = _harness()
+    harness.add_provider("provider-any-tier")
+    harness.add_model("model-any-tier", "provider-any-tier", quality_tier=tier)
+    harness.probe("model-any-tier")
+    router = _router(harness, default_model_id="model-any-tier")
+    profile = _profile(
+        task_type=TaskType.RED_TEAM,
+        complexity=4,
+        reasoning_requirement=4,
+        math_requirement=4,
+        review_requirement=5,
+        minimum_level=EscalationLevel.FLAGSHIP_XHIGH,
+    )
+
+    decision = router.route(profile, agent_name="red_team_agent")
+
+    assert decision.action is RouteAction.EXECUTE
+    assert decision.selected_model_id == "model-any-tier"
+    assert decision.level is EscalationLevel.FLAGSHIP_MAX
+
+
+def test_low_tier_still_cannot_bypass_required_structured_output() -> None:
+    harness = _harness()
+    harness.add_provider("provider-low")
+    harness.add_model("model-low", "provider-low", quality_tier=QualityTier.ROUTINE)
+    harness.probe(
+        "model-low",
+        statuses={
+            ModelCapability.TEXT: CapabilityStatus.SUPPORTED,
+            ModelCapability.STRUCTURED_OUTPUT: CapabilityStatus.UNSUPPORTED,
+        },
+    )
+
+    decision = _router(harness, default_model_id="model-low").route(
+        _profile(task_type=TaskType.RED_TEAM), agent_name="red_team_agent"
+    )
+
+    assert decision.action is RouteAction.HUMAN_REVIEW
+    assert "STRUCTURED_OUTPUT" in " ".join(decision.rejected_models["model-low"])

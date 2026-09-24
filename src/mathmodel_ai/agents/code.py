@@ -1,3 +1,4 @@
+import ast
 import json
 import re
 
@@ -40,6 +41,60 @@ def reject_hardcoded_results(program: GeneratedProgramDraft) -> None:
             )
 
 
+def reject_header_only_csv_usage(program: GeneratedProgramDraft) -> None:
+    """Reject the observed failure mode of treating a CSV header as the data."""
+    readers: set[str] = set()
+    trees: list[ast.AST] = []
+    for source in program.files:
+        try:
+            module = ast.parse(source.content, filename=source.path)
+        except SyntaxError as exc:
+            raise ValueError(f"CODE_GENERATION_BLOCKED: invalid Python in {source.path}") from exc
+        trees.append(module)
+        for node in ast.walk(module):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            if not (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Attribute)
+                and value.func.attr in {"reader", "DictReader"}
+            ):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            readers.update(
+                target.id for target in targets if isinstance(target, ast.Name)
+            )
+    if not readers:
+        return
+
+    for tree in trees:
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)) and any(
+                isinstance(item, ast.Name) and item.id in readers
+                for item in ast.walk(node.iter)
+            ):
+                return
+            if not isinstance(node, ast.Call):
+                continue
+            if isinstance(node.func, ast.Attribute) and node.func.attr in {
+                "read_csv",
+                "scan_csv",
+            } and not any(
+                keyword.arg == "nrows"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value == 0
+                for keyword in node.keywords
+            ):
+                return
+            if (
+                any(isinstance(arg, ast.Name) and arg.id in readers for arg in node.args)
+                and not (isinstance(node.func, ast.Name) and node.func.id == "next")
+            ):
+                return
+    raise ValueError("CODE_GENERATION_BLOCKED: CSV readers consume headers but no data rows")
+
+
 class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
     name = "code_agent"
     role = "auditable translation of a fixed mathematical model into executable code"
@@ -57,6 +112,22 @@ class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
     ) -> None:
         super().__init__(router=router, providers=providers, max_retries=max_retries)
         self._prompts = prompts
+
+    def prepare_attempt_input(
+        self,
+        input_data: CodeAgentInput,
+        state: ProblemState,
+        previous_errors: tuple[str, ...],
+    ) -> CodeAgentInput:
+        if not previous_errors:
+            return input_data
+        feedback = [
+            f"AUTOMATED_SOLVE_RETRY_FEEDBACK: {message[:400]}"
+            for message in previous_errors[-2:]
+        ]
+        return input_data.model_copy(
+            update={"user_guidance": [*input_data.user_guidance, *feedback]}
+        )
 
     async def execute(
         self,
@@ -84,6 +155,9 @@ class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
                             ensure_ascii=False,
                             separators=(",", ":"),
                         ),
+                        input_manifest_json=json.dumps(
+                            input_data.input_manifest, ensure_ascii=False, separators=(",", ":")
+                        ),
                         user_guidance=json.dumps(input_data.user_guidance, ensure_ascii=False),
                     ),
                 ),
@@ -92,6 +166,11 @@ class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
         )
         response = await provider.structured_generate(request, GeneratedProgramDraft)
         reject_hardcoded_results(response.parsed)
+        if input_data.mathematical_model.data_bindings and any(
+            item.get("path", "").lower().endswith(".csv")
+            for item in input_data.input_manifest
+        ):
+            reject_header_only_csv_usage(response.parsed)
         files = [item.with_digest() for item in response.parsed.files]
         program = GeneratedProgram(
             **response.parsed.model_dump(exclude={"files"}),

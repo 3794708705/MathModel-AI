@@ -267,9 +267,10 @@ def test_reviewed_model_binding_requires_live_code_agent_instead_of_math_modeler
     coverage, coverage_evidence = repository.live_provider_coverage(state.project_id)
 
     assert active is True
-    assert coverage == 1
+    # Agent calls alone do not establish a persisted paper or jury outcome.
+    assert coverage == 4 / 6
     assert len(activity_evidence) == len(BenchmarkRepository.REVIEWED_MODEL_LIVE_AGENT_NAMES)
-    assert len(coverage_evidence) == len(BenchmarkRepository.REVIEWED_MODEL_LIVE_AGENT_NAMES)
+    assert len(coverage_evidence) == 4
 
 
 def _running_run() -> BenchmarkRun:

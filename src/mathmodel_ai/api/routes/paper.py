@@ -41,7 +41,11 @@ def list_literature(project_id: UUID, request: Request) -> list[ReferenceRecord]
 
 async def _run(project_id: UUID, payload: PaperRunRequest, request: Request) -> PaperRunResponse:
     repository, workflow = _services(request)
-    outcome = await workflow.run(project_id, competition_profile=payload.competition_profile)
+    outcome = await workflow.run(
+        project_id,
+        competition_profile=payload.competition_profile,
+        expected_science_hash=payload.expected_science_hash,
+    )
     return PaperRunResponse(
         paper=outcome.version,
         quality=outcome.quality,

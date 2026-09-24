@@ -16,6 +16,7 @@ from mathmodel_ai.mathematical.strategy import ExecutionStrategySelector
 from mathmodel_ai.reasoning.repository import ReasoningRepository
 from mathmodel_ai.reasoning.state_machine import ensure_transition
 from mathmodel_ai.routing.schemas import EscalationLevel, TaskProfile, TaskType
+from mathmodel_ai.sandbox.executor import sandbox_input_manifest
 from mathmodel_ai.schemas.mathematical import (
     MathematicalModel,
     MathematicalModelRef,
@@ -294,6 +295,7 @@ class MathematicalWorkflow:
                 CodeAgentInput(
                     mathematical_model=model,
                     algorithm_plan=state.algorithm_plan,
+                    input_manifest=sandbox_input_manifest(state.registered_files),
                     user_guidance=user_guidance or [],
                 ),
                 state,
@@ -311,7 +313,9 @@ class MathematicalWorkflow:
             program = self._require_code_output(state, code_agent_run)
             program = program.model_copy(update={"generator_agent_run_id": code_agent_run.run_id})
             try:
-                execution = self._generated_executor.execute(program, model, selected.options)
+                execution = self._generated_executor.execute(
+                    program, model, selected.options, input_files=state.registered_files
+                )
             except Exception:
                 self._reasoning_repository.record_run(
                     state.project_id,

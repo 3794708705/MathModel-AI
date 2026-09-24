@@ -1,0 +1,90 @@
+{
+  "source_file": "Wimbledon_featured_matches.csv",
+  "source_sha256": "b1788d0ea169b65629b0e9fb0f91d007507b306e404507bbf90bd5f700a3c229",
+  "n_matches": 31,
+  "n_points": 7284,
+  "definition": "past-eight-point mean of (player1 win - sequential serve-conditioned baseline)",
+  "prior": {
+    "wins": 10.0,
+    "losses": 10.0
+  },
+  "service": {
+    "server_points": 7284,
+    "server_wins": 4903,
+    "server_win_rate": 0.6731191652937946
+  },
+  "cross_validation": [
+    {
+      "window": 4,
+      "folds": 5,
+      "n_points": 7284,
+      "beta_by_fold": [
+        -0.16565107330234824,
+        -0.24139354110814684,
+        -0.1388837532614697,
+        -0.19873994596448136,
+        -0.1318521178512281
+      ],
+      "brier_baseline": 0.22398027042885466,
+      "brier_adjusted": 0.22392002580979817,
+      "logloss_baseline": 0.639896467437724,
+      "logloss_adjusted": 0.6397900444874726
+    },
+    {
+      "window": 8,
+      "folds": 5,
+      "n_points": 7284,
+      "beta_by_fold": [
+        -0.2888036811673497,
+        -0.4502658058817886,
+        -0.34545048557623276,
+        -0.35794805308552324,
+        -0.4279963278390058
+      ],
+      "brier_baseline": 0.22398027042885466,
+      "brier_adjusted": 0.22379608363924125,
+      "logloss_baseline": 0.639896467437724,
+      "logloss_adjusted": 0.6395382891889275
+    },
+    {
+      "window": 12,
+      "folds": 5,
+      "n_points": 7284,
+      "beta_by_fold": [
+        -0.1403019906855621,
+        -0.17220472924076094,
+        -0.031727950975743296,
+        -0.019864569567238595,
+        -0.11735675765882217
+      ],
+      "brier_baseline": 0.22398027042885466,
+      "brier_adjusted": 0.22400083944149907,
+      "logloss_baseline": 0.639896467437724,
+      "logloss_adjusted": 0.6399498434703198
+    }
+  ],
+  "null_test": {
+    "window": 8,
+    "observed": -17.79513586173967,
+    "null_mean": 0.06814970120336421,
+    "null_sd": 7.30118192432919,
+    "replicates": 500,
+    "two_sided_p": 0.017964071856287425,
+    "seed": 2024
+  },
+  "final_match": {
+    "match_id": "2023-wimbledon-1701",
+    "player1": "Carlos Alcaraz",
+    "player2": "Novak Djokovic",
+    "n_points": 334,
+    "largest_prior_flow_for_player1": {
+      "point_index_1based": 302,
+      "value": 0.3674296656224369
+    },
+    "largest_prior_flow_for_player2": {
+      "point_index_1based": 274,
+      "value": -0.4061358709650059
+    },
+    "player1_point_wins": 168
+  }
+}

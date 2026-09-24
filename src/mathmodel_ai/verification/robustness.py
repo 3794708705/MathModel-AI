@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import statistics
 
+from mathmodel_ai.schemas.independent_verification import ReviewedValidationEvidence
 from mathmodel_ai.schemas.mathematical import MathematicalModel, ObjectiveSense
 from mathmodel_ai.schemas.results import ResultRecord
 from mathmodel_ai.schemas.verification import (
@@ -18,6 +19,7 @@ from mathmodel_ai.schemas.verification import (
     ValidationStatus,
 )
 from mathmodel_ai.verification.experiments import ExperimentEngine, ExperimentOutcome
+from mathmodel_ai.verification.reviewed_response import reviewed_response_summary
 
 
 class RobustnessAnalyzer:
@@ -32,6 +34,7 @@ class RobustnessAnalyzer:
         validation: ValidationReport,
         sensitivity: SensitivityReport,
         config: RobustnessConfig,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> tuple[RobustnessReport, list[ExperimentOutcome]]:
         if validation.status is not ValidationStatus.PASS:
             return self._blocked(
@@ -45,6 +48,39 @@ class RobustnessAnalyzer:
                 model, result, validation, sensitivity, config, "sensitivity produced no evidence"
             ), []
         if result.objective is None:
+            if (
+                reviewed_evidence is not None
+                and sensitivity.reviewed_report_id == reviewed_evidence.report.report_id
+            ):
+                try:
+                    replay_ids, values = reviewed_response_summary(
+                        reviewed_evidence,
+                        model_digest=result.model_digest,
+                        result_id=result.result_id,
+                        parameter_only=False,
+                    )
+                except ValueError as exc:
+                    return self._blocked(
+                        model, result, validation, sensitivity, config, str(exc)
+                    ), []
+                return RobustnessReport(
+                    project_id=model.project_id,
+                    problem_id=model.problem_id,
+                    model_id=model.model_id,
+                    model_version=model.version,
+                    model_digest=result.model_digest,
+                    result_id=result.result_id,
+                    validation_id=validation.validation_id,
+                    sensitivity_id=sensitivity.sensitivity_id,
+                    baseline_objective=None,
+                    reviewed_report_id=reviewed_evidence.report.report_id,
+                    reviewed_replay_ids=replay_ids,
+                    reviewed_metric_values=values,
+                    method=config.method,
+                    config=config,
+                    summary=RobustnessSummary(requested_runs=0, successful_runs=0, failed_runs=0),
+                    status=ExperimentReportStatus.PASS,
+                ), []
             return self._blocked(
                 model, result, validation, sensitivity, config, "baseline objective is absent"
             ), []
@@ -214,7 +250,7 @@ class RobustnessAnalyzer:
             result_id=result.result_id,
             validation_id=validation.validation_id,
             sensitivity_id=sensitivity.sensitivity_id,
-            baseline_objective=result.objective or 0.0,
+            baseline_objective=result.objective,
             method=config.method,
             config=config,
             summary=RobustnessSummary(

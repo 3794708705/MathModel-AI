@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -54,7 +55,9 @@ class ProviderCompatibilityProbe:
         self._configurations = configurations
         self._providers = providers
 
-    async def run(self, model_id: str) -> CapabilityProbeResult:
+    async def run(
+        self, model_id: str, *, probe_long_context: bool = False
+    ) -> CapabilityProbeResult:
         model = self._configurations.get_model(model_id)
         endpoint = self._configurations.get_provider(model.provider_id)
         started = time.perf_counter()
@@ -145,6 +148,8 @@ class ProviderCompatibilityProbe:
         await self._probe_reasoning(provider, model, capabilities, errors)
         await self._probe_streaming(provider, model.remote_model, capabilities, errors)
         await self._probe_vision(provider, model, capabilities, errors)
+        if probe_long_context:
+            await self._probe_long_context(provider, model.remote_model, capabilities, errors)
         return self._persist(
             endpoint.config_digest,
             model.config_digest,
@@ -389,6 +394,57 @@ class ProviderCompatibilityProbe:
             errors.append(safe_error(exc))
         except ProviderError as exc:
             capabilities[ModelCapability.VISION] = _unsupported("vision request failed")
+            errors.append(safe_error(exc))
+
+    @staticmethod
+    async def _probe_long_context(
+        provider: Any,
+        remote_model: str,
+        capabilities: dict[ModelCapability, CapabilityEvidence],
+        errors: list[str],
+    ) -> None:
+        """Opt-in, costly behavioral check; never infer capacity from a model label."""
+        marker = uuid4().hex
+        filler = "\n".join(
+            f"Record {index:05d}: " + " ".join(
+                f"{(index * 7919 + offset * 104729) % 999983:06d}"
+                for offset in range(8)
+            )
+            for index in range(1800)
+        )
+        try:
+            response = await provider.generate(
+                GenerationRequest(
+                    model=remote_model,
+                    messages=[
+                        ModelMessage(
+                            role="user",
+                            content=(
+                                f"The private marker is {marker}.\n"
+                                "Read the records, then return only the private marker.\n"
+                                f"{filler}\nWhat is the private marker? Return only its value."
+                            ),
+                        )
+                    ],
+                    max_output_tokens=512,
+                    temperature=0,
+                )
+            )
+            actual = response.content.strip()
+            input_tokens = response.usage.input_tokens or 0
+            capabilities[ModelCapability.LONG_CONTEXT] = (
+                _supported(f"exact early-marker recall with {input_tokens} reported input tokens")
+                if actual == marker and input_tokens >= 8192
+                else _unsupported(
+                    "long-context marker recall or minimum reported input-token evidence failed"
+                )
+            )
+        except ProviderTimeoutError as exc:
+            errors.append(safe_error(exc))
+        except ProviderError as exc:
+            capabilities[ModelCapability.LONG_CONTEXT] = _unsupported(
+                "long-context request failed"
+            )
             errors.append(safe_error(exc))
 
     def _persist(

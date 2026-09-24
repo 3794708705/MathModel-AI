@@ -9,6 +9,7 @@ from PIL import Image
 
 from mathmodel_ai.core.errors import FileValidationError, StorageError
 from mathmodel_ai.data.quality_gates import files_quality_gate
+from mathmodel_ai.files.validation import csv_delimiter
 from mathmodel_ai.schemas.files import ArtifactKind, FileKind, FileStatus
 from mathmodel_ai.schemas.quality import QualityGateStatus
 from tests.data.helpers import pipeline_for, stream
@@ -51,6 +52,26 @@ def test_csv_ingestion_profiles_real_values_and_preserves_raw(
         ArtifactKind.DATASET_PREVIEW,
         ArtifactKind.DATA_PROFILE,
     }
+
+
+def test_csv_dialect_accepts_quoted_delimiters_and_rejects_ragged_rows(
+    tmp_path: Path,
+) -> None:
+    pipeline = pipeline_for(tmp_path / "store")
+    quoted = (
+        b'variables,explanation,example\r\n'
+        b'player1,"first, last name","Carlos Alcaraz"\r\n'
+        b'match_id,"round 7, match 01","2023-wimbledon-1701"\r\n'
+    )
+    result = pipeline.ingest(
+        stream(quoted), project_id=uuid4(), problem_id=uuid4(),
+        original_name="data_dictionary.csv", declared_mime_type="text/csv",
+    )
+    assert result.datasets[0].row_count == 2
+    assert result.datasets[0].column_count == 3
+    assert csv_delimiter("a;b;c\n1;2;3\n") == ";"
+    with pytest.raises(ValueError, match="consistent multi-column delimiter"):
+        csv_delimiter("a,b,c\n1,2\n")
 
 
 def test_excel_parser_discovers_cross_sheet_key_overlap(tmp_path: Path) -> None:

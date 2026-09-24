@@ -420,6 +420,9 @@ def create_app(
         evidence_builder=VerifiedEvidenceBuilder(
             mathematical_repository=application.state.mathematical_repository,
             verification_repository=application.state.verification_repository,
+            independent_repository=IndependentVerificationRepository(
+                application.state.session_factory
+            ),
         ),
         literature_agent=LiteratureAgent(**shared),
         literature_source=literature_source,
@@ -436,6 +439,7 @@ def create_app(
         ),
         bundle_builder=PaperBundleBuilder(file_store),
         store=file_store,
+        reasoning_repository=application.state.reasoning_repository,
     )
     real_benchmark_profile = comap_mcm_2024_profile()
     application.state.competition_profile_registry = CompetitionProfileRegistry(

@@ -31,6 +31,7 @@ from mathmodel_ai.schemas.independent_verification import (
     IndependentVerificationView,
 )
 from mathmodel_ai.schemas.problem_state import ProblemState
+from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.solver import SolverRunRef, SolverStatus
 from mathmodel_ai.schemas.submission import RequirementCoverageStatus, RuleResultStatus
 from tests.verification.helpers import result_bundle
@@ -255,6 +256,48 @@ def test_partial_live_pipeline_failure_retains_usage_and_project_identity() -> N
     assert values["total_tokens"] == 300
     assert values["estimated_cost"] == 0.00098
     assert outcome.failures[0].stage == "MODEL_SELECTION"
+
+
+def test_paper_failure_metrics_preserve_completed_science_and_unknown_cost() -> None:
+    executor = object.__new__(PipelineBenchmarkExecutor)
+    state = SimpleNamespace(
+        project_id=uuid4(), problem_id=uuid4(), execution_records=[], solver_runs=[],
+        quality_gates=[
+            SimpleNamespace(gate=name, status=QualityGateStatus.PASS, errors=[])
+            for name in ("SOLVE", "VALIDATE", "SENSITIVITY", "ROBUSTNESS", "VERIFIED")
+        ],
+    )
+    request = BenchmarkRunRequest(
+        case_ids=["BENCH-test"],
+        config=BenchmarkConfig(
+            provider="local", model="test", reasoning_tier="low",
+            pricing=BenchmarkPricing(
+                version="unknown", input_per_million=0,
+                cached_input_per_million=0, output_per_million=0,
+            ),
+        ),
+    )
+    metrics = executor._partial_metrics(
+        uuid4(), request, [_UsageRow(token_usage={
+            "input_tokens": 100, "output_tokens": 10, "requests": 1,
+        })], state=state,
+    )
+    by_name = {item.name: item for item in metrics}
+    for name in (
+        "mathematical_validity", "solver_success", "validation_pass",
+        "sensitivity_completion", "robustness_completion", "central_model_valid",
+    ):
+        assert by_name[name].value == 1
+        assert by_name[name].evidence_ref.startswith("PASS:")
+    assert by_name["unverified_central_result_count"].value == 0
+    assert by_name["wrong_submission_artifact_count"].value == 0
+    assert by_name["wrong_submission_artifact_count"].evidence_ref.startswith(
+        "UPSTREAM_BLOCKED:"
+    )
+    assert by_name["estimated_cost"].evidence_ref.startswith("NOT_EVALUATED:")
+    assert by_name["problem_understanding_accuracy"].evidence_ref.startswith(
+        "NOT_EVALUATED:"
+    )
 
 
 def test_partial_failure_preserves_every_real_formal_solve_attempt() -> None:

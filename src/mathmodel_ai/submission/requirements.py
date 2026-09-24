@@ -39,9 +39,17 @@ class RequirementCoverageValidator:
         requirements: list[SubmissionRequirement],
         paper: PaperIR,
         artifacts: list[SubmissionArtifact],
+        *,
+        require_paper_artifact: bool = True,
     ) -> list[RequirementCoverage]:
         claims = {item.claim_id: item for item in paper.claims}
         sections = {item.section_id: item for item in [*paper.sections, *paper.appendices]}
+        visible_claims = {
+            item.section_id: {
+                block.claim_ref for block in item.blocks if block.claim_ref is not None
+            }
+            for item in [*paper.sections, *paper.appendices]
+        }
         coverage_by_subproblem = {item.subproblem_id: item for item in paper.subproblem_coverage}
         paper_artifacts = [
             item.artifact_id for item in artifacts if item.role is SubmissionArtifactRole.PAPER_PDF
@@ -81,7 +89,10 @@ class RequirementCoverageValidator:
                         continue
                     if claim.section_id not in valid_sections:
                         continue
-                    if claim_id not in sections[claim.section_id].claim_refs:
+                    if (
+                        claim_id not in sections[claim.section_id].claim_refs
+                        and claim_id not in visible_claims[claim.section_id]
+                    ):
                         continue
                     if claim.verification_status is not ClaimVerificationStatus.SUPPORTED:
                         continue
@@ -91,7 +102,7 @@ class RequirementCoverageValidator:
                     evidence_refs.extend(claim.evidence_refs)
                 if not valid_claims:
                     reasons.append("coverage has no supported evidence-linked claim")
-            if not paper_artifacts:
+            if require_paper_artifact and not paper_artifacts:
                 reasons.append("formal paper artifact is missing")
             if not requirement.required:
                 status = RequirementCoverageStatus.NOT_APPLICABLE
@@ -119,20 +130,44 @@ class RequirementCoverageValidator:
 
 def _allowed_claim_types(output: str, task_types: list[ProblemTaskType]) -> list[ClaimType]:
     normalized = output.casefold()
+    conceptual_output = any(
+        marker in normalized
+        for marker in (
+            "analysis", "definition", "criterion", "discussion", "interpretation",
+            "treatment",
+            "model", "formulation", "equation",
+        )
+    ) or (
+        any(marker in normalized for marker in ("identification", "identify"))
+        and any(
+            marker in normalized
+            for marker in ("species", "interaction", "component", "entity", "population")
+        )
+    )
     if any(
         marker in normalized
         for marker in ("risk", "robust", "stability", "uncert", "风险", "稳健", "敏感")
     ):
-        return [
+        allowed = [
             ClaimType.ROBUSTNESS,
             ClaimType.SENSITIVITY,
             ClaimType.COMPARISON,
             ClaimType.CONCLUSION,
         ]
+        if "stability" in normalized:
+            allowed.append(ClaimType.NUMERIC)
+        if any(marker in normalized for marker in ("definition", "criterion")):
+            allowed.append(ClaimType.MODEL)
+        return allowed
     if any(
         item in {ProblemTaskType.PREDICTION, ProblemTaskType.TIME_SERIES} for item in task_types
     ):
-        return [ClaimType.NUMERIC, ClaimType.RESULT, ClaimType.COMPARISON]
+        allowed = [ClaimType.NUMERIC, ClaimType.RESULT, ClaimType.COMPARISON]
+        if conceptual_output:
+            allowed.append(ClaimType.MODEL)
+        if any(marker in normalized for marker in ("discussion", "interpretation", "limitation")):
+            allowed.append(ClaimType.CONCLUSION)
+        return allowed
     if any(
         item
         in {
@@ -143,9 +178,14 @@ def _allowed_claim_types(output: str, task_types: list[ProblemTaskType]) -> list
         }
         for item in task_types
     ):
-        return [ClaimType.RESULT, ClaimType.NUMERIC, ClaimType.COMPARISON]
+        allowed = [ClaimType.RESULT, ClaimType.NUMERIC, ClaimType.COMPARISON]
+        if conceptual_output:
+            allowed.append(ClaimType.MODEL)
+        if any(marker in normalized for marker in ("discussion", "interpretation", "limitation")):
+            allowed.append(ClaimType.CONCLUSION)
+        return allowed
     if ProblemTaskType.EVALUATION in task_types:
-        return [
+        allowed = [
             ClaimType.NUMERIC,
             ClaimType.RESULT,
             ClaimType.COMPARISON,
@@ -153,6 +193,9 @@ def _allowed_claim_types(output: str, task_types: list[ProblemTaskType]) -> list
             ClaimType.ROBUSTNESS,
             ClaimType.SENSITIVITY,
         ]
+        if conceptual_output:
+            allowed.append(ClaimType.MODEL)
+        return allowed
     return [
         ClaimType.FACTUAL,
         ClaimType.NUMERIC,
@@ -161,4 +204,5 @@ def _allowed_claim_types(output: str, task_types: list[ProblemTaskType]) -> list
         ClaimType.SENSITIVITY,
         ClaimType.ROBUSTNESS,
         ClaimType.CONCLUSION,
+        *([ClaimType.MODEL] if conceptual_output else []),
     ]
