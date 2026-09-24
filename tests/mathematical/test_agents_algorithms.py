@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from mathmodel_ai.agents import AgentRunStatus, CodeAgent, MathModeler
-from mathmodel_ai.agents.code import reject_header_only_csv_usage
+from mathmodel_ai.agents.code import reject_discarded_csv_rows, reject_header_only_csv_usage
 from mathmodel_ai.core.config import Settings
 from mathmodel_ai.mathematical.algorithms import AlgorithmSelector
 from mathmodel_ai.providers.factory import ProviderRegistry
@@ -204,7 +204,7 @@ async def test_math_modeler_binds_identity_and_audits_xhigh_mock_route() -> None
     assert run.output.model_id == assigned_model_id
     assert run.output.project_id == state.project_id
     assert run.output.source_selected_model_id == "CAND-lp"
-    assert run.prompt_version == "4.5.2"
+    assert run.prompt_version == "4.6.1"
     assert mock.last_request is not None
     assert mock.last_request.max_output_tokens == 65_536
     assert run.routes[0].level is EscalationLevel.FLAGSHIP_XHIGH
@@ -380,6 +380,47 @@ def test_code_agent_rejects_csv_header_only_as_data_use() -> None:
     reject_header_only_csv_usage(row_consuming)
 
 
+def test_code_agent_rejects_csv_row_loop_that_ignores_values() -> None:
+    ignored = GeneratedProgramDraft(
+        entrypoint="solve.py",
+        files=[
+            GeneratedSourceFile(
+                path="solve.py",
+                content=(
+                    "import csv\n"
+                    "with open('/workspace/inputs/matches.csv') as source:\n"
+                    "    reader = csv.DictReader(source)\n"
+                    "    count = 0\n"
+                    "    for row in reader:\n"
+                    "        count += 1\n"
+                    "        if count >= 5:\n"
+                    "            break\n"
+                ),
+            )
+        ],
+        solver_target="custom",
+        explanation="Only checks that a few rows exist.",
+    )
+    reject_header_only_csv_usage(ignored)
+    with pytest.raises(ValueError, match="rows are iterated but their values unused"):
+        reject_discarded_csv_rows(ignored)
+
+    used = ignored.model_copy(
+        update={
+            "files": [
+                GeneratedSourceFile(
+                    path="solve.py",
+                    content=ignored.files[0].content.replace(
+                        "        count += 1\n",
+                        "        winners = row['point_victor']\n        count += 1\n",
+                    ),
+                )
+            ]
+        }
+    )
+    reject_discarded_csv_rows(used)
+
+
 @pytest.mark.asyncio
 async def test_code_agent_retries_header_only_csv_program_with_feedback() -> None:
     state = selected_state()
@@ -450,8 +491,8 @@ def test_generated_program_rejects_solver_target_larger_than_database_contract()
 
 def test_versioned_prompt_resources_exist() -> None:
     prompts = PromptRegistry()
-    assert prompts.get("math_modeler").version == "4.5.2"
-    assert prompts.get("code_agent").version == "4.7.0"
+    assert prompts.get("math_modeler").version == "4.6.1"
+    assert prompts.get("code_agent").version == "4.7.1"
     assert (
         "must report every MathematicalModel decision variable" in prompts.get("code_agent").system
     )

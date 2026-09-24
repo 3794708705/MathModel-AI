@@ -1,5 +1,7 @@
 """Mock reasoning scaffolds state only; numeric/replay evidence is real Docker."""
 
+import hashlib
+from io import BytesIO
 from uuid import UUID, uuid4
 
 import pytest
@@ -17,6 +19,7 @@ from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.providers.factory import ProviderRegistry
 from mathmodel_ai.providers.mock import MockProvider
 from mathmodel_ai.schemas.independent_verification import (
+    CsvObservationSpec,
     MetricSpec,
     ScenarioSpec,
     VerificationPlan,
@@ -280,3 +283,55 @@ def test_reviewed_policy_auto_binds_exact_result_and_runs_all_obligations(tmp_pa
         assert stored.result_id == context.result.result_id
         assert stored.source_artifact_id != context.execution.code_artifact_id
         assert digest == content_digest(rebound)
+
+
+@pytest.mark.integration
+@pytest.mark.solver
+def test_reviewed_csv_observations_derive_from_registered_file_without_json(tmp_path):
+    app = create_verification_app(tmp_path)
+    with TestClient(app) as client:
+        plan, context, policy = prepare_formal_plan(app, client)
+        source = b"point_victor,server\n1,2\n2,1\n1,1\n"
+        ingested = app.state.data_execution_workflow.ingest_file(
+            context.model.project_id,
+            BytesIO(source),
+            original_name="points.csv",
+            declared_mime_type="text/csv",
+        )
+        registered = ingested.processed.parsed_file.file
+        assert registered.sha256 == hashlib.sha256(source).hexdigest()
+        spec = CsvObservationSpec(
+            source_csv_sha256=registered.sha256,
+            source_column="point_victor",
+            positive_value="1",
+            negative_value="2",
+        )
+        bound = plan.model_copy(
+            update={
+                "observation_file_id": registered.file_id,
+                "observation_sha256": registered.sha256,
+                "csv_observation": spec,
+            }
+        )
+        service = app.state.independent_verification
+        service._requirements = lambda _: policy.model_copy(update={"csv_observation": spec})
+        _context, _raw, observations = service._inputs(bound)
+        assert observations == [1.0, 0.0, 1.0]
+        with pytest.raises(ValueError, match="PLAN_DOES_NOT_COVER_EXACT_REVIEWED"):
+            service._check_policy(plan, service.policy(plan.attempt_id))
+        run = _running_run()
+        app.state.benchmark_repository.create_run(run)
+        attempt = _running_attempt(run, 1)
+        app.state.benchmark_repository.create_attempt(attempt)
+        app.state.benchmark_repository.bind_attempt_project(
+            attempt.attempt_id, context.model.project_id
+        )
+        rebound = policy.model_copy(
+            update={"manifest_digest": attempt.manifest_digest, "csv_observation": spec}
+        )
+        service._requirements = lambda _: rebound
+        service.prepare_and_run(attempt.attempt_id, context.result.result_id)
+        view = service.view(attempt.attempt_id)
+        assert view.status == "PASS"
+        assert view.plan is not None and view.plan.csv_observation == spec
+        assert view.report is not None and view.report.passed_metrics == 2

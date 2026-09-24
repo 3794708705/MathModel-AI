@@ -26,6 +26,29 @@ def test_known_independent_prediction_vectors(key, expected):
     assert calculate(spec(key), raw, observations=[1.0, 3.0]) == pytest.approx(expected)
 
 
+def test_binary_scores_recompute_from_observations_and_reject_false_certainty() -> None:
+    raw = RawMetricOutput(predictions=[0.8, 0.3, 0.9], reported={"brier": 0.01})
+    observations = [1.0, 0.0, 1.0]
+    assert calculate(spec("brier"), raw, observations=observations) == pytest.approx(
+        (0.2**2 + 0.3**2 + 0.1**2) / 3
+    )
+    assert calculate(spec("log_loss"), raw, observations=observations) == pytest.approx(
+        (-math.log(0.8) - math.log(0.7) - math.log(0.9)) / 3
+    )
+    compared = recompute(spec("brier"), raw, observations=observations, source_digest="a" * 64)
+    assert compared.status is IndependentStatus.FAIL
+    assert compared.verified is not None and compared.verified > compared.reported
+    invalid = recompute(
+        spec("log_loss"),
+        RawMetricOutput(predictions=[0.0]),
+        observations=[1.0],
+        source_digest="a" * 64,
+    )
+    assert invalid.status is IndependentStatus.INVALID
+    with pytest.raises(ValueError, match="binary scoring requires"):
+        calculate(spec("brier"), RawMetricOutput(predictions=[1.2]), observations=[1.0])
+
+
 @pytest.mark.parametrize(
     "key,expected", [("mean", 1), ("minimum", -2), ("maximum", 4), ("final_value", 1)]
 )

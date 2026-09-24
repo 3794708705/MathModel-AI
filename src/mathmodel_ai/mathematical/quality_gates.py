@@ -17,7 +17,7 @@ from mathmodel_ai.schemas.mathematical import (
     UnitCheckStatus,
 )
 from mathmodel_ai.schemas.model_selection import ModelFamily
-from mathmodel_ai.schemas.problem_analysis import EvidenceSource, EvidenceStatus
+from mathmodel_ai.schemas.problem_analysis import DataAvailability, EvidenceSource, EvidenceStatus
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.program import GeneratedProgram
 from mathmodel_ai.schemas.quality import QualityGateResult, QualityGateStatus
@@ -96,7 +96,15 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
     )
     unavailable_scalar_inputs = _unavailable_scalar_verifier_inputs(model)
     unsupported_data_literals = _unsupported_data_literals(model, state)
+    unsupported_bound_scalars = _unsupported_bound_scalars(model, state)
     objective_decision_coupling = _objective_depends_on_decision(model)
+    data_bindings_reach_core = _data_bindings_reach_core(model)
+    data_required = any(
+        requirement.availability is DataAvailability.PROVIDED
+        for subproblem in state.subproblems
+        if subproblem.subproblem_id in model.target_subproblems
+        for requirement in subproblem.data_requirements
+    )
     checks = {
         "selected_model_exists": state.selected_model is not None,
         "selected_model_matches": (
@@ -112,10 +120,13 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
             bool(item.source_ref) for item in [*model.parameters, *model.constants]
         ),
         "data_bindings_resolve": data_bindings_valid and parameter_bindings_valid,
+        "required_data_is_bound": not data_required or bool(model.data_bindings),
+        "data_bindings_reach_core": data_bindings_reach_core,
         "equation_registry_valid": equations.report.valid,
         "state_relations_sufficient": _state_relations_sufficient(model),
         "scalar_verifier_inputs_available": not unavailable_scalar_inputs,
         "data_literals_have_numeric_evidence": not unsupported_data_literals,
+        "bound_data_scalars_match_profile": not unsupported_bound_scalars,
         "required_equations_present": required_equations <= equation_ids,
         "no_explicit_unit_failure": unit_report.status is not UnitCheckStatus.FAIL,
         "critical_ambiguities_resolved": not unresolved_critical,
@@ -130,6 +141,10 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
     errors.extend(
         f"MODEL_GATE_FAIL:UNSUPPORTED_DATA_LITERAL:{symbol}"
         for symbol in sorted(unsupported_data_literals)
+    )
+    errors.extend(
+        f"MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:{symbol}"
+        for symbol in sorted(unsupported_bound_scalars)
     )
     errors.extend(
         f"MODEL_GATE_FAIL:{item.code.value}:{item.reference}"
@@ -216,6 +231,56 @@ def _objective_depends_on_decision(model: MathematicalModel) -> bool:
     return False
 
 
+def _data_bindings_reach_core(model: MathematicalModel) -> bool:
+    """A declared dataset must enter an evaluated model relation, not just a citation."""
+    declared = {item.binding_id: item for item in model.data_bindings}
+    if len(declared) != len(model.data_bindings):
+        return False
+    bound_parameters = [
+        item for item in [*model.parameters, *model.constants] if item.data_binding is not None
+    ]
+    if any(
+        declared.get(item.data_binding.binding_id) != item.data_binding
+        for item in bound_parameters
+        if item.data_binding is not None
+    ):
+        return False
+    if not declared:
+        return not bound_parameters
+
+    definitions: dict[str, set[str]] = {}
+    for equation in model.equations:
+        if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol is not None:
+            definitions.setdefault(equation.lhs.symbol, set()).update(
+                referenced_symbols(equation.rhs)
+            )
+    frontier: set[str] = set()
+    if model.objective is not None:
+        frontier.update(referenced_symbols(model.objective.expression))
+    for constraint in [
+        *model.constraints,
+        *model.initial_conditions,
+        *model.boundary_conditions,
+    ]:
+        frontier.update(referenced_symbols(constraint.expression))
+        frontier.update(referenced_symbols(constraint.rhs))
+    if model.objective is None:
+        frontier.update(item.symbol for item in model.state_variables)
+    reached: set[str] = set()
+    while frontier:
+        symbol = frontier.pop()
+        if symbol in reached:
+            continue
+        reached.add(symbol)
+        frontier.update(definitions.get(symbol, set()) - reached)
+    used_bindings = {
+        item.data_binding.binding_id
+        for item in bound_parameters
+        if item.data_binding is not None and item.symbol in reached
+    }
+    return set(declared) <= used_bindings
+
+
 def _unavailable_scalar_verifier_inputs(model: MathematicalModel) -> set[str]:
     """The scalar result contract cannot verify unmaterialized data-bound inputs."""
     available = {
@@ -264,6 +329,55 @@ def _unsupported_data_literals(model: MathematicalModel, state: ProblemState) ->
             unsupported.add(parameter.symbol)
         elif cited.source is EvidenceSource.PROBLEM_TEXT and not _text_states_numeric_value(
             state.raw_problem, float(parameter.value)
+        ):
+            unsupported.add(parameter.symbol)
+    return unsupported
+
+
+def _unsupported_bound_scalars(model: MathematicalModel, state: ProblemState) -> set[str]:
+    """Check only closed, deterministic profile aggregates; other transforms fail closed."""
+    datasets = {item.dataset_id: item for item in state.datasets}
+    profiles = {item.dataset_id: item for item in state.data_profiles}
+    unsupported: set[str] = set()
+    for parameter in [*model.parameters, *model.constants]:
+        binding = parameter.data_binding
+        if binding is None:
+            continue
+        value = parameter.value
+        dataset = datasets.get(binding.dataset_id)
+        profile = profiles.get(binding.dataset_id)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or parameter.source_type
+            not in {ParameterSourceType.DATA, ParameterSourceType.ESTIMATED}
+            or dataset is None
+            or profile is None
+            or not profile.deterministic
+            or profile.source_file_id != dataset.source_file_id
+            or profile.row_count != dataset.row_count
+            or binding.selector is not None
+        ):
+            unsupported.add(parameter.symbol)
+            continue
+        column = next((item for item in profile.columns if item.name == binding.column), None)
+        if column is None:
+            unsupported.add(parameter.symbol)
+            continue
+        expected: float | None = None
+        if binding.transform == "mean" and column.numeric_statistics is not None:
+            expected = column.numeric_statistics.mean
+        elif binding.transform == "count_nonmissing":
+            expected = float(profile.row_count - column.missing_count)
+        elif binding.transform and binding.transform.startswith("rate_eq:"):
+            target = binding.transform.removeprefix("rate_eq:")
+            matches = [item.count for item in column.top_values if item.value == target]
+            denominator = profile.row_count - column.missing_count
+            if matches and denominator:
+                expected = matches[0] / denominator
+        if expected is None or not math.isclose(
+            float(value), expected, rel_tol=1e-8, abs_tol=1e-10
         ):
             unsupported.add(parameter.symbol)
     return unsupported

@@ -51,6 +51,24 @@ and machine-supported validation requirements. An unknown requirement is
 `NOT_EVALUABLE`; it is not silently passed. The terminal gate repeats this
 calculation and compares every deterministic report field with persisted state.
 
+The MODEL gate now rejects declared dataset bindings that are only decorative:
+each must be attached unchanged to a parameter or constant whose symbol reaches
+the objective, a hard constraint, or a simulation state relation. This catches
+the observed C-case program that read a few CSV rows while all central values
+still came from assumptions. Dependency reachability is a necessary structural
+check, not proof of a data-derived numerical value; independent input-value
+recomputation remains required before such a result can be called verified.
+It also requires a binding when a targeted subproblem needs a provided dataset,
+so a model cannot evade the dependency check by dropping all bindings.
+The CodeAgent also rejects the observed no-op CSV loop that checks row presence
+without reading row values. This AST check is similarly only an early defect
+detector; reading a value does not by itself prove that the final output uses it.
+For scalar DATA parameters, the MODEL gate compares a closed set of transforms
+(`mean`, `count_nonmissing`, `rate_eq:<value>`) against the registered deterministic
+dataset profile and its source-file identity. Unsupported selectors/transforms
+remain unverified. A profile match is not a substitute for independently
+checking generated row-wise predictions or cross-match validation.
+
 For generated data-bound programs, `result.json` may now carry bounded finite
 `predictions` and named numeric `series` alongside scalar `variable_values`.
 The execution-bound raw artifact parser preserves these arrays for the closed
@@ -60,6 +78,27 @@ was computed from a particular input. Acceptance still requires an exact
 reviewed metric/observation binding and independent recomputation. A generated
 series or a successful solve alone cannot resolve an unchecked validation
 requirement or make the 2024 MCM C benchmark pass.
+
+For reviewed binary CSV observations, the observation JSON may now name the
+registered source CSV SHA-256, label column, and exact positive/negative codes.
+The independent service re-reads that immutable source, checks its size/hash,
+rejects missing or extra codes, and requires the recorded 0/1 array to match
+every source row in order before any prediction metric is evaluated. Older
+reviewed JSON observation contracts remain valid without this optional
+provenance; a new C policy must explicitly pin a provenance-bearing artifact.
+The closed metric calculator now includes Brier score and binary log loss for
+such 0/1 observations and bounded probabilities. It rejects invalid labels,
+probabilities outside [0,1], and infinitely wrong certainty rather than
+clipping values to manufacture a finite score.
+Alternatively, a reviewed policy may specify that exact registered CSV and
+binary column directly. In this path the verifier derives every label itself;
+there is no intermediate observation JSON to upload or trust. The optional
+field is omitted from legacy policy/plan serialization when unset, preserving
+historical content digests. This proves the target labels' source and order,
+but still does not independently reproduce generated predictions or prove
+cross-match training isolation.
+The calculator digest includes the CSV observation parser so a change to label
+derivation invalidates newly computed metric evidence.
 
 Every accepted sensitivity or robustness scenario follows:
 

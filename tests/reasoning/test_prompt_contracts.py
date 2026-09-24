@@ -31,8 +31,8 @@ def test_model_jury_preserves_hard_failures_without_disqualifying_uncertainty() 
 def test_math_modeler_requires_traceable_executable_parameter_values() -> None:
     prompt = PromptRegistry().get("math_modeler")
 
-    assert prompt.version == "4.5.2"
-    assert "every parameter and constant requires either a" in prompt.system
+    assert prompt.version == "4.6.1"
+    assert "every parameter and constant requires a finite" in prompt.system
     assert "source_type=ASSUMPTION" in prompt.system
     assert "source_type=ESTIMATED" in prompt.system
     assert "do not emit a null value" in prompt.system
@@ -44,3 +44,5 @@ def test_math_modeler_requires_traceable_executable_parameter_values() -> None:
     assert "Equation dependency_refs lists only EQ- IDs" in prompt.system
     assert "A citation that merely names a CSV does" in prompt.system
     assert "constant-objective pseudo-optimization" in prompt.system
+    assert "Listing CSV columns as data_bindings" in prompt.system
+    assert "count_nonmissing" in prompt.system

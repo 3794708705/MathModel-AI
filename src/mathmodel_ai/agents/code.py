@@ -96,6 +96,44 @@ def reject_header_only_csv_usage(program: GeneratedProgramDraft) -> None:
     raise ValueError("CODE_GENERATION_BLOCKED: CSV readers consume headers but no data rows")
 
 
+def reject_discarded_csv_rows(program: GeneratedProgramDraft) -> None:
+    """Reject the observed no-op row loop used only to make a CSV appear consumed."""
+    readers: set[str] = set()
+    trees = [ast.parse(source.content, filename=source.path) for source in program.files]
+    for tree in trees:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+                continue
+            call = node.value
+            if not isinstance(call.func, ast.Attribute) or call.func.attr not in {
+                "reader",
+                "DictReader",
+            }:
+                continue
+            readers.update(target.id for target in node.targets if isinstance(target, ast.Name))
+    if not readers:
+        return
+    row_loops: list[tuple[str, list[ast.stmt]]] = []
+    for tree in trees:
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, (ast.For, ast.AsyncFor))
+                and isinstance(node.target, ast.Name)
+                and isinstance(node.iter, ast.Name)
+                and node.iter.id in readers
+            ):
+                row_loops.append((node.target.id, node.body))
+    if row_loops and not any(
+        any(
+            isinstance(item, ast.Name) and item.id == row_name and isinstance(item.ctx, ast.Load)
+            for statement in body
+            for item in ast.walk(statement)
+        )
+        for row_name, body in row_loops
+    ):
+        raise ValueError("CODE_GENERATION_BLOCKED: CSV rows are iterated but their values unused")
+
+
 class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
     name = "code_agent"
     role = "auditable translation of a fixed mathematical model into executable code"
@@ -170,6 +208,7 @@ class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
             item.get("path", "").lower().endswith(".csv") for item in input_data.input_manifest
         ):
             reject_header_only_csv_usage(response.parsed)
+            reject_discarded_csv_rows(response.parsed)
         files = [item.with_digest() for item in response.parsed.files]
         program = GeneratedProgram(
             **response.parsed.model_dump(exclude={"files"}),

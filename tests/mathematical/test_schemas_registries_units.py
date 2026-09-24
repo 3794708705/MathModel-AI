@@ -22,6 +22,14 @@ from mathmodel_ai.mathematical.units import (
     parse_unit,
     same_dimension,
 )
+from mathmodel_ai.schemas.data import (
+    ColumnProfile,
+    DataProfile,
+    DataSemanticType,
+    DatasetRecord,
+    NumericStatistics,
+    ValueCount,
+)
 from mathmodel_ai.schemas.execution import (
     ExecutionOrigin,
     ExecutionRecord,
@@ -465,6 +473,207 @@ def test_model_gate_rejects_data_literal_not_stated_in_cited_evidence() -> None:
     assert (
         "MODEL_GATE_FAIL:data_literals_have_numeric_evidence"
         not in model_quality_gate(model, supported_state).errors
+    )
+
+
+def test_model_gate_requires_declared_data_to_reach_core_equations() -> None:
+    state = selected_state()
+    dataset = DatasetRecord(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_file_id=uuid4(),
+        name="observations.csv",
+        row_count=5,
+        column_count=1,
+        columns=["rate"],
+    )
+    state = state.model_copy(update={"datasets": [dataset]})
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    binding = DataBinding(binding_id="BIND-rate", dataset_id=dataset.dataset_id, column="rate")
+    orphan = base.model_copy(update={"data_bindings": [binding]})
+    assert "MODEL_GATE_FAIL:data_bindings_reach_core" in model_quality_gate(orphan, state).errors
+
+    parameter = ParameterDefinition(
+        parameter_id="PAR-rate",
+        symbol="rate",
+        description="Observed rate computed from the registered dataset",
+        value=1.0,
+        data_binding=binding,
+        source_type=ParameterSourceType.DATA,
+        source_ref="EVID-fact-1",
+        confidence=1,
+    )
+    unused = orphan.model_copy(update={"parameters": [parameter]})
+    assert "MODEL_GATE_FAIL:data_bindings_reach_core" in model_quality_gate(unused, state).errors
+
+    assert base.objective is not None
+    used = unused.model_copy(
+        update={
+            "objective": base.objective.model_copy(
+                update={"expression": add(symbol("rate"), symbol("x"))}
+            )
+        }
+    )
+    assert model_quality_gate(used, state).checks["data_bindings_reach_core"]
+    mismatched = used.model_copy(
+        update={
+            "parameters": [
+                parameter.model_copy(
+                    update={"data_binding": binding.model_copy(update={"column": "other"})}
+                )
+            ]
+        }
+    )
+    assert (
+        "MODEL_GATE_FAIL:data_bindings_reach_core" in model_quality_gate(mismatched, state).errors
+    )
+
+
+def test_model_gate_rejects_omitted_provided_dataset_for_target_subproblem() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    model = base.model_copy(update={"target_subproblems": ["Q1"]})
+    assert "MODEL_GATE_FAIL:required_data_is_bound" in model_quality_gate(model, state).errors
+    dataset = DatasetRecord(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_file_id=uuid4(),
+        name="demand.csv",
+        row_count=5,
+        column_count=1,
+        columns=["demand"],
+    )
+    state = state.model_copy(update={"datasets": [dataset]})
+    assert "MODEL_GATE_FAIL:required_data_is_bound" in model_quality_gate(model, state).errors
+    assert model_quality_gate(base, state).checks["required_data_is_bound"]
+
+
+def test_model_gate_recomputes_supported_bound_scalar_from_data_profile() -> None:
+    state = selected_state()
+    dataset = DatasetRecord(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_file_id=uuid4(),
+        name="observations.csv",
+        row_count=5,
+        column_count=1,
+        columns=["rate"],
+    )
+    profile = DataProfile(
+        dataset_id=dataset.dataset_id,
+        source_file_id=dataset.source_file_id,
+        dataset_name=dataset.name,
+        row_count=5,
+        column_count=1,
+        duplicate_row_count=0,
+        duplicate_row_rate=0,
+        columns=[
+            ColumnProfile(
+                name="rate",
+                source_name="rate",
+                physical_dtype="Float64",
+                semantic_type=DataSemanticType.CONTINUOUS,
+                missing_count=0,
+                missing_rate=0,
+                unique_count=2,
+                unique_rate=0.4,
+                numeric_statistics=NumericStatistics(count=5, mean=0.4),
+            )
+        ],
+        quality_score=100,
+    )
+    state = state.model_copy(update={"datasets": [dataset], "data_profiles": [profile]})
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    binding = DataBinding(
+        binding_id="BIND-rate", dataset_id=dataset.dataset_id, column="rate", transform="mean"
+    )
+    parameter = ParameterDefinition(
+        parameter_id="PAR-rate",
+        symbol="rate",
+        description="Mean of the registered rate column",
+        value=0.4,
+        data_binding=binding,
+        source_type=ParameterSourceType.DATA,
+        source_ref="EVID-fact-1",
+        confidence=1,
+    )
+    assert base.objective is not None
+    model = base.model_copy(
+        update={
+            "data_bindings": [binding],
+            "parameters": [parameter],
+            "objective": base.objective.model_copy(
+                update={"expression": add(symbol("rate"), symbol("x"))}
+            ),
+        }
+    )
+    assert model_quality_gate(model, state).checks["bound_data_scalars_match_profile"]
+    invented = model.model_copy(
+        update={"parameters": [parameter.model_copy(update={"value": 0.5046})]}
+    )
+    assert (
+        "MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:rate" in model_quality_gate(invented, state).errors
+    )
+    stale_state = state.model_copy(
+        update={"data_profiles": [profile.model_copy(update={"source_file_id": uuid4()})]}
+    )
+    assert (
+        "MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:rate"
+        in model_quality_gate(model, stale_state).errors
+    )
+    count_binding = binding.model_copy(update={"transform": "count_nonmissing"})
+    count_model = model.model_copy(
+        update={
+            "data_bindings": [count_binding],
+            "parameters": [
+                parameter.model_copy(update={"value": 5.0, "data_binding": count_binding})
+            ],
+        }
+    )
+    assert model_quality_gate(count_model, state).checks["bound_data_scalars_match_profile"]
+    rate_binding = binding.model_copy(update={"transform": "rate_eq:1"})
+    rate_profile = profile.model_copy(
+        update={
+            "columns": [
+                profile.columns[0].model_copy(
+                    update={"top_values": [ValueCount(value="1", count=2)]}
+                )
+            ]
+        }
+    )
+    rate_state = state.model_copy(update={"data_profiles": [rate_profile]})
+    rate_model = model.model_copy(
+        update={
+            "data_bindings": [rate_binding],
+            "parameters": [parameter.model_copy(update={"data_binding": rate_binding})],
+        }
+    )
+    assert model_quality_gate(rate_model, rate_state).checks["bound_data_scalars_match_profile"]
+    unsupported = model.model_copy(
+        update={
+            "data_bindings": [binding.model_copy(update={"transform": "custom"})],
+            "parameters": [
+                parameter.model_copy(
+                    update={"data_binding": binding.model_copy(update={"transform": "custom"})}
+                )
+            ],
+        }
+    )
+    assert (
+        "MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:rate"
+        in model_quality_gate(unsupported, state).errors
     )
 
 
