@@ -13,6 +13,15 @@
     "server_wins": 4903,
     "server_win_rate": 0.6731191652937946
   },
+  "match_audit": {
+    "min_points_per_match": 122,
+    "median_points_per_match": 217,
+    "max_points_per_match": 337,
+    "server_1_points": 3567,
+    "server_1_wins": 2452,
+    "server_2_points": 3717,
+    "server_2_wins": 2451
+  },
   "cross_validation": [
     {
       "window": 4,
@@ -28,7 +37,412 @@
       "brier_baseline": 0.22398027042885466,
       "brier_adjusted": 0.22392002580979817,
       "logloss_baseline": 0.639896467437724,
-      "logloss_adjusted": 0.6397900444874726
+      "logloss_adjusted": 0.6397900444874726,
+      "fold_results": [
+        {
+          "fold": 1,
+          "n_matches": 7,
+          "beta": -0.16565107330234824,
+          "n": 1801,
+          "brier_baseline": 0.22597535783009798,
+          "brier_adjusted": 0.22584119115884085,
+          "logloss_baseline": 0.6439901253231151,
+          "logloss_adjusted": 0.6437218512033381
+        },
+        {
+          "fold": 2,
+          "n_matches": 6,
+          "beta": -0.24139354110814684,
+          "n": 1321,
+          "brier_baseline": 0.22318754343237177,
+          "brier_adjusted": 0.22353822226459533,
+          "logloss_baseline": 0.6381834370819477,
+          "logloss_adjusted": 0.6389424178051681
+        },
+        {
+          "fold": 3,
+          "n_matches": 6,
+          "beta": -0.1388837532614697,
+          "n": 1436,
+          "brier_baseline": 0.2191009714679191,
+          "brier_adjusted": 0.21888400422948154,
+          "logloss_baseline": 0.6298449037529641,
+          "logloss_adjusted": 0.6293806709098255
+        },
+        {
+          "fold": 4,
+          "n_matches": 6,
+          "beta": -0.19873994596448136,
+          "n": 1287,
+          "brier_baseline": 0.22229408133402118,
+          "brier_adjusted": 0.2223068309074934,
+          "logloss_baseline": 0.6362404178406763,
+          "logloss_adjusted": 0.6363193537689819
+        },
+        {
+          "fold": 5,
+          "n_matches": 6,
+          "beta": -0.1318521178512281,
+          "n": 1439,
+          "brier_baseline": 0.22858821943904817,
+          "brier_adjusted": 0.22833437780297888,
+          "logloss_baseline": 0.6496460272230421,
+          "logloss_adjusted": 0.6491390162485918
+        }
+      ],
+      "match_results": [
+        {
+          "match_id": "2023-wimbledon-1301",
+          "fold": 1,
+          "n": 300,
+          "brier_baseline": 0.2328805274869354,
+          "brier_adjusted": 0.23258873379225042,
+          "logloss_baseline": 0.6586577170050297,
+          "logloss_adjusted": 0.6580625994408965
+        },
+        {
+          "match_id": "2023-wimbledon-1302",
+          "fold": 2,
+          "n": 201,
+          "brier_baseline": 0.19641928260418126,
+          "brier_adjusted": 0.1951785902743779,
+          "logloss_baseline": 0.5827471909631258,
+          "logloss_adjusted": 0.5799497739703409
+        },
+        {
+          "match_id": "2023-wimbledon-1303",
+          "fold": 3,
+          "n": 134,
+          "brier_baseline": 0.216183779305943,
+          "brier_adjusted": 0.21628379427298133,
+          "logloss_baseline": 0.6228632891052206,
+          "logloss_adjusted": 0.6230603154925681
+        },
+        {
+          "match_id": "2023-wimbledon-1304",
+          "fold": 4,
+          "n": 337,
+          "brier_baseline": 0.22968781883338435,
+          "brier_adjusted": 0.2302108760962089,
+          "logloss_baseline": 0.6521633061838116,
+          "logloss_adjusted": 0.6532452535014925
+        },
+        {
+          "match_id": "2023-wimbledon-1305",
+          "fold": 5,
+          "n": 246,
+          "brier_baseline": 0.23179049418424552,
+          "brier_adjusted": 0.2315609952137536,
+          "logloss_baseline": 0.656379411583372,
+          "logloss_adjusted": 0.6559396364105274
+        },
+        {
+          "match_id": "2023-wimbledon-1306",
+          "fold": 1,
+          "n": 332,
+          "brier_baseline": 0.2135334557392824,
+          "brier_adjusted": 0.21366275603284926,
+          "logloss_baseline": 0.6184739353188219,
+          "logloss_adjusted": 0.6188126519171082
+        },
+        {
+          "match_id": "2023-wimbledon-1307",
+          "fold": 2,
+          "n": 232,
+          "brier_baseline": 0.20247950673017096,
+          "brier_adjusted": 0.20258487595335828,
+          "logloss_baseline": 0.5950934109339765,
+          "logloss_adjusted": 0.5953076369960293
+        },
+        {
+          "match_id": "2023-wimbledon-1308",
+          "fold": 3,
+          "n": 190,
+          "brier_baseline": 0.21165674276632254,
+          "brier_adjusted": 0.21192913723290355,
+          "logloss_baseline": 0.6147951070009329,
+          "logloss_adjusted": 0.6154049202880241
+        },
+        {
+          "match_id": "2023-wimbledon-1309",
+          "fold": 4,
+          "n": 213,
+          "brier_baseline": 0.22839106766005782,
+          "brier_adjusted": 0.22787441073839068,
+          "logloss_baseline": 0.6492233420313583,
+          "logloss_adjusted": 0.6481854716342769
+        },
+        {
+          "match_id": "2023-wimbledon-1310",
+          "fold": 5,
+          "n": 318,
+          "brier_baseline": 0.2483282302180788,
+          "brier_adjusted": 0.24821376474005644,
+          "logloss_baseline": 0.6898200604986485,
+          "logloss_adjusted": 0.6895851365828242
+        },
+        {
+          "match_id": "2023-wimbledon-1311",
+          "fold": 1,
+          "n": 170,
+          "brier_baseline": 0.22570953284756048,
+          "brier_adjusted": 0.22584016461100567,
+          "logloss_baseline": 0.642947821280971,
+          "logloss_adjusted": 0.6432834053402096
+        },
+        {
+          "match_id": "2023-wimbledon-1312",
+          "fold": 2,
+          "n": 275,
+          "brier_baseline": 0.24756769669096468,
+          "brier_adjusted": 0.246624523426204,
+          "logloss_baseline": 0.6882493109121219,
+          "logloss_adjusted": 0.6863440760049332
+        },
+        {
+          "match_id": "2023-wimbledon-1313",
+          "fold": 3,
+          "n": 290,
+          "brier_baseline": 0.23802009941214042,
+          "brier_adjusted": 0.23780325083440787,
+          "logloss_baseline": 0.6690428058378447,
+          "logloss_adjusted": 0.6685707075838202
+        },
+        {
+          "match_id": "2023-wimbledon-1314",
+          "fold": 4,
+          "n": 185,
+          "brier_baseline": 0.221148317776671,
+          "brier_adjusted": 0.2204964572943345,
+          "logloss_baseline": 0.6333020021385435,
+          "logloss_adjusted": 0.6320204742718443
+        },
+        {
+          "match_id": "2023-wimbledon-1315",
+          "fold": 5,
+          "n": 198,
+          "brier_baseline": 0.22185437410185857,
+          "brier_adjusted": 0.22182018263490014,
+          "logloss_baseline": 0.6360461545547091,
+          "logloss_adjusted": 0.6359888632883635
+        },
+        {
+          "match_id": "2023-wimbledon-1316",
+          "fold": 1,
+          "n": 167,
+          "brier_baseline": 0.21806110901750728,
+          "brier_adjusted": 0.21807589318297524,
+          "logloss_baseline": 0.6270956767262134,
+          "logloss_adjusted": 0.6269651884356207
+        },
+        {
+          "match_id": "2023-wimbledon-1401",
+          "fold": 2,
+          "n": 225,
+          "brier_baseline": 0.22938285464690752,
+          "brier_adjusted": 0.22939858353407452,
+          "logloss_baseline": 0.6513093280867004,
+          "logloss_adjusted": 0.6512626985040549
+        },
+        {
+          "match_id": "2023-wimbledon-1402",
+          "fold": 3,
+          "n": 274,
+          "brier_baseline": 0.21640720505662994,
+          "brier_adjusted": 0.21568108383142204,
+          "logloss_baseline": 0.6245371698369517,
+          "logloss_adjusted": 0.6229986417985601
+        },
+        {
+          "match_id": "2023-wimbledon-1403",
+          "fold": 4,
+          "n": 122,
+          "brier_baseline": 0.2351492236264812,
+          "brier_adjusted": 0.2351894301671921,
+          "logloss_baseline": 0.6627095610868544,
+          "logloss_adjusted": 0.662820965894882
+        },
+        {
+          "match_id": "2023-wimbledon-1404",
+          "fold": 5,
+          "n": 286,
+          "brier_baseline": 0.2186334842091232,
+          "brier_adjusted": 0.21899145469560238,
+          "logloss_baseline": 0.6294065413817014,
+          "logloss_adjusted": 0.6302459939690734
+        },
+        {
+          "match_id": "2023-wimbledon-1405",
+          "fold": 1,
+          "n": 215,
+          "brier_baseline": 0.2219614218349431,
+          "brier_adjusted": 0.22131990452556527,
+          "logloss_baseline": 0.6352933501227493,
+          "logloss_adjusted": 0.6340098689688861
+        },
+        {
+          "match_id": "2023-wimbledon-1406",
+          "fold": 2,
+          "n": 195,
+          "brier_baseline": 0.2279331623931901,
+          "brier_adjusted": 0.2300269499029526,
+          "logloss_baseline": 0.6482344284745457,
+          "logloss_adjusted": 0.6526898204345998
+        },
+        {
+          "match_id": "2023-wimbledon-1407",
+          "fold": 3,
+          "n": 331,
+          "brier_baseline": 0.20359139240088214,
+          "brier_adjusted": 0.20315402548816502,
+          "logloss_baseline": 0.5975367739735209,
+          "logloss_adjusted": 0.5965879509288086
+        },
+        {
+          "match_id": "2023-wimbledon-1408",
+          "fold": 4,
+          "n": 271,
+          "brier_baseline": 0.1924273619770521,
+          "brier_adjusted": 0.19252954328771782,
+          "logloss_baseline": 0.5736867074587871,
+          "logloss_adjusted": 0.5740023732707005
+        },
+        {
+          "match_id": "2023-wimbledon-1501",
+          "fold": 5,
+          "n": 189,
+          "brier_baseline": 0.21603029261559356,
+          "brier_adjusted": 0.21496242201120788,
+          "logloss_baseline": 0.6235381526626179,
+          "logloss_adjusted": 0.6212757458109801
+        },
+        {
+          "match_id": "2023-wimbledon-1502",
+          "fold": 1,
+          "n": 283,
+          "brier_baseline": 0.22207185828262338,
+          "brier_adjusted": 0.22225177781757435,
+          "logloss_baseline": 0.6361647321588212,
+          "logloss_adjusted": 0.6364970609348559
+        },
+        {
+          "match_id": "2023-wimbledon-1503",
+          "fold": 2,
+          "n": 193,
+          "brier_baseline": 0.22920206195379256,
+          "brier_adjusted": 0.23197784081219153,
+          "logloss_baseline": 0.6509201595445858,
+          "logloss_adjusted": 0.6570384172020408
+        },
+        {
+          "match_id": "2023-wimbledon-1504",
+          "fold": 3,
+          "n": 217,
+          "brier_baseline": 0.22919554643135823,
+          "brier_adjusted": 0.22933328764209163,
+          "logloss_baseline": 0.6509320751403023,
+          "logloss_adjusted": 0.6512252603052151
+        },
+        {
+          "match_id": "2023-wimbledon-1601",
+          "fold": 4,
+          "n": 159,
+          "brier_baseline": 0.24082975567010315,
+          "brier_adjusted": 0.24106990776995935,
+          "logloss_baseline": 0.6748256424828227,
+          "logloss_adjusted": 0.6754293313003042
+        },
+        {
+          "match_id": "2023-wimbledon-1602",
+          "fold": 5,
+          "n": 202,
+          "brier_baseline": 0.2260571343257019,
+          "brier_adjusted": 0.2252343449692799,
+          "logloss_baseline": 0.6446158336418121,
+          "logloss_adjusted": 0.642893837756777
+        },
+        {
+          "match_id": "2023-wimbledon-1701",
+          "fold": 1,
+          "n": 334,
+          "brier_baseline": 0.24212421114365046,
+          "brier_adjusted": 0.2417209442984845,
+          "logloss_baseline": 0.6773854999137513,
+          "logloss_adjusted": 0.6765758032904318
+        }
+      ],
+      "calibration": [
+        {
+          "decile": 1,
+          "n": 728,
+          "baseline_mean": 0.2956859584237626,
+          "adjusted_mean": 0.29353737507301764,
+          "observed_rate": 0.26373626373626374
+        },
+        {
+          "decile": 2,
+          "n": 728,
+          "baseline_mean": 0.35712576765978676,
+          "adjusted_mean": 0.3544230778188612,
+          "observed_rate": 0.34203296703296704
+        },
+        {
+          "decile": 3,
+          "n": 729,
+          "baseline_mean": 0.38881681670556323,
+          "adjusted_mean": 0.3853232503711976,
+          "observed_rate": 0.36899862825788754
+        },
+        {
+          "decile": 4,
+          "n": 728,
+          "baseline_mean": 0.4174922292085969,
+          "adjusted_mean": 0.41325159847666143,
+          "observed_rate": 0.3695054945054945
+        },
+        {
+          "decile": 5,
+          "n": 729,
+          "baseline_mean": 0.4654739084189755,
+          "adjusted_mean": 0.465045555918262,
+          "observed_rate": 0.41838134430727025
+        },
+        {
+          "decile": 6,
+          "n": 728,
+          "baseline_mean": 0.5239707638833659,
+          "adjusted_mean": 0.5239643261776991,
+          "observed_rate": 0.5604395604395604
+        },
+        {
+          "decile": 7,
+          "n": 728,
+          "baseline_mean": 0.5742068608251207,
+          "adjusted_mean": 0.5767123863431822,
+          "observed_rate": 0.6510989010989011
+        },
+        {
+          "decile": 8,
+          "n": 729,
+          "baseline_mean": 0.6129733981932084,
+          "adjusted_mean": 0.6150340510201924,
+          "observed_rate": 0.6762688614540466
+        },
+        {
+          "decile": 9,
+          "n": 728,
+          "baseline_mean": 0.6495282526395214,
+          "adjusted_mean": 0.6514075725520792,
+          "observed_rate": 0.7074175824175825
+        },
+        {
+          "decile": 10,
+          "n": 729,
+          "baseline_mean": 0.6999472467103856,
+          "adjusted_mean": 0.7009155707895709,
+          "observed_rate": 0.7462277091906722
+        }
+      ]
     },
     {
       "window": 8,
@@ -44,7 +458,412 @@
       "brier_baseline": 0.22398027042885466,
       "brier_adjusted": 0.22379608363924125,
       "logloss_baseline": 0.639896467437724,
-      "logloss_adjusted": 0.6395382891889275
+      "logloss_adjusted": 0.6395382891889275,
+      "fold_results": [
+        {
+          "fold": 1,
+          "n_matches": 7,
+          "beta": -0.2888036811673497,
+          "n": 1801,
+          "brier_baseline": 0.22597535783009798,
+          "brier_adjusted": 0.22553020569967774,
+          "logloss_baseline": 0.6439901253231151,
+          "logloss_adjusted": 0.6430786403877168
+        },
+        {
+          "fold": 2,
+          "n_matches": 6,
+          "beta": -0.4502658058817886,
+          "n": 1321,
+          "brier_baseline": 0.22318754343237177,
+          "brier_adjusted": 0.22342528731132588,
+          "logloss_baseline": 0.6381834370819477,
+          "logloss_adjusted": 0.6386765543798381
+        },
+        {
+          "fold": 3,
+          "n_matches": 6,
+          "beta": -0.34545048557623276,
+          "n": 1436,
+          "brier_baseline": 0.2191009714679191,
+          "brier_adjusted": 0.21877996839049368,
+          "logloss_baseline": 0.6298449037529641,
+          "logloss_adjusted": 0.6291487643499248
+        },
+        {
+          "fold": 4,
+          "n_matches": 6,
+          "beta": -0.35794805308552324,
+          "n": 1287,
+          "brier_baseline": 0.22229408133402118,
+          "brier_adjusted": 0.2219587036854972,
+          "logloss_baseline": 0.6362404178406763,
+          "logloss_adjusted": 0.6355987847206466
+        },
+        {
+          "fold": 5,
+          "n_matches": 6,
+          "beta": -0.4279963278390058,
+          "n": 1439,
+          "brier_baseline": 0.22858821943904817,
+          "brier_adjusted": 0.22861506738906726,
+          "logloss_baseline": 0.6496460272230421,
+          "logloss_adjusted": 0.6497896297679918
+        }
+      ],
+      "match_results": [
+        {
+          "match_id": "2023-wimbledon-1301",
+          "fold": 1,
+          "n": 300,
+          "brier_baseline": 0.2328805274869354,
+          "brier_adjusted": 0.23270617105660923,
+          "logloss_baseline": 0.6586577170050297,
+          "logloss_adjusted": 0.6583209328303098
+        },
+        {
+          "match_id": "2023-wimbledon-1302",
+          "fold": 2,
+          "n": 201,
+          "brier_baseline": 0.19641928260418126,
+          "brier_adjusted": 0.19513075629500157,
+          "logloss_baseline": 0.5827471909631258,
+          "logloss_adjusted": 0.5799810239898066
+        },
+        {
+          "match_id": "2023-wimbledon-1303",
+          "fold": 3,
+          "n": 134,
+          "brier_baseline": 0.216183779305943,
+          "brier_adjusted": 0.216694623165587,
+          "logloss_baseline": 0.6228632891052206,
+          "logloss_adjusted": 0.6240003840275741
+        },
+        {
+          "match_id": "2023-wimbledon-1304",
+          "fold": 4,
+          "n": 337,
+          "brier_baseline": 0.22968781883338435,
+          "brier_adjusted": 0.2292794835662061,
+          "logloss_baseline": 0.6521633061838116,
+          "logloss_adjusted": 0.6512929904136311
+        },
+        {
+          "match_id": "2023-wimbledon-1305",
+          "fold": 5,
+          "n": 246,
+          "brier_baseline": 0.23179049418424552,
+          "brier_adjusted": 0.23188155932937377,
+          "logloss_baseline": 0.656379411583372,
+          "logloss_adjusted": 0.6566055320965777
+        },
+        {
+          "match_id": "2023-wimbledon-1306",
+          "fold": 1,
+          "n": 332,
+          "brier_baseline": 0.2135334557392824,
+          "brier_adjusted": 0.2132588108546949,
+          "logloss_baseline": 0.6184739353188219,
+          "logloss_adjusted": 0.6180329590985288
+        },
+        {
+          "match_id": "2023-wimbledon-1307",
+          "fold": 2,
+          "n": 232,
+          "brier_baseline": 0.20247950673017096,
+          "brier_adjusted": 0.20122670212478128,
+          "logloss_baseline": 0.5950934109339765,
+          "logloss_adjusted": 0.5923401816335133
+        },
+        {
+          "match_id": "2023-wimbledon-1308",
+          "fold": 3,
+          "n": 190,
+          "brier_baseline": 0.21165674276632254,
+          "brier_adjusted": 0.21177470135089493,
+          "logloss_baseline": 0.6147951070009329,
+          "logloss_adjusted": 0.6149832081494859
+        },
+        {
+          "match_id": "2023-wimbledon-1309",
+          "fold": 4,
+          "n": 213,
+          "brier_baseline": 0.22839106766005782,
+          "brier_adjusted": 0.22794871542236148,
+          "logloss_baseline": 0.6492233420313583,
+          "logloss_adjusted": 0.6483437853113211
+        },
+        {
+          "match_id": "2023-wimbledon-1310",
+          "fold": 5,
+          "n": 318,
+          "brier_baseline": 0.2483282302180788,
+          "brier_adjusted": 0.24992858749313449,
+          "logloss_baseline": 0.6898200604986485,
+          "logloss_adjusted": 0.6930623801870059
+        },
+        {
+          "match_id": "2023-wimbledon-1311",
+          "fold": 1,
+          "n": 170,
+          "brier_baseline": 0.22570953284756048,
+          "brier_adjusted": 0.22502925451707506,
+          "logloss_baseline": 0.642947821280971,
+          "logloss_adjusted": 0.6416363495586772
+        },
+        {
+          "match_id": "2023-wimbledon-1312",
+          "fold": 2,
+          "n": 275,
+          "brier_baseline": 0.24756769669096468,
+          "brier_adjusted": 0.24749519797413877,
+          "logloss_baseline": 0.6882493109121219,
+          "logloss_adjusted": 0.6881150200953143
+        },
+        {
+          "match_id": "2023-wimbledon-1313",
+          "fold": 3,
+          "n": 290,
+          "brier_baseline": 0.23802009941214042,
+          "brier_adjusted": 0.23795135653179367,
+          "logloss_baseline": 0.6690428058378447,
+          "logloss_adjusted": 0.6688636537684546
+        },
+        {
+          "match_id": "2023-wimbledon-1314",
+          "fold": 4,
+          "n": 185,
+          "brier_baseline": 0.221148317776671,
+          "brier_adjusted": 0.2208356426694923,
+          "logloss_baseline": 0.6333020021385435,
+          "logloss_adjusted": 0.6327080912128411
+        },
+        {
+          "match_id": "2023-wimbledon-1315",
+          "fold": 5,
+          "n": 198,
+          "brier_baseline": 0.22185437410185857,
+          "brier_adjusted": 0.2218380728858891,
+          "logloss_baseline": 0.6360461545547091,
+          "logloss_adjusted": 0.6360034729777605
+        },
+        {
+          "match_id": "2023-wimbledon-1316",
+          "fold": 1,
+          "n": 167,
+          "brier_baseline": 0.21806110901750728,
+          "brier_adjusted": 0.21824695082946005,
+          "logloss_baseline": 0.6270956767262134,
+          "logloss_adjusted": 0.6272156909737006
+        },
+        {
+          "match_id": "2023-wimbledon-1401",
+          "fold": 2,
+          "n": 225,
+          "brier_baseline": 0.22938285464690752,
+          "brier_adjusted": 0.22829412273674587,
+          "logloss_baseline": 0.6513093280867004,
+          "logloss_adjusted": 0.6489021276122177
+        },
+        {
+          "match_id": "2023-wimbledon-1402",
+          "fold": 3,
+          "n": 274,
+          "brier_baseline": 0.21640720505662994,
+          "brier_adjusted": 0.21603248102084732,
+          "logloss_baseline": 0.6245371698369517,
+          "logloss_adjusted": 0.6237816932037337
+        },
+        {
+          "match_id": "2023-wimbledon-1403",
+          "fold": 4,
+          "n": 122,
+          "brier_baseline": 0.2351492236264812,
+          "brier_adjusted": 0.23457551814559502,
+          "logloss_baseline": 0.6627095610868544,
+          "logloss_adjusted": 0.6616856063815872
+        },
+        {
+          "match_id": "2023-wimbledon-1404",
+          "fold": 5,
+          "n": 286,
+          "brier_baseline": 0.2186334842091232,
+          "brier_adjusted": 0.21973047333367968,
+          "logloss_baseline": 0.6294065413817014,
+          "logloss_adjusted": 0.632165013474079
+        },
+        {
+          "match_id": "2023-wimbledon-1405",
+          "fold": 1,
+          "n": 215,
+          "brier_baseline": 0.2219614218349431,
+          "brier_adjusted": 0.22103278975092502,
+          "logloss_baseline": 0.6352933501227493,
+          "logloss_adjusted": 0.6334164744336137
+        },
+        {
+          "match_id": "2023-wimbledon-1406",
+          "fold": 2,
+          "n": 195,
+          "brier_baseline": 0.2279331623931901,
+          "brier_adjusted": 0.23020944110361885,
+          "logloss_baseline": 0.6482344284745457,
+          "logloss_adjusted": 0.6530754340915492
+        },
+        {
+          "match_id": "2023-wimbledon-1407",
+          "fold": 3,
+          "n": 331,
+          "brier_baseline": 0.20359139240088214,
+          "brier_adjusted": 0.20254426204151177,
+          "logloss_baseline": 0.5975367739735209,
+          "logloss_adjusted": 0.5952482593733929
+        },
+        {
+          "match_id": "2023-wimbledon-1408",
+          "fold": 4,
+          "n": 271,
+          "brier_baseline": 0.1924273619770521,
+          "brier_adjusted": 0.19197915876660024,
+          "logloss_baseline": 0.5736867074587871,
+          "logloss_adjusted": 0.5727959345645992
+        },
+        {
+          "match_id": "2023-wimbledon-1501",
+          "fold": 5,
+          "n": 189,
+          "brier_baseline": 0.21603029261559356,
+          "brier_adjusted": 0.21397228847025715,
+          "logloss_baseline": 0.6235381526626179,
+          "logloss_adjusted": 0.6193238619684852
+        },
+        {
+          "match_id": "2023-wimbledon-1502",
+          "fold": 1,
+          "n": 283,
+          "brier_baseline": 0.22207185828262338,
+          "brier_adjusted": 0.2216067563274912,
+          "logloss_baseline": 0.6361647321588212,
+          "logloss_adjusted": 0.6351005823314965
+        },
+        {
+          "match_id": "2023-wimbledon-1503",
+          "fold": 2,
+          "n": 193,
+          "brier_baseline": 0.22920206195379256,
+          "brier_adjusted": 0.23274989407334606,
+          "logloss_baseline": 0.6509201595445858,
+          "logloss_adjusted": 0.658592235689265
+        },
+        {
+          "match_id": "2023-wimbledon-1504",
+          "fold": 3,
+          "n": 217,
+          "brier_baseline": 0.22919554643135823,
+          "brier_adjusted": 0.22881482911620918,
+          "logloss_baseline": 0.6509320751403023,
+          "logloss_adjusted": 0.6501426138945912
+        },
+        {
+          "match_id": "2023-wimbledon-1601",
+          "fold": 4,
+          "n": 159,
+          "brier_baseline": 0.24082975567010315,
+          "brier_adjusted": 0.24114107020813244,
+          "logloss_baseline": 0.6748256424828227,
+          "logloss_adjusted": 0.6756498916656056
+        },
+        {
+          "match_id": "2023-wimbledon-1602",
+          "fold": 5,
+          "n": 202,
+          "brier_baseline": 0.2260571343257019,
+          "brier_adjusted": 0.2240064912341995,
+          "logloss_baseline": 0.6446158336418121,
+          "logloss_adjusted": 0.6403385545826138
+        },
+        {
+          "match_id": "2023-wimbledon-1701",
+          "fold": 1,
+          "n": 334,
+          "brier_baseline": 0.24212421114365046,
+          "brier_adjusted": 0.24139864685876147,
+          "logloss_baseline": 0.6773854999137513,
+          "logloss_adjusted": 0.6759287498438568
+        }
+      ],
+      "calibration": [
+        {
+          "decile": 1,
+          "n": 728,
+          "baseline_mean": 0.2956859584237626,
+          "adjusted_mean": 0.2932314928936997,
+          "observed_rate": 0.26373626373626374
+        },
+        {
+          "decile": 2,
+          "n": 728,
+          "baseline_mean": 0.35712576765978676,
+          "adjusted_mean": 0.35374856026083656,
+          "observed_rate": 0.34203296703296704
+        },
+        {
+          "decile": 3,
+          "n": 729,
+          "baseline_mean": 0.38881681670556323,
+          "adjusted_mean": 0.3833200504783153,
+          "observed_rate": 0.36899862825788754
+        },
+        {
+          "decile": 4,
+          "n": 728,
+          "baseline_mean": 0.4174922292085969,
+          "adjusted_mean": 0.41091307496918256,
+          "observed_rate": 0.3695054945054945
+        },
+        {
+          "decile": 5,
+          "n": 729,
+          "baseline_mean": 0.4654739084189755,
+          "adjusted_mean": 0.46520296933096156,
+          "observed_rate": 0.41838134430727025
+        },
+        {
+          "decile": 6,
+          "n": 728,
+          "baseline_mean": 0.5239707638833659,
+          "adjusted_mean": 0.5248080500169024,
+          "observed_rate": 0.5604395604395604
+        },
+        {
+          "decile": 7,
+          "n": 728,
+          "baseline_mean": 0.5742068608251207,
+          "adjusted_mean": 0.5777716807580899,
+          "observed_rate": 0.6510989010989011
+        },
+        {
+          "decile": 8,
+          "n": 729,
+          "baseline_mean": 0.6129733981932084,
+          "adjusted_mean": 0.6152802189781048,
+          "observed_rate": 0.6762688614540466
+        },
+        {
+          "decile": 9,
+          "n": 728,
+          "baseline_mean": 0.6495282526395214,
+          "adjusted_mean": 0.6505894429366312,
+          "observed_rate": 0.7074175824175825
+        },
+        {
+          "decile": 10,
+          "n": 729,
+          "baseline_mean": 0.6999472467103856,
+          "adjusted_mean": 0.6998157170895027,
+          "observed_rate": 0.7462277091906722
+        }
+      ]
     },
     {
       "window": 12,
@@ -60,7 +879,412 @@
       "brier_baseline": 0.22398027042885466,
       "brier_adjusted": 0.22400083944149907,
       "logloss_baseline": 0.639896467437724,
-      "logloss_adjusted": 0.6399498434703198
+      "logloss_adjusted": 0.6399498434703198,
+      "fold_results": [
+        {
+          "fold": 1,
+          "n_matches": 7,
+          "beta": -0.1403019906855621,
+          "n": 1801,
+          "brier_baseline": 0.22597535783009798,
+          "brier_adjusted": 0.22600370981898757,
+          "logloss_baseline": 0.6439901253231151,
+          "logloss_adjusted": 0.6440630049893772
+        },
+        {
+          "fold": 2,
+          "n_matches": 6,
+          "beta": -0.17220472924076094,
+          "n": 1321,
+          "brier_baseline": 0.22318754343237177,
+          "brier_adjusted": 0.22330725238548785,
+          "logloss_baseline": 0.6381834370819477,
+          "logloss_adjusted": 0.6384387365939557
+        },
+        {
+          "fold": 3,
+          "n_matches": 6,
+          "beta": -0.031727950975743296,
+          "n": 1436,
+          "brier_baseline": 0.2191009714679191,
+          "brier_adjusted": 0.21907790326561613,
+          "logloss_baseline": 0.6298449037529641,
+          "logloss_adjusted": 0.6297970465960733
+        },
+        {
+          "fold": 4,
+          "n_matches": 6,
+          "beta": -0.019864569567238595,
+          "n": 1287,
+          "brier_baseline": 0.22229408133402118,
+          "brier_adjusted": 0.22227331295034836,
+          "logloss_baseline": 0.6362404178406763,
+          "logloss_adjusted": 0.6362015878130178
+        },
+        {
+          "fold": 5,
+          "n_matches": 6,
+          "beta": -0.11735675765882217,
+          "n": 1439,
+          "brier_baseline": 0.22858821943904817,
+          "brier_adjusted": 0.2285885544476235,
+          "logloss_baseline": 0.6496460272230421,
+          "logloss_adjusted": 0.6496731163196726
+        }
+      ],
+      "match_results": [
+        {
+          "match_id": "2023-wimbledon-1301",
+          "fold": 1,
+          "n": 300,
+          "brier_baseline": 0.2328805274869354,
+          "brier_adjusted": 0.2327070824157364,
+          "logloss_baseline": 0.6586577170050297,
+          "logloss_adjusted": 0.658306328073436
+        },
+        {
+          "match_id": "2023-wimbledon-1302",
+          "fold": 2,
+          "n": 201,
+          "brier_baseline": 0.19641928260418126,
+          "brier_adjusted": 0.19595279518746764,
+          "logloss_baseline": 0.5827471909631258,
+          "logloss_adjusted": 0.5817091761397877
+        },
+        {
+          "match_id": "2023-wimbledon-1303",
+          "fold": 3,
+          "n": 134,
+          "brier_baseline": 0.216183779305943,
+          "brier_adjusted": 0.21624381728228972,
+          "logloss_baseline": 0.6228632891052206,
+          "logloss_adjusted": 0.6230035583771738
+        },
+        {
+          "match_id": "2023-wimbledon-1304",
+          "fold": 4,
+          "n": 337,
+          "brier_baseline": 0.22968781883338435,
+          "brier_adjusted": 0.2296599079099601,
+          "logloss_baseline": 0.6521633061838116,
+          "logloss_adjusted": 0.6521056920686772
+        },
+        {
+          "match_id": "2023-wimbledon-1305",
+          "fold": 5,
+          "n": 246,
+          "brier_baseline": 0.23179049418424552,
+          "brier_adjusted": 0.23171680665037667,
+          "logloss_baseline": 0.656379411583372,
+          "logloss_adjusted": 0.6562341309473607
+        },
+        {
+          "match_id": "2023-wimbledon-1306",
+          "fold": 1,
+          "n": 332,
+          "brier_baseline": 0.2135334557392824,
+          "brier_adjusted": 0.21373720424458376,
+          "logloss_baseline": 0.6184739353188219,
+          "logloss_adjusted": 0.618965711013541
+        },
+        {
+          "match_id": "2023-wimbledon-1307",
+          "fold": 2,
+          "n": 232,
+          "brier_baseline": 0.20247950673017096,
+          "brier_adjusted": 0.20231920021899247,
+          "logloss_baseline": 0.5950934109339765,
+          "logloss_adjusted": 0.5948037110012488
+        },
+        {
+          "match_id": "2023-wimbledon-1308",
+          "fold": 3,
+          "n": 190,
+          "brier_baseline": 0.21165674276632254,
+          "brier_adjusted": 0.21162722790628632,
+          "logloss_baseline": 0.6147951070009329,
+          "logloss_adjusted": 0.6147276835429561
+        },
+        {
+          "match_id": "2023-wimbledon-1309",
+          "fold": 4,
+          "n": 213,
+          "brier_baseline": 0.22839106766005782,
+          "brier_adjusted": 0.22835210609917328,
+          "logloss_baseline": 0.6492233420313583,
+          "logloss_adjusted": 0.6491433969511579
+        },
+        {
+          "match_id": "2023-wimbledon-1310",
+          "fold": 5,
+          "n": 318,
+          "brier_baseline": 0.2483282302180788,
+          "brier_adjusted": 0.24866123523538708,
+          "logloss_baseline": 0.6898200604986485,
+          "logloss_adjusted": 0.6904888799700806
+        },
+        {
+          "match_id": "2023-wimbledon-1311",
+          "fold": 1,
+          "n": 170,
+          "brier_baseline": 0.22570953284756048,
+          "brier_adjusted": 0.2259059133003518,
+          "logloss_baseline": 0.642947821280971,
+          "logloss_adjusted": 0.6433764583773117
+        },
+        {
+          "match_id": "2023-wimbledon-1312",
+          "fold": 2,
+          "n": 275,
+          "brier_baseline": 0.24756769669096468,
+          "brier_adjusted": 0.24767637816457497,
+          "logloss_baseline": 0.6882493109121219,
+          "logloss_adjusted": 0.6884688391050336
+        },
+        {
+          "match_id": "2023-wimbledon-1313",
+          "fold": 3,
+          "n": 290,
+          "brier_baseline": 0.23802009941214042,
+          "brier_adjusted": 0.23799917246699562,
+          "logloss_baseline": 0.6690428058378447,
+          "logloss_adjusted": 0.668997890398157
+        },
+        {
+          "match_id": "2023-wimbledon-1314",
+          "fold": 4,
+          "n": 185,
+          "brier_baseline": 0.221148317776671,
+          "brier_adjusted": 0.2211146616826509,
+          "logloss_baseline": 0.6333020021385435,
+          "logloss_adjusted": 0.6332367991516963
+        },
+        {
+          "match_id": "2023-wimbledon-1315",
+          "fold": 5,
+          "n": 198,
+          "brier_baseline": 0.22185437410185857,
+          "brier_adjusted": 0.2218893504509868,
+          "logloss_baseline": 0.6360461545547091,
+          "logloss_adjusted": 0.6361174055627983
+        },
+        {
+          "match_id": "2023-wimbledon-1316",
+          "fold": 1,
+          "n": 167,
+          "brier_baseline": 0.21806110901750728,
+          "brier_adjusted": 0.21820467260276866,
+          "logloss_baseline": 0.6270956767262134,
+          "logloss_adjusted": 0.6272743380567448
+        },
+        {
+          "match_id": "2023-wimbledon-1401",
+          "fold": 2,
+          "n": 225,
+          "brier_baseline": 0.22938285464690752,
+          "brier_adjusted": 0.22896613910614247,
+          "logloss_baseline": 0.6513093280867004,
+          "logloss_adjusted": 0.650390378996405
+        },
+        {
+          "match_id": "2023-wimbledon-1402",
+          "fold": 3,
+          "n": 274,
+          "brier_baseline": 0.21640720505662994,
+          "brier_adjusted": 0.21640329163380267,
+          "logloss_baseline": 0.6245371698369517,
+          "logloss_adjusted": 0.6245272733887183
+        },
+        {
+          "match_id": "2023-wimbledon-1403",
+          "fold": 4,
+          "n": 122,
+          "brier_baseline": 0.2351492236264812,
+          "brier_adjusted": 0.23510004023388656,
+          "logloss_baseline": 0.6627095610868544,
+          "logloss_adjusted": 0.6626145085961072
+        },
+        {
+          "match_id": "2023-wimbledon-1404",
+          "fold": 5,
+          "n": 286,
+          "brier_baseline": 0.2186334842091232,
+          "brier_adjusted": 0.21885800337055408,
+          "logloss_baseline": 0.6294065413817014,
+          "logloss_adjusted": 0.6300055848089506
+        },
+        {
+          "match_id": "2023-wimbledon-1405",
+          "fold": 1,
+          "n": 215,
+          "brier_baseline": 0.2219614218349431,
+          "brier_adjusted": 0.22169212094464677,
+          "logloss_baseline": 0.6352933501227493,
+          "logloss_adjusted": 0.6347697214681233
+        },
+        {
+          "match_id": "2023-wimbledon-1406",
+          "fold": 2,
+          "n": 195,
+          "brier_baseline": 0.2279331623931901,
+          "brier_adjusted": 0.2286003486019777,
+          "logloss_baseline": 0.6482344284745457,
+          "logloss_adjusted": 0.649660385723688
+        },
+        {
+          "match_id": "2023-wimbledon-1407",
+          "fold": 3,
+          "n": 331,
+          "brier_baseline": 0.20359139240088214,
+          "brier_adjusted": 0.20353295709519048,
+          "logloss_baseline": 0.5975367739735209,
+          "logloss_adjusted": 0.5974141466205446
+        },
+        {
+          "match_id": "2023-wimbledon-1408",
+          "fold": 4,
+          "n": 271,
+          "brier_baseline": 0.1924273619770521,
+          "brier_adjusted": 0.19243043410262342,
+          "logloss_baseline": 0.5736867074587871,
+          "logloss_adjusted": 0.5737012090930581
+        },
+        {
+          "match_id": "2023-wimbledon-1501",
+          "fold": 5,
+          "n": 189,
+          "brier_baseline": 0.21603029261559356,
+          "brier_adjusted": 0.2156971946070697,
+          "logloss_baseline": 0.6235381526626179,
+          "logloss_adjusted": 0.6228864886930051
+        },
+        {
+          "match_id": "2023-wimbledon-1502",
+          "fold": 1,
+          "n": 283,
+          "brier_baseline": 0.22207185828262338,
+          "brier_adjusted": 0.2222803440989739,
+          "logloss_baseline": 0.6361647321588212,
+          "logloss_adjusted": 0.6366095738140513
+        },
+        {
+          "match_id": "2023-wimbledon-1503",
+          "fold": 2,
+          "n": 193,
+          "brier_baseline": 0.22920206195379256,
+          "brier_adjusted": 0.2303567919493064,
+          "logloss_baseline": 0.6509201595445858,
+          "logloss_adjusted": 0.653414634404324
+        },
+        {
+          "match_id": "2023-wimbledon-1504",
+          "fold": 3,
+          "n": 217,
+          "brier_baseline": 0.22919554643135823,
+          "brier_adjusted": 0.22915370299449386,
+          "logloss_baseline": 0.6509320751403023,
+          "logloss_adjusted": 0.6508473666400199
+        },
+        {
+          "match_id": "2023-wimbledon-1601",
+          "fold": 4,
+          "n": 159,
+          "brier_baseline": 0.24082975567010315,
+          "brier_adjusted": 0.2408446618910839,
+          "logloss_baseline": 0.6748256424828227,
+          "logloss_adjusted": 0.6748646300729917
+        },
+        {
+          "match_id": "2023-wimbledon-1602",
+          "fold": 5,
+          "n": 202,
+          "brier_baseline": 0.2260571343257019,
+          "brier_adjusted": 0.225584517204327,
+          "logloss_baseline": 0.6446158336418121,
+          "logloss_adjusted": 0.6436245763401007
+        },
+        {
+          "match_id": "2023-wimbledon-1701",
+          "fold": 1,
+          "n": 334,
+          "brier_baseline": 0.24212421114365046,
+          "brier_adjusted": 0.24205531700971025,
+          "logloss_baseline": 0.6773854999137513,
+          "logloss_adjusted": 0.6772579210260496
+        }
+      ],
+      "calibration": [
+        {
+          "decile": 1,
+          "n": 728,
+          "baseline_mean": 0.2956859584237626,
+          "adjusted_mean": 0.2954019867429167,
+          "observed_rate": 0.26373626373626374
+        },
+        {
+          "decile": 2,
+          "n": 728,
+          "baseline_mean": 0.35712576765978676,
+          "adjusted_mean": 0.35661948952458206,
+          "observed_rate": 0.34203296703296704
+        },
+        {
+          "decile": 3,
+          "n": 729,
+          "baseline_mean": 0.38881681670556323,
+          "adjusted_mean": 0.387743016025025,
+          "observed_rate": 0.36899862825788754
+        },
+        {
+          "decile": 4,
+          "n": 728,
+          "baseline_mean": 0.4174922292085969,
+          "adjusted_mean": 0.41652772189815496,
+          "observed_rate": 0.3695054945054945
+        },
+        {
+          "decile": 5,
+          "n": 729,
+          "baseline_mean": 0.4654739084189755,
+          "adjusted_mean": 0.46620816088785916,
+          "observed_rate": 0.41838134430727025
+        },
+        {
+          "decile": 6,
+          "n": 728,
+          "baseline_mean": 0.5239707638833659,
+          "adjusted_mean": 0.5239648952181326,
+          "observed_rate": 0.5604395604395604
+        },
+        {
+          "decile": 7,
+          "n": 728,
+          "baseline_mean": 0.5742068608251207,
+          "adjusted_mean": 0.5744375879560205,
+          "observed_rate": 0.6510989010989011
+        },
+        {
+          "decile": 8,
+          "n": 729,
+          "baseline_mean": 0.6129733981932084,
+          "adjusted_mean": 0.6129076843791748,
+          "observed_rate": 0.6762688614540466
+        },
+        {
+          "decile": 9,
+          "n": 728,
+          "baseline_mean": 0.6495282526395214,
+          "adjusted_mean": 0.6491496160196563,
+          "observed_rate": 0.7074175824175825
+        },
+        {
+          "decile": 10,
+          "n": 729,
+          "baseline_mean": 0.6999472467103856,
+          "adjusted_mean": 0.6992678070645375,
+          "observed_rate": 0.7462277091906722
+        }
+      ]
     }
   ],
   "null_test": {
@@ -70,7 +1294,10 @@
     "null_sd": 7.30118192432919,
     "replicates": 500,
     "two_sided_p": 0.017964071856287425,
-    "seed": 2024
+    "seed": 2024,
+    "null_q025": -13.628729896464675,
+    "null_q975": 15.020795746170323,
+    "extreme_count": 8
   },
   "final_match": {
     "match_id": "2023-wimbledon-1701",

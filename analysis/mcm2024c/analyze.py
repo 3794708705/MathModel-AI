@@ -125,6 +125,8 @@ def grouped_cross_validation(
     all_test: list[tuple[float, float, int]] = []
     coefficients: list[float] = []
     predictions: list[float] = []
+    fold_results: list[dict[str, float | int]] = []
+    match_results: list[dict[str, float | int | str]] = []
     for fold in range(5):
         train = [
             row
@@ -142,6 +144,20 @@ def grouped_cross_validation(
         coefficients.append(beta)
         all_test.extend(test)
         predictions.extend(adjusted_probability(p0, momentum, beta) for p0, momentum, _ in test)
+        fold_score = score(test, beta)
+        fold_results.append(
+            {
+                "fold": fold + 1,
+                "n_matches": sum(index % 5 == fold for index in range(len(ids))),
+                "beta": beta,
+                **fold_score,
+            }
+        )
+        for index, match_id in enumerate(ids):
+            if index % 5 != fold:
+                continue
+            match_score = score(features[match_id], beta)
+            match_results.append({"match_id": match_id, "fold": fold + 1, **match_score})
     brier_adjusted = sum(
         (y - p) ** 2 for (_, _, y), p in zip(all_test, predictions, strict=True)
     ) / len(all_test)
@@ -150,6 +166,19 @@ def grouped_cross_validation(
         for (_, _, y), p in zip(all_test, predictions, strict=True)
     ) / len(all_test)
     baseline = score(all_test, 0.0)
+    ordered = sorted(zip(all_test, predictions, strict=True), key=lambda pair: pair[0][0])
+    calibration: list[dict[str, float | int]] = []
+    for decile in range(10):
+        group = ordered[decile * len(ordered) // 10 : (decile + 1) * len(ordered) // 10]
+        calibration.append(
+            {
+                "decile": decile + 1,
+                "n": len(group),
+                "baseline_mean": sum(row[0][0] for row in group) / len(group),
+                "adjusted_mean": sum(row[1] for row in group) / len(group),
+                "observed_rate": sum(row[0][2] for row in group) / len(group),
+            }
+        )
     return {
         "window": window,
         "folds": 5,
@@ -159,6 +188,9 @@ def grouped_cross_validation(
         "brier_adjusted": brier_adjusted,
         "logloss_baseline": baseline["logloss_baseline"],
         "logloss_adjusted": log_adjusted,
+        "fold_results": fold_results,
+        "match_results": sorted(match_results, key=lambda item: str(item["match_id"])),
+        "calibration": calibration,
     }
 
 
@@ -197,6 +229,7 @@ def null_test(matches: dict[str, dict[str, object]], window: int) -> dict[str, f
                 wins[server] += outcome
         simulated.append(total)
     mean = sum(simulated) / len(simulated)
+    simulated.sort()
     deviation = abs(observed - mean)
     extreme = sum(abs(item - mean) >= deviation for item in simulated)
     return {
@@ -207,6 +240,36 @@ def null_test(matches: dict[str, dict[str, object]], window: int) -> dict[str, f
         "replicates": NULL_REPLICATES,
         "two_sided_p": (extreme + 1) / (NULL_REPLICATES + 1),
         "seed": NULL_SEED,
+        "null_q025": simulated[int(0.025 * (NULL_REPLICATES - 1))],
+        "null_q975": simulated[int(0.975 * (NULL_REPLICATES - 1))],
+        "extreme_count": extreme,
+    }
+
+
+def match_audit(matches: dict[str, dict[str, object]]) -> dict[str, object]:
+    """Descriptive checks from the exact rows used by the analysis."""
+    lengths: list[int] = []
+    server_1_points = server_1_wins = server_2_points = server_2_wins = 0
+    for match in matches.values():
+        points = match["points"]
+        assert isinstance(points, list)
+        lengths.append(len(points))
+        for server, outcome in points:
+            if server == 1:
+                server_1_points += 1
+                server_1_wins += outcome
+            else:
+                server_2_points += 1
+                server_2_wins += 1 - outcome
+    lengths.sort()
+    return {
+        "min_points_per_match": lengths[0],
+        "median_points_per_match": lengths[len(lengths) // 2],
+        "max_points_per_match": lengths[-1],
+        "server_1_points": server_1_points,
+        "server_1_wins": server_1_wins,
+        "server_2_points": server_2_points,
+        "server_2_wins": server_2_wins,
     }
 
 
@@ -264,6 +327,7 @@ def analyze(path: Path) -> dict[str, object]:
         ),
         "prior": {"wins": PRIOR_WINS, "losses": PRIOR_LOSSES},
         "service": service_summary(matches),
+        "match_audit": match_audit(matches),
         "cross_validation": [grouped_cross_validation(matches, window) for window in (4, 8, 12)],
         "null_test": null_test(matches, MAIN_WINDOW),
         "final_match": final_match_summary(matches),

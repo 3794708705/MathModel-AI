@@ -28,6 +28,7 @@ from reportlab.platypus import (
 )
 
 from analysis.mcm2024c.analyze import FINAL_MATCH_ID, analyze, load_matches, point_features
+from analysis.mcm2024c.paper_detail import add_detailed_pages
 
 FONT_NAME = "NotoSC"
 INK = colors.HexColor("#17324D")
@@ -37,11 +38,18 @@ MUTED = colors.HexColor("#51636F")
 
 
 class FlowFigure(Flowable):
-    def __init__(self, values: list[float], width: float = 166 * mm, height: float = 72 * mm):
+    def __init__(
+        self,
+        values: list[float],
+        width: float = 166 * mm,
+        height: float = 72 * mm,
+        label: str = "发球校正的过去 8 分残差均值",
+    ):
         super().__init__()
         self.values = values
         self.width = width
         self.height = height
+        self.label = label
 
     def draw(self) -> None:
         canvas = self.canv
@@ -76,7 +84,7 @@ class FlowFigure(Flowable):
         canvas.drawPath(path)
         canvas.setFont(FONT_NAME, 7)
         canvas.setFillColor(MUTED)
-        canvas.drawString(left, self.height - 8, "发球校正的过去 8 分残差均值")
+        canvas.drawString(left, self.height - 8, self.label)
         canvas.drawRightString(left + plot_width, 2, "分序号")
 
 
@@ -137,8 +145,8 @@ def styles() -> dict[str, ParagraphStyle]:
             "body_sc",
             parent=sample["BodyText"],
             fontName=FONT_NAME,
-            fontSize=9.2,
-            leading=16.3,
+            fontSize=10,
+            leading=18,
             textColor=INK,
             alignment=TA_JUSTIFY,
             spaceAfter=7,
@@ -148,8 +156,8 @@ def styles() -> dict[str, ParagraphStyle]:
             "small_sc",
             parent=sample["BodyText"],
             fontName=FONT_NAME,
-            fontSize=8.2,
-            leading=13.2,
+            fontSize=8.8,
+            leading=14.5,
             textColor=INK,
             alignment=TA_LEFT,
             spaceAfter=5,
@@ -159,8 +167,8 @@ def styles() -> dict[str, ParagraphStyle]:
             "caption_sc",
             parent=sample["Normal"],
             fontName=FONT_NAME,
-            fontSize=8,
-            leading=12,
+            fontSize=8.5,
+            leading=13,
             textColor=MUTED,
             alignment=TA_CENTER,
             spaceAfter=10,
@@ -274,6 +282,58 @@ def build(official_csv: Path, results_json: Path, output_pdf: Path) -> None:
     )
     add(PageBreak())
 
+    add(paragraph("目录与证据边界", st["h1"]))
+    contents = [
+        ("摘要与阅读须知", "1"),
+        ("目录、数据来源和研究范围", "2"),
+        ("1 题目、数据与可核验范围；2 方法", "3"),
+        ("3 主要结果与决赛曲线", "4"),
+        ("3.1-3.4 数据审计、逐场清单与泄漏控制", "5-8"),
+        ("3.5-3.8 在线基线、走势定义与决赛诊断", "9-12"),
+        ("3.9-3.12 零假设模拟、预测模型与五折结果", "13-16"),
+        ("3.13-3.16 逐场误差、校准与敏感性", "17-20"),
+        ("4 解释、泛化与限制", "21"),
+        ("5 给教练的简报", "22"),
+        ("参考文献、复现与 AI 使用边界", "23"),
+    ]
+    toc = Table(contents, colWidths=[139 * mm, 17 * mm])
+    toc.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, FAINT]),
+                ("LINEBELOW", (0, -1), (-1, -1), 0.5, ACCENT),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ]
+        )
+    )
+    add(toc)
+    add(Spacer(1, 8 * mm))
+    add(paragraph("论文的三层证据", st["h2"]))
+    add(
+        paragraph(
+            "第一层是 SHA-256 锁定的 COMAP 官方题面与逐分 CSV；第二层是本仓库中"
+            "可运行的独立统计程序和逐项诊断；第三层才是针对结果的中文解释。"
+            "论文构建器会重新计算统计量并逐字段比对 results.json，因而不能通过"
+            "直接改写报告数字取得一致性。外部文献仅用于背景和方法定位，不承担"
+            "本题数据复算或因果证明。",
+            st["body"],
+        )
+    )
+    add(
+        paragraph(
+            "本研究没有完成题目要求的可靠转势事件预警，也没有通过 MathModel AI"
+            "通用 C 题 benchmark 的独立验证。约 23 页是本次研究稿的篇幅目标；"
+            "COMAP 官方只设 25 页上限，没有 23 页的合格门槛。缺口在正文和"
+            "教练简报中保留，不以增加页数掩盖。",
+            st["body"],
+        )
+    )
+    add(PageBreak())
+
     add(paragraph("1 题目、数据与可核验范围", st["h1"]))
     add(
         paragraph(
@@ -362,6 +422,7 @@ def build(official_csv: Path, results_json: Path, output_pdf: Path) -> None:
             st["body"],
         )
     )
+    add_detailed_pages(story, st, checked, matches, paragraph, FlowFigure)
     add(PageBreak())
 
     add(paragraph("4 解释、泛化与限制", st["h1"]))
@@ -386,7 +447,42 @@ def build(official_csv: Path, results_json: Path, output_pdf: Path) -> None:
             st["body"],
         )
     )
+    add(
+        paragraph(
+            "与题目任务对照，本文已给出逐分走势、保留发球顺序的限定随机检验、"
+            "下一分留出预测和跨场误差审查；未给出有独立留出证据的转势事件预测器。"
+            "这是可观察的科学边界，不是排版或评分问题。通用系统若允许只输出"
+            "假设标量却宣称完成逐分任务，将被现有验证门拒绝。",
+            st["body"],
+        )
+    )
+    add(paragraph("题目要求与当前证据的对照", st["h2"]))
+    scope_rows = [
+        ["逐分走势与可视化", "已完成", "决赛曲线、窗口比较与逐分代码"],
+        ["随机性主张", "限定回答", "给定发球顺序的 500 轮顺序零假设"],
+        ["下一分概率", "已测试", "31 场分组五折、两种损失与校准"],
+        ["转势事件预警", "未验证", "未定义可检验的事件级预测器"],
+        ["其他赛事与人群", "未测试", "无女子赛或其他场地的数据"],
+    ]
+    scope_table = Table(
+        [[paragraph(cell, st["small"]) for cell in row] for row in scope_rows],
+        colWidths=[42 * mm, 27 * mm, 87 * mm],
+    )
+    scope_table.setStyle(
+        TableStyle(
+            [
+                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, FAINT]),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D4E0E6")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    add(scope_table)
+    add(PageBreak())
     add(paragraph("5 给教练的简报", st["h1"]))
+    add(paragraph("致：草地男子单打教练组 · 主题：如何使用和不误用“势头”", st["subtitle"]))
     add(
         paragraph(
             "先问谁发球，再谈连胜。发球方在本样本赢得约三分之二的分数，连续得分不应"
@@ -405,11 +501,51 @@ def build(official_csv: Path, results_json: Path, output_pdf: Path) -> None:
             st["body"],
         )
     )
-    add(paragraph("参考文献", st["h1"]))
+    add(
+        paragraph(
+            "赛前准备可先建立一套不依赖走势图的执行清单：确认发球与接发球策略、"
+            "在每盘和换边时记录可观察的技术变化，并约定何种具体战术迹象需要"
+            "教练复核。比赛中先区分由发球轮次带来的自然连胜与真正超出已知"
+            "基线的偏离；在证据不足时，不因一个短窗口峰值改变既定高质量打法。",
+            st["body"],
+        )
+    )
+    add(
+        paragraph(
+            "赛后复盘时，可以把明显走势波动与一发成功率、失误类型、"
+            "跑动负担和关键比分并列检查，但这些候选解释在本报告中尚未通过"
+            "前瞻验证。若今后建立报警系统，须先固定何为转势、提前几分"
+            "预警、允许多少误报，再拿未参与建模的比赛测试；在那之前，"
+            "任何‘将在某分逆转’的数字都不应写进临场建议。",
+            st["body"],
+        )
+    )
+    add(paragraph("临场使用界限", st["h2"]))
+    memo_rows = [
+        ["看到连赢数分", "先核对发球轮次与对手发球优势", "不要直接等同心理势头"],
+        ["走势曲线升高", "用于提醒复核技术录像与比分", "不要当成下一分必胜信号"],
+        ["出现技术异常", "记录一发、失误与跑动的独立证据", "本模型未量化这些因素"],
+        ["考虑改变战术", "依据训练方案与可观察技术问题", "不使用未验证的报警阈值"],
+    ]
+    memo_table = Table(
+        [[paragraph(cell, st["small"]) for cell in row] for row in memo_rows],
+        colWidths=[35 * mm, 63 * mm, 58 * mm],
+    )
+    memo_table.setStyle(
+        TableStyle(
+            [
+                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, FAINT]),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D4E0E6")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    add(memo_table)
+    add(PageBreak())
+    add(paragraph("参考文献、复现与 AI 使用边界", st["h1"]))
     references = [
-        "[1] COMAP. 2024 MCM Problem C: Momentum in Tennis. 官方题面与数据说明。"
-        "https://www.contest.comap.com/undergraduate/contests/mcm/contests/2024/"
-        "problems/2024_MCM_Problem_C.pdf",
         "[2] O'Donoghue P, Brown E. Sequences of service points and the misperception "
         "of momentum in elite tennis. International Journal of Performance Analysis in "
         "Sport, 2009, 9(1): 113-127. DOI: 10.1080/24748668.2009.11868468.",
@@ -420,6 +556,14 @@ def build(official_csv: Path, results_json: Path, output_pdf: Path) -> None:
         "elite men's singles tennis. PLOS ONE, 2023, 18(9): e0286076. "
         "DOI: 10.1371/journal.pone.0286076.",
     ]
+    add(
+        paragraph(
+            "[1] COMAP. 2024 MCM Problem C: Momentum in Tennis. "
+            '<link href="https://www.contest.comap.com/undergraduate/contests/mcm/'
+            'contests/2024/problems/2024_MCM_Problem_C.pdf">官方题面 PDF</link>。',
+            st["small"],
+        )
+    )
     for reference in references:
         add(paragraph(html.escape(reference), st["small"]))
     add(paragraph("复现与证据边界", st["h1"]))

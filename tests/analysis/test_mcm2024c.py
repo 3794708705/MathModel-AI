@@ -11,6 +11,7 @@ from analysis.mcm2024c.analyze import (
     fit_beta,
     grouped_cross_validation,
     load_matches,
+    match_audit,
     point_features,
     service_summary,
 )
@@ -53,6 +54,17 @@ def test_official_schema_load_and_grouped_cv(tmp_path: Path) -> None:
     assert service_summary(matches)["server_points"] == 60
     assert result["n_points"] == 60
     assert len(result["beta_by_fold"]) == 5
+    assert sum(item["n"] for item in result["fold_results"]) == 60
+    assert sum(item["n_matches"] for item in result["fold_results"]) == 5
+    assert sum(item["n"] for item in result["match_results"]) == 60
+    assert sum(item["n"] for item in result["calibration"]) == 60
+    weighted_brier = sum(item["n"] * item["brier_baseline"] for item in result["fold_results"]) / 60
+    assert weighted_brier == pytest.approx(result["brier_baseline"])
+    audit = match_audit(matches)
+    assert audit["server_1_points"] + audit["server_2_points"] == 60
+    assert (
+        audit["server_1_wins"] + audit["server_2_wins"] == service_summary(matches)["server_wins"]
+    )
     assert 0 <= result["brier_baseline"] <= 1
     assert 0 <= result["brier_adjusted"] <= 1
     with pytest.raises(ValueError, match="digest does not match"):
