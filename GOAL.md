@@ -22,9 +22,9 @@
 - 修复后仅重跑 C：`e71f41c7-56e0-46b0-8258-82e69785c4b3`，依旧 `FAIL` 于 VERIFICATION（`VALIDATE_GATE_FAIL:independent_status_pass, all_metrics_recalculated, declared_requirements_checked`）。真实求解程序只读取官方 CSV 表头，没有使用逐分行，却用假设标量给出 `theta=0`；结果只含 theta，模型宣称的逐分走势、游程检验、预测/留出验证及论文输出未形成可复算产物，四项自报验证要求全部 `UNCHECKED`。这是科学/产物契约缺口，不能降门限或把 `solver_success=1` 当作通过。C 的 benchmark 尚未成功，不能在论文里引用其未验证求解数字。
 - 为上述生成代码故障增加通用 AST 预检：当模型有 CSV 数据绑定时，拒绝“读取 CSV reader 但只取表头”的代码，并把错误反馈给代码代理重试。仅重跑 C 的 `f5fb849a-3693-453a-bc90-6ee71e09a516` 确实遍历了官方数据，但仍在 VERIFICATION 失败：五项自报科学验证均 `UNCHECKED`。其优化目标 `p_match_win_server` 经定义方程只依赖假设参数，与唯一决策变量 `momentum_weight` 无关，属常数目标伪优化。已加通用数学门拦截此依赖缺失，A 原模型仍被接受，C 记录模型被拒。正仅重跑 C 核验。
 - 数学门修复后仅重跑 C 的 `744aa7ea-adf4-45e6-bfef-25a56931b13f`：真实模型/代码/求解均落盘，仍 `FAIL` 于 VERIFICATION（`independent_status_pass`、`declared_requirements_checked`）。新目标依赖决策变量，但程序只读取 CSV 前 5 行作列名/存在性检查；核心求解和结论完全由假设常数驱动。四项自报的敏感性、留出比赛、校准、走势对照均 `UNCHECKED`。重复简单提示/重跑不能证明数据到结果的科学链；下一步需类型化数据派生输出与独立复算契约，不再盲目运行 C。
-- 独立中文分析位于 `analysis/mcm2024c/`，只接受哈希固定的官方 CSV；`results.json` 与 `output/pdf/mcm2024c_chinese_independent_study.pdf` 的数值经 PDF 构建时完整复算。文献逐条核对记录在 `references.md`，论文明确不冒充通用 benchmark PASS 或正式提交。上轮后端全量 694 通过、12 跳过；前端 46 项及构建、ruff、strict mypy、GitHub CI 全部通过；本轮论文扩展尚需重验。
+- 独立中文分析位于 `analysis/mcm2024c/`，只接受哈希固定的官方 CSV；`results.json` 与 `output/pdf/mcm2024c_chinese_independent_study.pdf` 的数值经 PDF 构建时完整复算。文献逐条核对记录在 `references.md`，论文明确不冒充通用 benchmark PASS 或正式提交。本轮后端全量 695 通过、12 跳过；前端 46 项及构建、ruff、strict mypy、GitHub CI 全部通过。
 - 用户要求将独立中文研究稿扩展至约 23 页。现已增加每折/每场留出误差、校准十分位、发球分母审计和零假设模拟分位数，并据官方 CSV 重建 23 页 PDF；已逐页检查渲染和文字提取，分析回归 3 项通过，ruff、strict mypy 通过。通用 C 题 benchmark 仍未通过，事件级转势预警仍无已验证结果，不能据页数宣布科学完成。
-- 本地提供方注册项已是 `http://127.0.0.1:7863/v1` 与 `global:deepseek-v4.1-flash` 的默认模型。用户提供的新密钥在当前 `workbuddy2api` 网关的 `/v1/models` 与实际聊天请求均返回 HTTP 401；为避免破坏工作连接，用户级有效旧凭据已恢复并得到 HTTP 200。待网关授权修正后再替换，不在仓库记录密钥。
+- 本地提供方注册项已是 `http://127.0.0.1:7863/v1` 与 `global:deepseek-v4.1-flash` 的默认模型。用户现改为提供网关正在使用的原有密钥；网关配置与本项目用户级环境变量均与之相符，`/v1/models` 和实际聊天请求均返回 HTTP 200，目标模型在列表中。无需修改或重启网关；密钥不写入仓库。
 - 为解除 C 题数据产物缺口，已给生成程序的 `result.json` 增加有界有限数值的 `predictions` 与命名 `series` 字段，并将其原样传入执行记录绑定的独立指标复算入口；新增回归确认不再丢弃数组，且拒绝非有限值与非法序列名。本地后端全量 695 通过、12 条件跳过，ruff 与 strict mypy 通过。这仅打通产物契约，不证明数组来自官方 CSV，也未覆盖自报的四项验证要求；仍需审定观察值与数据来源绑定后才可重跑 C。
 
 ## 项目入口与验证
