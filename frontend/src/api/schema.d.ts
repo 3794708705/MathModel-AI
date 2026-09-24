@@ -2463,6 +2463,20 @@ export interface components {
              */
             right_dataset_id: string;
         };
+        /**
+         * CsvObservationSpec
+         * @description Reviewed binary target derived directly from an exact registered CSV.
+         */
+        CsvObservationSpec: {
+            /** Negative Value */
+            negative_value: string;
+            /** Positive Value */
+            positive_value: string;
+            /** Source Column */
+            source_column: string;
+            /** Source Csv Sha256 */
+            source_csv_sha256: string;
+        };
         /** DataAnalyzeRequest */
         DataAnalyzeRequest: {
             /** Media File Ids */
@@ -3860,7 +3874,7 @@ export interface components {
          * MetricKey
          * @enum {string}
          */
-        MetricKey: "mae" | "rmse" | "r2" | "max_error" | "mean" | "minimum" | "maximum" | "final_value" | "objective" | "constraint_max_violation" | "feasible" | "mip_gap" | "algebraic_scalar";
+        MetricKey: "mae" | "rmse" | "r2" | "max_error" | "brier" | "log_loss" | "mean" | "minimum" | "maximum" | "final_value" | "objective" | "constraint_max_violation" | "feasible" | "mip_gap" | "algebraic_scalar";
         /** MetricRecalculation */
         MetricRecalculation: {
             /** Absolute Error */
@@ -7827,6 +7841,7 @@ export interface components {
              * Format: uuid
              */
             attempt_id: string;
+            csv_observation?: components["schemas"]["CsvObservationSpec"] | null;
             /** Metrics */
             metrics: components["schemas"]["MetricSpec"][];
             /** Observation File Id */
