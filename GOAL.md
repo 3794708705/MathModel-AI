@@ -30,16 +30,18 @@
 - 独立观测输入现可携带原始 CSV 的 SHA-256、标签列与二元编码；验证器重新读取登记文件并逐行核对观测数组，封闭指标计算器增加 Brier 与二元 log loss，拒绝错误的极端概率。受影响回归 36 项、ruff、strict mypy 通过；对官方 C CSV 的只读核对得到 7284 行、其中 3718 行为正类。尚未为 C 建立经审定、与模型及原始数据绑定的完整验证策略，逐分预测本身和分场留出训练仍未独立验证。
 - 新增可审定的“直接从登记 CSV 读取二元标签”策略，不再要求人工复制逐分观测 JSON；官方 C CSV 经新解析器核对为 7284 行、3718 个正类。旧策略/计划未设置该字段时序列化保持不变，Case A 历史摘要需继续回归核对。此修复仅覆盖观测真值来源，预测生成和分场留出验证仍未被证明。
 - 新观测来源绑定贯穿独立服务、VALIDATION 与无目标响应摘要，拒绝“报告 PASS 但策略所指 CSV 已变”的证据移接；旧 Case A 契约回归通过。最新本地后端全量 705 通过、12 跳过，覆盖率 86.72%；前端 46 项、构建、Lint、ruff、strict mypy 通过。GitHub WIP 分支 `f008e2f` 的 push CI 已成功；本轮补强待再次经远端 CI 验证。尚无新的 C 真题运行，旧 C 结论维持 FAIL。
+- 新增隔离逐分留出协议：原始 CSV 仅在受信主机，按比赛 ID 选整场留出；预测程序仅在无网络、只读、非 root 容器内收到训练分标签和逐条赛前特征，不能挂载完整测试 CSV。执行记录与预测轨迹均留证，独立重放可复算留出划分、标签、基线及 Brier。官方 C 数据已通过此协议的审定基线诊断（非自动建模 benchmark）；旧 C 失败结论不变。本地全量后端 714 通过、12 跳过，覆盖率 86.48%；前端 46 项、构建与 Lint、ruff、strict mypy 通过。待把版本化隐藏输入、生成模型与该轨迹/自报验证要求接入主流程，才可重跑 C 并主张端到端通过。
 
 ## 项目入口与验证
 
 - 论文流程：`src/mathmodel_ai/paper/workflow.py`、`src/mathmodel_ai/agents/paper.py`、`src/mathmodel_ai/prompt_templates/paper_agent.prompt`。
 - 提交流程：`src/mathmodel_ai/submission/workflow.py`、`src/mathmodel_ai/benchmark/profiles.py`。
 - 真题单案例入口：`benchmarks/case-001-mcm-2024-c/manifest.json`、`src/mathmodel_ai/benchmark/workflow.py`、`src/mathmodel_ai/benchmark/executor.py`；C 独立复算入口为 `analysis/mcm2024c/README.md`。
+- 隔离逐分留出协议：`src/mathmodel_ai/verification/causal_binary.py`、`src/mathmodel_ai/verification/causal_holdout.py`、`src/mathmodel_ai/sandbox/causal_holdout.py`；真实容器与官方 CSV 的诊断测试在 `tests/sandbox/test_causal_holdout.py`。
 - 检查：`uv run pytest -q`、`uv run ruff check src tests analysis/mcm2024c`、`uv run mypy --strict src/mathmodel_ai`；前端 `npm test -- --run` 与 `npm run build`。
 
 ## 下一步
 
 继续在 WIP 分支处理 C 通用流水线的可复算科学链：让数据派生的时序/统计输出与官方输入文件、验证要求建立可独立复算的契约，并明确证明主要输出确实依赖逐分数据。完成后仅重跑 C，接着验证自动论文和交付物；当前独立研究稿不能代替自动流水线。A 的正式提交仍需真实队伍控制号、完整 AI 使用报告及有证据地处理最终评审意见。
 
-当前阻塞不是提供方或 GitHub 权限，而是结构性验证契约：旧 C 模型与代码现会在更早阶段被拒，但系统尚不能独立复算其逐分预测、分场留出和四项自报验证任务。不能用静态依赖检查或重复单题运行替代这条证据链。用户要求完成自动建模流程，目标保持未完成；先补齐数据派生产物和独立验证，再进行真实 C 单题重跑。
+当前阻塞不是提供方或 GitHub 权限，而是主流程结构性验证契约：隔离逐分预测与独立重放已能对官方 C 输入工作，但生成模型、隐藏整场输入和四项自报验证任务尚未接入同一证据链；旧 C 模型与代码仍会在更早阶段被拒。不能用审定基线诊断或重复单题运行替代自动建模验收。用户要求完成自动建模流程，目标保持未完成；先补齐主流程契约，再进行真实 C 单题重跑。

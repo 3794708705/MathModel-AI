@@ -1614,7 +1614,7 @@ export interface components {
          * ArtifactKind
          * @enum {string}
          */
-        ArtifactKind: "original_file" | "extracted_text" | "dataset_preview" | "data_profile" | "pdf_page_image" | "sandbox_output" | "generated_code";
+        ArtifactKind: "original_file" | "extracted_text" | "dataset_preview" | "data_profile" | "pdf_page_image" | "sandbox_output" | "generated_code" | "verification_trace";
         /** ArtifactRecord */
         ArtifactRecord: {
             /**
