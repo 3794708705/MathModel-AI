@@ -3,11 +3,14 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Annotated
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mathmodel_ai.schemas.execution import ExecutionOrigin
+
+SeriesKey = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,79}$")]
 
 
 class SolverName(StrEnum):
@@ -215,6 +218,8 @@ class GeneratedResultPayload(BaseModel):
     status: SolverStatus
     objective: float | None = Field(default=None, allow_inf_nan=False)
     variable_values: dict[str, float] = Field(default_factory=dict)
+    predictions: list[float] = Field(default_factory=list, max_length=100000)
+    series: dict[SeriesKey, list[float]] = Field(default_factory=dict, max_length=100)
     metrics: dict[str, int | float | str | bool | None] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
     message: str = ""
@@ -230,6 +235,13 @@ class GeneratedResultPayload(BaseModel):
             raise ValueError("generated is_optimal requires OPTIMAL status")
         if self.status is SolverStatus.FEASIBLE and not self.is_feasible:
             raise ValueError("generated FEASIBLE result requires is_feasible=true")
+        if any(not math.isfinite(value) for value in self.predictions):
+            raise ValueError("generated predictions must be finite")
+        if any(
+            len(values) > 100000 or any(not math.isfinite(value) for value in values)
+            for values in self.series.values()
+        ):
+            raise ValueError("generated series must be bounded and finite")
         return self
 
 

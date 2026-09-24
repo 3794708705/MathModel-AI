@@ -51,6 +51,16 @@ and machine-supported validation requirements. An unknown requirement is
 `NOT_EVALUABLE`; it is not silently passed. The terminal gate repeats this
 calculation and compares every deterministic report field with persisted state.
 
+For generated data-bound programs, `result.json` may now carry bounded finite
+`predictions` and named numeric `series` alongside scalar `variable_values`.
+The execution-bound raw artifact parser preserves these arrays for the closed
+independent metric calculators; flat reported `metrics` remain comparisons, not
+calculator inputs. This is an artifact-contract bridge, not proof that an array
+was computed from a particular input. Acceptance still requires an exact
+reviewed metric/observation binding and independent recomputation. A generated
+series or a successful solve alone cannot resolve an unchecked validation
+requirement or make the 2024 MCM C benchmark pass.
+
 Every accepted sensitivity or robustness scenario follows:
 
 ```text

@@ -114,3 +114,29 @@ def test_independent_gate_is_and_not_override_and_exact_result(repository):
 def test_raw_metric_artifact_requires_an_object(payload):
     with pytest.raises(ValueError, match="JSON object"):
         parse_raw_output(json.dumps(payload).encode())
+
+
+def test_generated_result_preserves_raw_arrays_for_independent_recomputation():
+    payload = {
+        "solver_name": "SCIPY",
+        "model_digest": "a" * 64,
+        "status": "FEASIBLE",
+        "objective": None,
+        "variable_values": {"x": 1.0},
+        "predictions": [0.25, 0.75],
+        "series": {"point_flow": [-0.1, 0.2]},
+        "metrics": {"reported_score": 0.5},
+        "is_optimal": False,
+        "is_feasible": True,
+    }
+    raw = parse_raw_output(json.dumps(payload).encode())
+    assert raw.variables == {"x": 1.0}
+    assert raw.predictions == [0.25, 0.75]
+    assert raw.series == {"point_flow": [-0.1, 0.2]}
+    assert raw.reported == {"reported_score": 0.5}
+    payload["series"] = {"point_flow": [float("nan")]}
+    with pytest.raises(ValueError, match="finite"):
+        parse_raw_output(json.dumps(payload).encode())
+    payload["series"] = {"invalid key": [0.1]}
+    with pytest.raises(ValueError, match="String should match pattern"):
+        parse_raw_output(json.dumps(payload).encode())
