@@ -56,6 +56,7 @@ from mathmodel_ai.schemas.submission import (
 )
 from mathmodel_ai.schemas.verification import ExperimentReportStatus, ValidationStatus
 from mathmodel_ai.submission.workflow import FinalSubmissionWorkflow
+from mathmodel_ai.verification.causal_holdout import AuditedCausalEvidence
 from mathmodel_ai.verification.requirements import VerificationRequirementRegistry
 from mathmodel_ai.verification.workflow import VerificationWorkflow
 
@@ -199,6 +200,7 @@ class PipelineBenchmarkExecutor:
                 category=FailureCategory.MATHEMATICAL_MODEL,
                 error=exc,
             )
+        causal_auditor: Callable[[], AuditedCausalEvidence] | None = None
         if bundle.causal_split is not None:
             try:
                 if self._causal_evaluator is None:
@@ -208,7 +210,19 @@ class PipelineBenchmarkExecutor:
                     mathematical=mathematical,
                     state=self._reasoning_repository.load_current(state.project_id),
                 )
-                self._require_causal_evidence_connection(bundle, causal)
+                formal_result_id = mathematical.solve_stage.result.result_id
+                holdout_execution_id = causal.execution.run_id
+
+                def causal_auditor() -> AuditedCausalEvidence:
+                    assert self._causal_evaluator is not None
+                    return self._causal_evaluator.audit_validation_evidence(
+                        bundle=bundle,
+                        project_id=state.project_id,
+                        formal_result_id=formal_result_id,
+                        holdout_execution_id=holdout_execution_id,
+                    )
+
+                causal_auditor()
             except Exception as exc:
                 return self._failed_pipeline(
                     attempt_id,
@@ -256,6 +270,7 @@ class PipelineBenchmarkExecutor:
             verification = await self._verification.run(
                 state.project_id,
                 reviewed_evidence=reviewed_validation_evidence,
+                causal_auditor=causal_auditor,
             )
         except Exception as exc:
             return self._failed_pipeline(
@@ -275,6 +290,8 @@ class PipelineBenchmarkExecutor:
         )
         if verification.red_team.report.critical_count:
             try:
+                if causal_auditor is not None:
+                    raise QualityGateError("CAUSAL_HOLDOUT_REPAIR_REEVALUATION_REQUIRED")
                 repair = await self._verification.repair_until_clear(state.project_id)
             except Exception as exc:
                 return self._failed_pipeline(
@@ -311,6 +328,16 @@ class PipelineBenchmarkExecutor:
                 bundle.manifest.benchmark_id,
                 request,
                 "full verification did not produce verified_result_id",
+            )
+        if causal_auditor is not None and (
+            verified_state.verified_result_id != mathematical.solve_stage.result.result_id
+        ):
+            return self._failed_before_paper(
+                attempt_id,
+                state.project_id,
+                bundle.manifest.benchmark_id,
+                request,
+                "verified_result_id is not the causal holdout formal result",
             )
         if reviewed is not None and (
             independent_report is None
@@ -970,15 +997,6 @@ class PipelineBenchmarkExecutor:
             "time. Do not embed, infer, or request held-out labels. Any claimed "
             "holdout metric must await the independent host trace."
         ]
-
-    @staticmethod
-    def _require_causal_evidence_connection(
-        bundle: BlindSolveBundle, causal: object | None = None
-    ) -> None:
-        if bundle.causal_split is not None:
-            if causal is None:
-                raise QualityGateError("CAUSAL_HOLDOUT_PREDICTION_EVIDENCE_NOT_CONNECTED")
-            raise QualityGateError("CAUSAL_HOLDOUT_FORMAL_VALIDATION_BINDING_NOT_CONNECTED")
 
     @staticmethod
     def _problem_text(bundle: BlindSolveBundle) -> str:

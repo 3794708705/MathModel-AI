@@ -1,8 +1,11 @@
+import asyncio
 from copy import deepcopy
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
 
+from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.schemas.files import ArtifactKind, ArtifactRecord
 from mathmodel_ai.schemas.independent_verification import (
@@ -19,8 +22,10 @@ from mathmodel_ai.schemas.independent_verification import (
     VerifiedMetric,
 )
 from mathmodel_ai.schemas.mathematical import ExpressionKind, MathExpression
+from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.results import EvidenceChainReport
 from mathmodel_ai.schemas.verification import ValidationCheckStatus, ValidationStatus
+from mathmodel_ai.verification.causal_holdout import AuditedCausalEvidence, CausalHoldoutResult
 from mathmodel_ai.verification.evaluator import (
     IndependentEvaluationError,
     IndependentExpressionEvaluator,
@@ -28,6 +33,7 @@ from mathmodel_ai.verification.evaluator import (
 from mathmodel_ai.verification.metric_recompute import content_digest
 from mathmodel_ai.verification.quality_gates import validation_quality_gate
 from mathmodel_ai.verification.validation import IndependentValidator
+from mathmodel_ai.verification.workflow import VerificationWorkflow
 from tests.mathematical.helpers import constant, symbol
 from tests.verification.helpers import result_bundle
 
@@ -346,6 +352,97 @@ def test_independent_validator_marks_unknown_requirement_not_evaluable() -> None
     assert report.status is ValidationStatus.NOT_EVALUABLE
     assert report.requirement_checks[-1].status is ValidationCheckStatus.UNCHECKED
     assert validation_quality_gate(report).status.value == "RETRY"
+
+
+def test_audited_holdout_is_bound_but_does_not_satisfy_unrelated_requirements() -> None:
+    model, result, solver_run, _, _, evidence = result_bundle()
+    model = model.model_copy(
+        update={
+            "validation_requirements": [
+                "Recalculate held-out match Brier score.",
+                "Check calibration and match flow against official data.",
+            ]
+        }
+    )
+    digest = mathematical_model_digest(model)
+    result = result.model_copy(update={"model_digest": digest})
+    solver_run = solver_run.model_copy(update={"model_digest": digest})
+    causal = AuditedCausalEvidence(
+        formal_result_id=result.result_id,
+        holdout_execution_id=uuid4(),
+        source_sha256="a" * 64,
+        trace_sha256="b" * 64,
+        result=CausalHoldoutResult(
+            heldout_groups=("match-2",),
+            training_groups=("match-1",),
+            predictions=(0.6,),
+            observations=(1.0,),
+            baseline_predictions=(0.5,),
+            brier=0.16,
+            baseline_brier=0.25,
+        ),
+    )
+    validator = IndependentValidator()
+    report = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=causal,
+    )
+    assert report.status is ValidationStatus.NOT_EVALUABLE
+    assert [item.metric_id for item in report.metric_recalculations][-2:] == [
+        "causal_holdout:brier",
+        "causal_holdout:baseline_brier",
+    ]
+    assert all(item.status is ValidationCheckStatus.UNCHECKED for item in report.requirement_checks)
+    assert validation_quality_gate(report).status.value == "RETRY"
+    assert (
+        validator.audit_report(
+            report=report,
+            model=model,
+            result=result,
+            solver_run=solver_run,
+            evidence=evidence,
+            causal_evidence=causal,
+        )
+        == []
+    )
+    assert "VALIDATION_REPORT_MISMATCH:metric_recalculations" in validator.audit_report(
+        report=report,
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+    )
+    wrong = AuditedCausalEvidence(
+        formal_result_id=uuid4(),
+        holdout_execution_id=causal.holdout_execution_id,
+        source_sha256=causal.source_sha256,
+        trace_sha256=causal.trace_sha256,
+        result=causal.result,
+    )
+    rejected = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=wrong,
+    )
+    assert rejected.status is ValidationStatus.FAIL
+    assert "VALIDATION_FAIL:CAUSAL_HOLDOUT_FORMAL_RESULT_MISMATCH" in rejected.errors
+
+
+def test_causal_workflow_stops_after_formal_report_without_reviewed_policy() -> None:
+    workflow = object.__new__(VerificationWorkflow)
+    workflow.validate = Mock(  # type: ignore[method-assign]
+        return_value=Mock(gate=Mock(status=QualityGateStatus.PASS))
+    )
+    with pytest.raises(
+        QualityGateError, match="CAUSAL_HOLDOUT_REVIEWED_REQUIREMENT_POLICY_MISSING"
+    ):
+        asyncio.run(workflow.run(uuid4(), causal_auditor=Mock()))
+    workflow.validate.assert_called_once()  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize(

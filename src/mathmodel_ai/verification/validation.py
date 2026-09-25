@@ -30,6 +30,7 @@ from mathmodel_ai.schemas.verification import (
     ValidationStatus,
     VariableValidationCheck,
 )
+from mathmodel_ai.verification.causal_holdout import AuditedCausalEvidence
 from mathmodel_ai.verification.evaluator import (
     IndependentEvaluationError,
     IndependentExpressionEvaluator,
@@ -72,6 +73,7 @@ class IndependentValidator:
         solver_run: SolverRun,
         evidence: EvidenceChainReport,
         reviewed_evidence: ReviewedValidationEvidence | None = None,
+        causal_evidence: AuditedCausalEvidence | None = None,
     ) -> ValidationReport:
         errors: list[str] = []
         warnings: list[str] = []
@@ -102,9 +104,15 @@ class IndependentValidator:
             reviewed_evidence=reviewed_evidence,
         )
         errors.extend(f"VALIDATION_FAIL:{item}" for item in reviewed_errors)
+        causal_bound = (
+            causal_evidence is None or causal_evidence.formal_result_id == result.result_id
+        )
+        if not causal_bound:
+            errors.append("VALIDATION_FAIL:CAUSAL_HOLDOUT_FORMAL_RESULT_MISMATCH")
         metrics = [
             *self._metric_checks(model, result, solver_run, values),
             *self._reviewed_metric_checks(reviewed_evidence),
+            *self._causal_metric_checks(causal_evidence, bound=causal_bound),
         ]
         requirement_checks = self._requirement_checks(
             model,
@@ -200,6 +208,15 @@ class IndependentValidator:
                     if reviewed_evidence is not None
                     else []
                 ),
+                *(
+                    [
+                        f"causal_holdout_execution:{causal_evidence.holdout_execution_id}",
+                        f"causal_source_sha256:{causal_evidence.source_sha256}",
+                        f"causal_trace_sha256:{causal_evidence.trace_sha256}",
+                    ]
+                    if causal_evidence is not None
+                    else []
+                ),
             ],
         )
 
@@ -212,6 +229,7 @@ class IndependentValidator:
         solver_run: SolverRun,
         evidence: EvidenceChainReport,
         reviewed_evidence: ReviewedValidationEvidence | None = None,
+        causal_evidence: AuditedCausalEvidence | None = None,
     ) -> list[str]:
         """Recompute a persisted report and compare every deterministic field."""
         recomputed = self.validate(
@@ -220,6 +238,7 @@ class IndependentValidator:
             solver_run=solver_run,
             evidence=evidence,
             reviewed_evidence=reviewed_evidence,
+            causal_evidence=causal_evidence,
         )
         deterministic_fields = (
             "project_id",
@@ -613,6 +632,32 @@ class IndependentValidator:
             ):
                 errors.append(f"REVIEWED_SCENARIO_FAILED_OR_TAMPERED:{spec.scenario_id}")
         return list(dict.fromkeys(errors))
+
+    @staticmethod
+    def _causal_metric_checks(
+        evidence: AuditedCausalEvidence | None, *, bound: bool
+    ) -> list[MetricRecalculation]:
+        if evidence is None:
+            return []
+        return [
+            MetricRecalculation(
+                metric_id=f"causal_holdout:{name}",
+                category=ValidationCheckCategory.OUTPUT,
+                recomputed_value=value if bound else None,
+                absolute_tolerance=0,
+                relative_tolerance=0,
+                status=ValidationCheckStatus.PASS if bound else ValidationCheckStatus.FAIL,
+                message=(
+                    f"independently replayed causal holdout {name}"
+                    if bound
+                    else "causal holdout is not bound to the formal result"
+                ),
+            )
+            for name, value in (
+                ("brier", evidence.result.brier),
+                ("baseline_brier", evidence.result.baseline_brier),
+            )
+        ]
 
     @staticmethod
     def _reviewed_metric_checks(

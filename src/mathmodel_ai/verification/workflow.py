@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -52,6 +53,7 @@ from mathmodel_ai.schemas.verification import (
     ValidationReportRef,
 )
 from mathmodel_ai.solvers.base import SolverExecution
+from mathmodel_ai.verification.causal_holdout import AuditedCausalEvidence
 from mathmodel_ai.verification.experiment_integrity import ExperimentIntegrityVerifier
 from mathmodel_ai.verification.experiments import ExperimentOutcome
 from mathmodel_ai.verification.quality_gates import (
@@ -173,6 +175,7 @@ class VerificationWorkflow:
         *,
         result_id: UUID | None = None,
         reviewed_evidence: ReviewedValidationEvidence | None = None,
+        causal_auditor: Callable[[], AuditedCausalEvidence] | None = None,
     ) -> ValidationStageOutcome:
         state = self._reasoning_repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.VALIDATE)
@@ -190,6 +193,7 @@ class VerificationWorkflow:
             solver_run=context.solver_run,
             evidence=context.evidence,
             reviewed_evidence=reviewed_evidence,
+            causal_evidence=causal_auditor() if causal_auditor is not None else None,
         )
         gate = validation_quality_gate(report)
         next_state = self._validation_state(state, report, gate)
@@ -262,6 +266,7 @@ class VerificationWorkflow:
         *,
         user_guidance: list[str] | None = None,
         reviewed_evidence: ReviewedValidationEvidence | None = None,
+        causal_auditor: Callable[[], AuditedCausalEvidence] | None = None,
     ) -> RedTeamStageOutcome:
         state = self._reasoning_repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.RED_TEAM)
@@ -306,6 +311,7 @@ class VerificationWorkflow:
             solver_run=context.solver_run,
             evidence=context.evidence,
             reviewed_evidence=reviewed_evidence,
+            causal_evidence=causal_auditor() if causal_auditor is not None else None,
         )
         sensitivity_errors = self._repository.audit_experiment_report(
             project_id=project_id,
@@ -466,9 +472,14 @@ class VerificationWorkflow:
         robustness_config: RobustnessConfig | None = None,
         user_guidance: list[str] | None = None,
         reviewed_evidence: ReviewedValidationEvidence | None = None,
+        causal_auditor: Callable[[], AuditedCausalEvidence] | None = None,
     ) -> VerificationRunOutcome:
-        validation = self.validate(project_id, reviewed_evidence=reviewed_evidence)
+        validation = self.validate(
+            project_id, reviewed_evidence=reviewed_evidence, causal_auditor=causal_auditor
+        )
         self._require_pass(validation.gate)
+        if causal_auditor is not None and reviewed_evidence is None:
+            raise QualityGateError("CAUSAL_HOLDOUT_REVIEWED_REQUIREMENT_POLICY_MISSING")
         sensitivity = self.sensitivity(
             project_id, config=sensitivity_config, reviewed_evidence=reviewed_evidence
         )
@@ -481,6 +492,7 @@ class VerificationWorkflow:
             project_id,
             user_guidance=user_guidance,
             reviewed_evidence=reviewed_evidence,
+            causal_auditor=causal_auditor,
         )
         return VerificationRunOutcome(
             validation=validation,

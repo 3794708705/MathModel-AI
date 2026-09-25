@@ -20,7 +20,11 @@ from mathmodel_ai.schemas.execution import ExecutionOrigin, ExecutionStatus, San
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.program import GeneratedProgramStatus
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec
-from mathmodel_ai.verification.causal_holdout import CausalHoldoutResult
+from mathmodel_ai.verification.causal_holdout import (
+    AuditedCausalEvidence,
+    CausalHoldoutResult,
+    causal_trace_payload,
+)
 
 
 class CausalBenchmarkEvaluator:
@@ -314,3 +318,39 @@ class CausalBenchmarkEvaluator:
         ):
             raise QualityGateError("CAUSAL_HOLDOUT_TRACE_SPLIT_MISMATCH")
         return result
+
+    def audit_validation_evidence(
+        self,
+        *,
+        bundle: BlindSolveBundle,
+        project_id: UUID,
+        formal_result_id: UUID,
+        holdout_execution_id: UUID,
+    ) -> AuditedCausalEvidence:
+        """Re-read persisted evidence each time a formal validation needs it."""
+        result = self.audit_persisted(
+            bundle=bundle,
+            project_id=project_id,
+            formal_result_id=formal_result_id,
+            holdout_execution_id=holdout_execution_id,
+        )
+        policy = bundle.causal_policy
+        if policy is None:
+            raise QualityGateError("CAUSAL_HOLDOUT_POLICY_MISSING")
+        spec = CausalBinarySpec(
+            source_sha256=policy.source_sha256,
+            group_column=policy.group_column,
+            condition_column=policy.condition_column,
+            outcome_column=policy.outcome_column,
+            positive_value=policy.positive_value,
+            negative_value=policy.negative_value,
+            history_window=policy.history_window,
+        )
+        trace = causal_trace_payload(spec, result, fraction=policy.fraction, salt=policy.salt)
+        return AuditedCausalEvidence(
+            formal_result_id=formal_result_id,
+            holdout_execution_id=holdout_execution_id,
+            source_sha256=policy.source_sha256,
+            trace_sha256=hashlib.sha256(trace).hexdigest(),
+            result=result,
+        )

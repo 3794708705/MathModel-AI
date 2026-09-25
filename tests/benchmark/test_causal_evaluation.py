@@ -254,13 +254,22 @@ def test_generated_predictor_evaluates_in_isolation_and_persists_evidence(
         holdout_execution_id=result.execution.run_id,
     )
     assert replayed == result.result
+    validation_evidence = evaluator.audit_validation_evidence(
+        bundle=bundle,
+        project_id=state.project_id,
+        formal_result_id=mathematical.solve_stage.result.result_id,
+        holdout_execution_id=result.execution.run_id,
+    )
+    assert validation_evidence.result == replayed
+    assert validation_evidence.formal_result_id == mathematical.solve_stage.result.result_id
+    assert validation_evidence.source_sha256 == bundle.causal_split.source_sha256  # type: ignore[union-attr]
     artifacts = repository.list_artifacts.return_value
     repository.list_artifacts.return_value = [
         item.model_copy(update={"sha256": "0" * 64}) if item.name == "causal-holdout.json" else item
         for item in artifacts
     ]
     with pytest.raises(ValueError, match="CAUSAL_EXECUTION_ARTIFACT_MISMATCH"):
-        evaluator.audit_persisted(
+        evaluator.audit_validation_evidence(
             bundle=bundle,
             project_id=state.project_id,
             formal_result_id=mathematical.solve_stage.result.result_id,
@@ -355,3 +364,11 @@ def test_generated_holdout_is_reaudited_from_real_database(tmp_path: Path) -> No
         )
         == run.result
     )
+    formal_validation = evaluator.audit_validation_evidence(
+        bundle=bundle,
+        project_id=state.project_id,
+        formal_result_id=mathematical.solve_stage.result.result_id,
+        holdout_execution_id=run.execution.run_id,
+    )
+    assert formal_validation.result == run.result
+    assert formal_validation.holdout_execution_id == run.execution.run_id

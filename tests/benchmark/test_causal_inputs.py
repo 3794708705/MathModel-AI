@@ -9,7 +9,6 @@ import pytest
 from mathmodel_ai.benchmark.causal_inputs import split_causal_csv
 from mathmodel_ai.benchmark.executor import PipelineBenchmarkExecutor
 from mathmodel_ai.benchmark.manifests import BenchmarkManifestRegistry
-from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.schemas.benchmark import (
     BenchmarkCaseManifest,
     BenchmarkPhase,
@@ -142,8 +141,6 @@ def test_registry_keeps_official_bytes_but_exposes_only_training_csv(tmp_path: P
     assert len(guidance) == 1
     assert "causal_predictor.py" in guidance[0]
     assert "only training groups" in guidance[0]
-    with pytest.raises(QualityGateError, match="CAUSAL_HOLDOUT_PREDICTION_EVIDENCE_NOT_CONNECTED"):
-        PipelineBenchmarkExecutor._require_causal_evidence_connection(bundle)
 
 
 def test_registry_rejects_stale_source_binding(tmp_path: Path) -> None:

@@ -10,6 +10,7 @@ import json
 import math
 from dataclasses import asdict, dataclass
 from typing import Protocol, cast
+from uuid import UUID
 
 from mathmodel_ai.verification.causal_binary import (
     CausalBinarySpec,
@@ -33,6 +34,17 @@ class CausalHoldoutResult:
     baseline_predictions: tuple[float, ...]
     brier: float
     baseline_brier: float
+
+
+@dataclass(frozen=True)
+class AuditedCausalEvidence:
+    """A formal-result-bound holdout replay, constructed by the trusted evaluator."""
+
+    formal_result_id: UUID
+    holdout_execution_id: UUID
+    source_sha256: str
+    trace_sha256: str
+    result: CausalHoldoutResult
 
 
 def causal_trace_payload(
