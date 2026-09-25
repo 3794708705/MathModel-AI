@@ -492,7 +492,7 @@ def test_generated_program_rejects_solver_target_larger_than_database_contract()
 def test_versioned_prompt_resources_exist() -> None:
     prompts = PromptRegistry()
     assert prompts.get("math_modeler").version == "4.6.1"
-    assert prompts.get("code_agent").version == "4.7.1"
+    assert prompts.get("code_agent").version == "4.7.2"
     assert (
         "must report every MathematicalModel decision variable" in prompts.get("code_agent").system
     )

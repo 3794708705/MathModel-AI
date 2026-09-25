@@ -59,6 +59,35 @@ class DataRepository:
             session.add_all(self._artifact_model(item) for item in artifacts)
             self._replace_state(session, current, state)
 
+    def persist_auxiliary_execution(
+        self, record: ExecutionRecord, artifacts: list[ArtifactRecord]
+    ) -> None:
+        """Persist a verification-side run without inventing a state transition."""
+        artifact_by_id = {item.artifact_id: item for item in artifacts}
+        if (
+            len(artifact_by_id) != len(artifacts)
+            or record.code_artifact_id not in artifact_by_id
+            or artifact_by_id[record.code_artifact_id].sha256 != record.code_hash
+            or any(
+                item.project_id != record.project_id
+                or item.problem_id != record.problem_id
+                or item.execution_run_id != record.run_id
+                for item in artifacts
+            )
+            or any(
+                (persisted := artifact_by_id.get(item.artifact_id)) is None
+                or persisted.sha256 != item.sha256
+                or persisted.storage_key != item.storage_key
+                for item in record.artifacts
+            )
+        ):
+            raise ValueError("auxiliary execution artifacts do not match the execution record")
+        with session_scope(self._session_factory) as session:
+            self._ensure_project(session, record.project_id)
+            session.add(self._execution_model(record))
+            session.flush()
+            session.add_all(self._artifact_model(item) for item in artifacts)
+
     def list_files(self, project_id: UUID) -> list[RegisteredFile]:
         with session_scope(self._session_factory) as session:
             self._ensure_project(session, project_id)

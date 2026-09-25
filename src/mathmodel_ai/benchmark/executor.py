@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pypdf import PdfReader
 
+from mathmodel_ai.benchmark.causal_evaluation import CausalBenchmarkEvaluator
 from mathmodel_ai.benchmark.manifests import BlindSolveBundle
 from mathmodel_ai.benchmark.repository import BenchmarkRepository
 from mathmodel_ai.benchmark.workflow import CaseExecutionOutcome
@@ -78,6 +79,7 @@ class PipelineBenchmarkExecutor:
         reviewed_models: VerificationRequirementRegistry | None = None,
         independent_runner: Callable[[UUID, UUID], None] | None = None,
         independent_verifier: Callable[[UUID], IndependentVerificationView] | None = None,
+        causal_evaluator: CausalBenchmarkEvaluator | None = None,
     ) -> None:
         self._reasoning_repository = reasoning_repository
         self._reasoning = reasoning_workflow
@@ -90,6 +92,7 @@ class PipelineBenchmarkExecutor:
         self._reviewed_models = reviewed_models
         self._independent_runner = independent_runner
         self._independent_verifier = independent_verifier
+        self._causal_evaluator = causal_evaluator
 
     async def execute(
         self,
@@ -131,7 +134,7 @@ class PipelineBenchmarkExecutor:
                 error=exc,
             )
         try:
-            for artifact in bundle.artifacts:
+            for artifact in bundle.solver_artifacts:
                 self._data.ingest_file(
                     state.project_id,
                     BytesIO(artifact.content),
@@ -165,6 +168,7 @@ class PipelineBenchmarkExecutor:
                 error=exc,
             )
         try:
+            causal_guidance = self._causal_user_guidance(bundle)
             mathematical = (
                 await self._mathematical.run_reviewed(
                     state.project_id,
@@ -173,9 +177,10 @@ class PipelineBenchmarkExecutor:
                     model_contract_digest=reviewed.model_contract_digest,
                     policy_digest=reviewed.policy_digest,
                     subproblem_identity_digest=reviewed.subproblem_identity_digest,
+                    user_guidance=causal_guidance,
                 )
                 if reviewed is not None
-                else await self._mathematical.run(state.project_id)
+                else await self._mathematical.run(state.project_id, user_guidance=causal_guidance)
             )
             if (
                 mathematical.model_stage.gate.status is not QualityGateStatus.PASS
@@ -194,6 +199,26 @@ class PipelineBenchmarkExecutor:
                 category=FailureCategory.MATHEMATICAL_MODEL,
                 error=exc,
             )
+        if bundle.causal_split is not None:
+            try:
+                if self._causal_evaluator is None:
+                    raise QualityGateError("CAUSAL_HOLDOUT_EVALUATOR_NOT_CONFIGURED")
+                causal = self._causal_evaluator.evaluate(
+                    bundle=bundle,
+                    mathematical=mathematical,
+                    state=self._reasoning_repository.load_current(state.project_id),
+                )
+                self._require_causal_evidence_connection(bundle, causal)
+            except Exception as exc:
+                return self._failed_pipeline(
+                    attempt_id,
+                    state.project_id,
+                    bundle.manifest.benchmark_id,
+                    request,
+                    stage="INDEPENDENT_VERIFICATION",
+                    category=FailureCategory.VALIDATION,
+                    error=exc,
+                )
         independent_report: IndependentVerificationReport | None = None
         reviewed_validation_evidence: ReviewedValidationEvidence | None = None
         if reviewed is not None:
@@ -924,6 +949,36 @@ class PipelineBenchmarkExecutor:
             interventions=(),
             result=result,
         )
+
+    @staticmethod
+    def _causal_user_guidance(bundle: BlindSolveBundle) -> list[str]:
+        policy = bundle.causal_policy
+        if bundle.causal_split is None:
+            return []
+        if policy is None:
+            raise QualityGateError("CAUSAL_HOLDOUT_POLICY_MISSING")
+        return [
+            "CAUSAL_HOLDOUT_PROTOCOL: The provided CSV contains only training groups. "
+            "The benchmark host retains complete groups for an unseen test. "
+            f"Group={policy.group_column}; condition={policy.condition_column}; "
+            f"outcome={policy.outcome_column} (positive={policy.positive_value}, "
+            f"negative={policy.negative_value}). Use only pre-outcome information for "
+            "pointwise predictions. In addition to result.json, include a source file "
+            "causal_predictor.py defining class Predictor with fit(feature: dict, outcome: "
+            "float) -> None and predict(feature: dict) -> float in [0,1]. The host "
+            "will fit on training rows then request held-out predictions one point at a "
+            "time. Do not embed, infer, or request held-out labels. Any claimed "
+            "holdout metric must await the independent host trace."
+        ]
+
+    @staticmethod
+    def _require_causal_evidence_connection(
+        bundle: BlindSolveBundle, causal: object | None = None
+    ) -> None:
+        if bundle.causal_split is not None:
+            if causal is None:
+                raise QualityGateError("CAUSAL_HOLDOUT_PREDICTION_EVIDENCE_NOT_CONNECTED")
+            raise QualityGateError("CAUSAL_HOLDOUT_FORMAL_VALIDATION_BINDING_NOT_CONNECTED")
 
     @staticmethod
     def _problem_text(bundle: BlindSolveBundle) -> str:

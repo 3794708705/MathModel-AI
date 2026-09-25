@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from math import isfinite
 from pathlib import PurePosixPath
+from typing import Literal
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
@@ -169,6 +170,32 @@ class ExpectedStructuralFact(BaseModel):
     expected: str | int | float | bool
     unit: str | None = None
     source_location: str = Field(min_length=1)
+
+
+class CausalHoldoutPolicy(BaseModel):
+    """Benchmark-owned input split; never supplied by a solve agent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal["1"]
+    resource_id: str = Field(pattern=r"^RESOURCE-[A-Za-z0-9_-]+$")
+    source_sha256: str = Field(pattern=SHA256_PATTERN)
+    group_column: str = Field(min_length=1)
+    condition_column: str = Field(min_length=1)
+    outcome_column: str = Field(min_length=1)
+    positive_value: str = Field(min_length=1)
+    negative_value: str = Field(min_length=1)
+    history_window: int = Field(default=8, ge=1, le=1000)
+    fraction: float = Field(gt=0, lt=1)
+    salt: str = Field(min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def columns_and_codes_are_distinct(self) -> CausalHoldoutPolicy:
+        if len({self.group_column, self.condition_column, self.outcome_column}) != 3:
+            raise ValueError("causal holdout columns must be distinct")
+        if self.positive_value == self.negative_value:
+            raise ValueError("causal holdout outcome codes must differ")
+        return self
 
 
 class GroundTruthPolicy(BaseModel):

@@ -39,6 +39,7 @@ from mathmodel_ai.api.routes.providers import router as providers_router
 from mathmodel_ai.api.routes.reasoning import router as reasoning_router
 from mathmodel_ai.api.routes.system import router as system_router
 from mathmodel_ai.api.routes.verification import router as verification_router
+from mathmodel_ai.benchmark.causal_evaluation import CausalBenchmarkEvaluator
 from mathmodel_ai.benchmark.executor import PipelineBenchmarkExecutor
 from mathmodel_ai.benchmark.manifests import BenchmarkManifestRegistry
 from mathmodel_ai.benchmark.profiles import comap_mcm_2024_profile
@@ -549,6 +550,13 @@ def create_app(
             reviewed_models=verification_requirement_registry,
             independent_runner=application.state.independent_verification.prepare_and_run,
             independent_verifier=application.state.independent_verification.view,
+            causal_evaluator=CausalBenchmarkEvaluator(
+                store=file_store,
+                repository=application.state.data_repository,
+                root=resolved.solver_sandbox_root,
+                image=resolved.solver_sandbox_image,
+                limits=sandbox_limits,
+            ),
         ),
         provider_configurations=application.state.provider_configurations,
     )

@@ -116,9 +116,22 @@ loss from the original CSV. The official 2024 C CSV has passed this protocol
 with a reviewed causal baseline. This proves the protocol can run on that input,
 not that a generated model solved C: the baseline is not the LLM's generated
 solver, this trace is not wired into the benchmark's verification requirements,
-and the current benchmark still exposes the full CSV to its solver. A new
-versioned input split and model-to-trace contract are required before claiming
-held-out prediction or end-to-end C acceptance.
+so a model-to-trace contract remains required before claiming held-out
+prediction or end-to-end C acceptance.
+
+The C benchmark now has a benchmark-owned `causal-holdout-v1.json` sidecar.
+Its official source digest, group/condition/outcome columns and identity-only
+split are included in the new solve-input digest. Structural checks continue
+to inspect the exact official CSV, while the solve ingestion path receives
+only a derived training-match CSV. Historical attempts keep their original
+input digests and artifacts. This removes direct held-out rows from future
+model and solver inputs. A generated `causal_predictor.py` can now be run in
+the separate, networkless online evaluator; its execution, source, driver,
+and host-recorded trace are persisted without advancing the problem state.
+The host replays the trace against the exact official CSV and checks the
+model/program identity. The main benchmark still fails closed after this step:
+the trace is not yet bound to a reviewed formal validation policy or to every
+model-declared validation task. No new C benchmark result has been claimed.
 
 Every accepted sensitivity or robustness scenario follows:
 

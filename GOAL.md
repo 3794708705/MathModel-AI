@@ -31,17 +31,20 @@
 - 新增可审定的“直接从登记 CSV 读取二元标签”策略，不再要求人工复制逐分观测 JSON；官方 C CSV 经新解析器核对为 7284 行、3718 个正类。旧策略/计划未设置该字段时序列化保持不变，Case A 历史摘要需继续回归核对。此修复仅覆盖观测真值来源，预测生成和分场留出验证仍未被证明。
 - 新观测来源绑定贯穿独立服务、VALIDATION 与无目标响应摘要，拒绝“报告 PASS 但策略所指 CSV 已变”的证据移接；旧 Case A 契约回归通过。最新本地后端全量 705 通过、12 跳过，覆盖率 86.72%；前端 46 项、构建、Lint、ruff、strict mypy 通过。GitHub WIP 分支 `f008e2f` 的 push CI 已成功；本轮补强待再次经远端 CI 验证。尚无新的 C 真题运行，旧 C 结论维持 FAIL。
 - 新增隔离逐分留出协议：原始 CSV 仅在受信主机，按比赛 ID 选整场留出；预测程序仅在无网络、只读、非 root 容器内收到训练分标签和逐条赛前特征，不能挂载完整测试 CSV。执行记录与预测轨迹均留证，独立重放可复算留出划分、标签、基线及 Brier。官方 C 数据已通过此协议的审定基线诊断（非自动建模 benchmark）；旧 C 失败结论不变。本地全量后端 714 通过、12 跳过，覆盖率 86.48%；前端 46 项、构建与 Lint、ruff、strict mypy 通过。待把版本化隐藏输入、生成模型与该轨迹/自报验证要求接入主流程，才可重跑 C 并主张端到端通过。
+- C 题现有基准入口新增版本化整场留出侧文件，完整官方 CSV 仍用于受信结构检查，建模代理与求解沙箱只接收训练比赛的派生 CSV；划分来源、策略和训练文件哈希纳入新的求解输入摘要。旧尝试与其输入摘要不变。官方缓存只读核验 31 场/7284 分，6 场整场留出、25 场训练；尚未把生成预测代码与隔离轨迹及四项验证要求绑定，故不启动新的 C benchmark，也不宣称科学链通过。
+- 新增生成代码的 `causal_predictor.py` 契约和隔离评估入口：只接受与已执行模型/程序哈希一致的源码，用同一整场留出策略生成非 Mock 执行记录及宿主轨迹，执行与证据原子落库后独立重放。当前主流程在未建立正式科学验证绑定时明确失败关闭，不能把预测轨迹冒充四项自报要求均通过；未启动新的 C benchmark。后端全量 722 通过、12 跳过，覆盖率约 86%；前端 46 项、构建、Lint、ruff、strict mypy 通过；本次新增代码仍须经远端 CI 核验。
 
 ## 项目入口与验证
 
 - 论文流程：`src/mathmodel_ai/paper/workflow.py`、`src/mathmodel_ai/agents/paper.py`、`src/mathmodel_ai/prompt_templates/paper_agent.prompt`。
 - 提交流程：`src/mathmodel_ai/submission/workflow.py`、`src/mathmodel_ai/benchmark/profiles.py`。
 - 真题单案例入口：`benchmarks/case-001-mcm-2024-c/manifest.json`、`src/mathmodel_ai/benchmark/workflow.py`、`src/mathmodel_ai/benchmark/executor.py`；C 独立复算入口为 `analysis/mcm2024c/README.md`。
+- C 输入隔离及生成预测评估：`benchmarks/case-001-mcm-2024-c/causal-holdout-v1.json`、`src/mathmodel_ai/benchmark/causal_inputs.py`、`src/mathmodel_ai/benchmark/causal_evaluation.py`、`src/mathmodel_ai/benchmark/manifests.py`。
 - 隔离逐分留出协议：`src/mathmodel_ai/verification/causal_binary.py`、`src/mathmodel_ai/verification/causal_holdout.py`、`src/mathmodel_ai/sandbox/causal_holdout.py`；真实容器与官方 CSV 的诊断测试在 `tests/sandbox/test_causal_holdout.py`。
 - 检查：`uv run pytest -q`、`uv run ruff check src tests analysis/mcm2024c`、`uv run mypy --strict src/mathmodel_ai`；前端 `npm test -- --run` 与 `npm run build`。
 
 ## 下一步
 
-继续在 WIP 分支处理 C 通用流水线的可复算科学链：让数据派生的时序/统计输出与官方输入文件、验证要求建立可独立复算的契约，并明确证明主要输出确实依赖逐分数据。完成后仅重跑 C，接着验证自动论文和交付物；当前独立研究稿不能代替自动流水线。A 的正式提交仍需真实队伍控制号、完整 AI 使用报告及有证据地处理最终评审意见。
+继续在 WIP 分支处理 C 通用流水线的可复算科学链：把已保存的在线留出轨迹、正式求解产物、数据派生时序/统计结果和全部模型自报验证要求纳入同一独立复算契约。完成后仅重跑 C，接着验证自动论文和交付物；当前独立研究稿不能代替自动流水线。A 的正式提交仍需真实队伍控制号、完整 AI 使用报告及有证据地处理最终评审意见。
 
-当前阻塞不是提供方或 GitHub 权限，而是主流程结构性验证契约：隔离逐分预测与独立重放已能对官方 C 输入工作，但生成模型、隐藏整场输入和四项自报验证任务尚未接入同一证据链；旧 C 模型与代码仍会在更早阶段被拒。不能用审定基线诊断或重复单题运行替代自动建模验收。用户要求完成自动建模流程，目标保持未完成；先补齐主流程契约，再进行真实 C 单题重跑。
+当前阻塞不是提供方或 GitHub 权限，而是主流程结构性验证契约：隐藏整场输入及生成预测代码的隔离评估已连通，但正式验证尚不能把该轨迹、求解产物和四项自报验证任务审定为同一科学证据链；旧 C 模型与代码仍会在更早阶段被拒。不能用审定基线诊断或重复单题运行替代自动建模验收。用户要求完成自动建模流程，目标保持未完成；先补齐主流程契约，再进行真实 C 单题重跑。

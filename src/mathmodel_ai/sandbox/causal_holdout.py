@@ -156,6 +156,9 @@ def run_isolated_causal_holdout(
     project_id: UUID,
     problem_id: UUID,
     docker_binary: str = "docker",
+    execution_origin: ExecutionOrigin = ExecutionOrigin.USER_CODE,
+    model_digest: str | None = None,
+    generated_program_id: UUID | None = None,
 ) -> IsolatedCausalHoldout:
     """Return a real execution record even when Docker or predictor code fails."""
     encoded = predictor_code.encode("utf-8")
@@ -316,7 +319,9 @@ def run_isolated_causal_holdout(
         code_hash=hashlib.sha256(encoded).hexdigest(),
         executed_bundle_hash=bundle_hash,
         code_artifact_id=code_artifact.artifact_id,
-        execution_origin=ExecutionOrigin.USER_CODE,
+        execution_origin=execution_origin,
+        model_digest=model_digest,
+        generated_program_id=generated_program_id,
         image=image,
         image_id=image_id,
         environment={"executor": "docker-causal-stream", "source_sha256": spec.source_sha256},
