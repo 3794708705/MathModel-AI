@@ -831,6 +831,43 @@ def test_model_gate_rejects_scalar_optimization_misclassified_as_time_series() -
     assert model_quality_gate(base, state).status is QualityGateStatus.PASS
 
 
+def test_model_gate_rejects_unmaterializable_indexed_initial_condition() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    indexed = base.decision_variables[0].model_copy(update={"index_sets": ["SET-POINTS"]})
+    initial = base.constraints[0].model_copy(
+        update={
+            "constraint_id": "CON-INIT-X",
+            "name": "first indexed state value",
+            "expression": symbol("x"),
+            "rhs": constant(0),
+            "relation": ConstraintRelation.EQ,
+            "index_scope": ["SET-POINTS"],
+        }
+    )
+    model = base.model_copy(
+        update={
+            "sets": [
+                SetDefinition(
+                    set_id="SET-POINTS",
+                    symbol="T",
+                    description="fixture time points",
+                    values=[1, 2],
+                )
+            ],
+            "decision_variables": [indexed, base.decision_variables[1]],
+            "initial_conditions": [initial],
+        }
+    )
+    gate = model_quality_gate(model, state)
+    assert "MODEL_GATE_FAIL:INDEXED_HARD_CONSTRAINT_NOT_SCALAR:CON-INIT-X:x" in gate.errors
+    assert model_quality_gate(base, state).status is QualityGateStatus.PASS
+
+
 def test_model_gate_blocks_unresolved_critical_ambiguity() -> None:
     state = selected_state(low_confidence_ambiguity=True)
     model = lp_model(

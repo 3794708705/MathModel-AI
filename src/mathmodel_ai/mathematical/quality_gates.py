@@ -105,6 +105,7 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
     unsupported_bound_scalars = _unsupported_bound_scalars(model, state)
     objective_decision_coupling = _objective_depends_on_decision(model)
     fixed_constraint_violations = _decision_independent_constraint_violations(model)
+    unmaterializable_indexed_constraints = _unmaterializable_indexed_constraints(model)
     scalar_objective_family_valid = not (
         model.model_family is ModelFamily.TIME_SERIES
         and model.objective is not None
@@ -130,6 +131,7 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         "objective_depends_on_decision": objective_decision_coupling,
         "scalar_objective_family_valid": scalar_objective_family_valid,
         "decision_independent_constraints_feasible": not fixed_constraint_violations,
+        "indexed_hard_constraints_materializable": not unmaterializable_indexed_constraints,
         "symbol_registry_valid": symbols.report.valid,
         "parameter_sources_present": all(
             bool(item.source_ref) for item in [*model.parameters, *model.constants]
@@ -166,6 +168,10 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
     errors.extend(
         f"MODEL_GATE_FAIL:DECISION_INDEPENDENT_CONSTRAINT_INFEASIBLE:{constraint_id}"
         for constraint_id in fixed_constraint_violations
+    )
+    errors.extend(
+        f"MODEL_GATE_FAIL:INDEXED_HARD_CONSTRAINT_NOT_SCALAR:{constraint_id}:{symbol}"
+        for constraint_id, symbol in unmaterializable_indexed_constraints
     )
     errors.extend(
         f"MODEL_GATE_FAIL:{item.code.value}:{item.reference}"
@@ -220,6 +226,34 @@ def _state_relations_sufficient(model: MathematicalModel) -> bool:
         if item.relation is ConstraintRelation.EQ and referenced_symbols(item.expression) & states
     )
     return len(relations) >= len(states)
+
+
+def _unmaterializable_indexed_constraints(
+    model: MathematicalModel,
+) -> list[tuple[str, str]]:
+    """A bare indexed symbol cannot be checked as one scalar constraint value."""
+    indexed = {
+        item.symbol
+        for item in [
+            *model.decision_variables,
+            *model.state_variables,
+            *model.derived_variables,
+        ]
+        if item.index_sets
+    }
+    return [
+        (constraint.constraint_id, symbol)
+        for constraint in [
+            *model.constraints,
+            *model.initial_conditions,
+            *model.boundary_conditions,
+        ]
+        if constraint.is_hard
+        for symbol in sorted(
+            indexed
+            & (referenced_symbols(constraint.expression) | referenced_symbols(constraint.rhs))
+        )
+    ]
 
 
 def _objective_depends_on_decision(model: MathematicalModel) -> bool:
