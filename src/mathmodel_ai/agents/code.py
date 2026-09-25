@@ -134,6 +134,35 @@ def reject_discarded_csv_rows(program: GeneratedProgramDraft) -> None:
         raise ValueError("CODE_GENERATION_BLOCKED: CSV rows are iterated but their values unused")
 
 
+def reject_sorted_groupby_in_seeded_protocol(program: GeneratedProgramDraft) -> None:
+    """A seeded sequential shuffle must not silently reorder its strata."""
+    for source in program.files:
+        if source.path != program.entrypoint:
+            continue
+        try:
+            tree = ast.parse(source.content, filename=source.path)
+        except SyntaxError as exc:
+            raise ValueError(f"CODE_GENERATION_BLOCKED: invalid Python in {source.path}") from exc
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "groupby"
+            ):
+                continue
+            preserves_csv_order = any(
+                keyword.arg == "sort"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is False
+                for keyword in node.keywords
+            )
+            if not preserves_csv_order:
+                raise ValueError(
+                    "CODE_GENERATION_BLOCKED: seeded conditional permutation "
+                    "requires groupby(sort=False) to preserve first-seen stratum order"
+                )
+
+
 class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
     name = "code_agent"
     role = "auditable translation of a fixed mathematical model into executable code"
@@ -204,6 +233,8 @@ class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
         )
         response = await provider.structured_generate(request, GeneratedProgramDraft)
         reject_hardcoded_results(response.parsed)
+        if any("causal_science:randomness_test" in item for item in input_data.user_guidance):
+            reject_sorted_groupby_in_seeded_protocol(response.parsed)
         if input_data.mathematical_model.data_bindings and any(
             item.get("path", "").lower().endswith(".csv") for item in input_data.input_manifest
         ):

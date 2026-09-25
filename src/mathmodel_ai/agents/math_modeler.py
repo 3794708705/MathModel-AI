@@ -1,4 +1,5 @@
 import json
+import re
 
 from mathmodel_ai.agents.base import AgentExecution, BaseAgent
 from mathmodel_ai.core.errors import QualityGateError
@@ -17,6 +18,37 @@ from mathmodel_ai.schemas.mathematical import (
 )
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.quality import QualityGateStatus
+
+_VALIDATE_STAGE_CONTRACTS = frozenset(
+    {
+        "recompute variable bounds",
+        "recompute every constraint",
+        "recompute variable bounds and constraints",
+        "recalculate objective metric",
+        "verify evidence trace",
+    }
+)
+
+
+def reject_unverifiable_causal_requirements(model: MathematicalModel, guidance: list[str]) -> None:
+    """Fail before solving when a causal model declares unverifiable checks."""
+    protocol = next(
+        (item for item in guidance if item.startswith("CAUSAL_HOLDOUT_PROTOCOL:")), None
+    )
+    if protocol is None:
+        return
+    allowed = set(re.findall(r"causal_science:[a-z_]+", protocol))
+    allowed.update(_VALIDATE_STAGE_CONTRACTS)
+    unknown = [
+        requirement
+        for requirement in model.validation_requirements
+        if " ".join(requirement.casefold().split()) not in allowed
+    ]
+    if unknown:
+        raise QualityGateError(
+            "MODEL_GATE_FAIL:UNVERIFIABLE_VALIDATION_REQUIREMENT: "
+            + " | ".join(item[:180] for item in unknown)
+        )
 
 
 class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):
@@ -120,6 +152,7 @@ class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):
             source_selected_model_id=input_data.selected_model.candidate_id,
             status=MathematicalModelStatus.READY,
         )
+        reject_unverifiable_causal_requirements(model, input_data.user_guidance)
         return AgentExecution(
             output=model,
             response=response.response,

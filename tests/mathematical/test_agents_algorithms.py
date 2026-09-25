@@ -5,8 +5,14 @@ import pytest
 from pydantic import ValidationError
 
 from mathmodel_ai.agents import AgentRunStatus, CodeAgent, MathModeler
-from mathmodel_ai.agents.code import reject_discarded_csv_rows, reject_header_only_csv_usage
+from mathmodel_ai.agents.code import (
+    reject_discarded_csv_rows,
+    reject_header_only_csv_usage,
+    reject_sorted_groupby_in_seeded_protocol,
+)
+from mathmodel_ai.agents.math_modeler import reject_unverifiable_causal_requirements
 from mathmodel_ai.core.config import Settings
+from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.mathematical.algorithms import AlgorithmSelector
 from mathmodel_ai.providers.factory import ProviderRegistry
 from mathmodel_ai.providers.mock import MockProvider
@@ -204,7 +210,7 @@ async def test_math_modeler_binds_identity_and_audits_xhigh_mock_route() -> None
     assert run.output.model_id == assigned_model_id
     assert run.output.project_id == state.project_id
     assert run.output.source_selected_model_id == "CAND-lp"
-    assert run.prompt_version == "4.6.1"
+    assert run.prompt_version == "4.6.2"
     assert mock.last_request is not None
     assert mock.last_request.max_output_tokens == 65_536
     assert run.routes[0].level is EscalationLevel.FLAGSHIP_XHIGH
@@ -380,6 +386,60 @@ def test_code_agent_rejects_csv_header_only_as_data_use() -> None:
     reject_header_only_csv_usage(row_consuming)
 
 
+def test_seeded_permutation_code_rejects_default_sorted_groupby() -> None:
+    source = "for key, group in df.groupby(['match_id', 'server']):\n    pass\n"
+    program = GeneratedProgramDraft(
+        entrypoint="main.py",
+        files=[GeneratedSourceFile(path="main.py", content=source)],
+        solver_target="SCIPY",
+        explanation="Fixture seeded permutation loop.",
+    )
+    with pytest.raises(ValueError, match="groupby\\(sort=False\\)"):
+        reject_sorted_groupby_in_seeded_protocol(program)
+    unsorted = program.model_copy(
+        update={
+            "files": [
+                GeneratedSourceFile(
+                    path="main.py",
+                    content=source.replace(
+                        "df.groupby(['match_id', 'server'])",
+                        "df.groupby(['match_id', 'server'], sort=False)",
+                    ),
+                )
+            ]
+        }
+    )
+    reject_sorted_groupby_in_seeded_protocol(unsorted)
+
+
+def test_causal_modeler_rejects_unverifiable_stage_requirements() -> None:
+    base = lp_model()
+    guidance = [
+        "CAUSAL_HOLDOUT_PROTOCOL: require causal_science:randomness_test "
+        "and causal_science:heldout_prediction"
+    ]
+    valid = base.model_copy(
+        update={
+            "validation_requirements": [
+                "causal_science:randomness_test",
+                "recompute variable bounds and constraints",
+            ]
+        }
+    )
+    reject_unverifiable_causal_requirements(valid, guidance)
+    invalid = valid.model_copy(
+        update={
+            "validation_requirements": [
+                *valid.validation_requirements,
+                "Later sensitivity experiment is needed.",
+            ]
+        }
+    )
+    with pytest.raises(QualityGateError, match="UNVERIFIABLE_VALIDATION_REQUIREMENT"):
+        reject_unverifiable_causal_requirements(invalid, guidance)
+    reject_unverifiable_causal_requirements(invalid, [])
+
+
 def test_code_agent_rejects_csv_row_loop_that_ignores_values() -> None:
     ignored = GeneratedProgramDraft(
         entrypoint="solve.py",
@@ -491,7 +551,8 @@ def test_generated_program_rejects_solver_target_larger_than_database_contract()
 
 def test_versioned_prompt_resources_exist() -> None:
     prompts = PromptRegistry()
-    assert prompts.get("math_modeler").version == "4.6.1"
+    assert prompts.get("math_modeler").version == "4.6.2"
+    assert "future-stage experiments" in prompts.get("math_modeler").system
     assert prompts.get("code_agent").version == "4.7.2"
     assert (
         "must report every MathematicalModel decision variable" in prompts.get("code_agent").system

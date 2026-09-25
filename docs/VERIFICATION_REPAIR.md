@@ -39,7 +39,7 @@ solver feasibility evaluator. It recomputes:
 The absolute and relative tolerances are configured by
 `MM_VALIDATION_ABS_TOLERANCE` and `MM_VALIDATION_REL_TOLERANCE`. Unsupported
 free-form validation requirements are `NOT_EVALUABLE`, never assumed to pass.
-Validator `5.0.1` resolves only exact supported legacy contracts (case/whitespace
+Validator `5.1.0` resolves only exact supported legacy contracts (case/whitespace
 normalization is allowed): `recompute variable bounds`, `recompute every
 constraint`, `recompute variable bounds and constraints`, `recalculate objective
 metric`, and `verify evidence trace`. Combined contracts require all components;
@@ -223,8 +223,15 @@ evidence. If—and only if—the exact persisted formal `result.json` reports th
 named statistic, p-value and simulation count, the validator compares all
 three against this training-only reference. A missing claim remains
 `UNCHECKED`; a mismatched claim fails. Neither a matching test nor a small
-p-value establishes psychological or causal momentum. A second training-only
-reference reconstructs a pre-outcome rolling mean of condition-adjusted
+p-value establishes psychological or causal momentum.
+The seeded shuffles visit matches and then conditions in their first-seen CSV
+order; sorting groups changes the random sequence and is not an equivalent
+implementation. Causal code generation rejects Pandas `groupby` without an
+explicit `sort=False` before execution. For these causal cases, the modeler
+also rejects validation requirements lacking an exact current-stage contract
+before solving; downstream sensitivity and scenario obligations remain in the
+later experiment stages and limitations, not as fictitious VALIDATE passes.
+A second training-only reference reconstructs a pre-outcome rolling mean of condition-adjusted
 residuals for every row. Its `match_flow` check passes only when the same
 row-aligned series is present in the exact formal `result.json` and agrees
 pointwise. This does not prove that a paper visualizes or explains the flow.

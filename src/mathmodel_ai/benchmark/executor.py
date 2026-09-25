@@ -991,6 +991,11 @@ class PipelineBenchmarkExecutor:
                 f"causal_science:{item.value}" for item in policy.required_scientific_checks
             )
             + ". The host checks every listed obligation even if the model omits it."
+            " Do not add natural-language duplicates of these checks to "
+            "validation_requirements; they remain UNCHECKED without an exact "
+            "evidence contract. Record downstream sensitivity or scenario "
+            "experiments in limitations for the later experiment stages, "
+            "not as requirements of the earlier VALIDATE stage."
             if policy.required_scientific_checks
             else ""
         )
@@ -1005,7 +1010,11 @@ class PipelineBenchmarkExecutor:
             "For 499 null draws, independently shuffle outcomes within every "
             "match-condition stratum using Python random.Random seeded with the integer "
             "SHA-256 digest of b'conditional-randomness-v1:' plus the exact training CSV "
-            "bytes. The two-sided p-value is (extreme+1)/500, with extremeness measured "
+            "bytes. Advance that one RNG through matches in their first-seen CSV order "
+            "and conditions in first-seen order within each match on every draw; "
+            "a sorted group order changes the permutation sample and p-value. "
+            "If using pandas groupby, set sort=False explicitly. "
+            "The two-sided p-value is (extreme+1)/500, with extremeness measured "
             "around the simulated mean. This is a conditional association test, not a "
             "causal or psychological momentum claim."
             if CausalScienceCheck.RANDOMNESS_TEST in policy.required_scientific_checks
