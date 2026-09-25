@@ -553,6 +553,7 @@ def create_app(
             causal_evaluator=CausalBenchmarkEvaluator(
                 store=file_store,
                 repository=application.state.data_repository,
+                mathematics=application.state.mathematical_repository,
                 root=resolved.solver_sandbox_root,
                 image=resolved.solver_sandbox_image,
                 limits=sandbox_limits,

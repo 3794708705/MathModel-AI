@@ -129,7 +129,12 @@ model and solver inputs. A generated `causal_predictor.py` can now be run in
 the separate, networkless online evaluator; its execution, source, driver,
 and host-recorded trace are persisted without advancing the problem state.
 The host replays the trace against the exact official CSV and checks the
-model/program identity. The main benchmark still fails closed after this step:
+model/program identity. The re-audit can now be repeated from persisted
+formal-result and execution records: it checks the exact result ID, stored
+training CSV bytes, official split policy, approved streaming driver,
+predictor source, stored artifact bytes and independently recomputed loss.
+The main benchmark still fails closed
+after this step:
 the trace is not yet bound to a reviewed formal validation policy or to every
 model-declared validation task. No new C benchmark result has been claimed.
 

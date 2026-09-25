@@ -159,6 +159,7 @@ def run_isolated_causal_holdout(
     execution_origin: ExecutionOrigin = ExecutionOrigin.USER_CODE,
     model_digest: str | None = None,
     generated_program_id: UUID | None = None,
+    formal_result_id: UUID | None = None,
 ) -> IsolatedCausalHoldout:
     """Return a real execution record even when Docker or predictor code fails."""
     encoded = predictor_code.encode("utf-8")
@@ -324,7 +325,11 @@ def run_isolated_causal_holdout(
         generated_program_id=generated_program_id,
         image=image,
         image_id=image_id,
-        environment={"executor": "docker-causal-stream", "source_sha256": spec.source_sha256},
+        environment={
+            "executor": "docker-causal-stream",
+            "source_sha256": spec.source_sha256,
+            **({"formal_result_id": str(formal_result_id)} if formal_result_id else {}),
+        },
         start_time=started,
         end_time=ended,
         runtime_seconds=max(0.0, monotonic() - clock_started),
@@ -352,6 +357,8 @@ def verify_recorded_causal_holdout(
     source: bytes,
     run: IsolatedCausalHoldout,
     store: FileStore,
+    *,
+    expected_policy: tuple[CausalBinarySpec, float, str] | None = None,
 ) -> CausalHoldoutResult:
     """Check stored code, driver, execution identity and host-recorded trace."""
     record = run.execution
@@ -391,6 +398,8 @@ def verify_recorded_causal_holdout(
             raise ValueError("CAUSAL_EXECUTION_ARTIFACT_HASH_MISMATCH")
     code_bytes = store.read_bytes(code.storage_key)
     driver_bytes = store.read_bytes(driver.storage_key)
+    if driver_bytes != Path(__file__).with_name("causal_driver.py").read_bytes():
+        raise ValueError("CAUSAL_EXECUTION_DRIVER_MISMATCH")
     if (
         hashlib.sha256(code_bytes).hexdigest() != record.code_hash
         or hashlib.sha256(
@@ -399,7 +408,12 @@ def verify_recorded_causal_holdout(
         != record.executed_bundle_hash
     ):
         raise ValueError("CAUSAL_EXECUTION_BUNDLE_MISMATCH")
-    result = verify_causal_trace(source, store.read_bytes(trace.storage_key))
+    trace_bytes = store.read_bytes(trace.storage_key)
+    result = verify_causal_trace(source, trace_bytes)
+    if expected_policy is not None:
+        spec, fraction, salt = expected_policy
+        if causal_trace_payload(spec, result, fraction=fraction, salt=salt) != trace_bytes:
+            raise ValueError("CAUSAL_EXECUTION_POLICY_MISMATCH")
     if run.result is not None and result != run.result:
         raise ValueError("CAUSAL_EXECUTION_RESULT_MISMATCH")
     return result

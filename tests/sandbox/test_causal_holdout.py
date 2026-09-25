@@ -123,6 +123,33 @@ class Predictor:
     )
     with pytest.raises(ValueError, match="CAUSAL_EXECUTION_BUNDLE_MISMATCH"):
         verify_recorded_causal_holdout(_source(), altered, store)
+    replacement = b"print('unreviewed driver')\n"
+    replacement_id = uuid4()
+    stored = store.store_artifact(
+        replacement,
+        project_id=execution.execution.project_id,
+        artifact_id=replacement_id,
+        filename="causal_driver.py",
+    )
+    driver = execution.artifacts[1].model_copy(
+        update={
+            "artifact_id": replacement_id,
+            "size_bytes": stored.size_bytes,
+            "sha256": stored.sha256,
+            "storage_key": stored.storage_key,
+        }
+    )
+    code_bytes = store.read_bytes(execution.artifacts[0].storage_key)
+    tampered_bundle = hashlib.sha256(
+        hashlib.sha256(code_bytes).digest() + hashlib.sha256(replacement).digest()
+    ).hexdigest()
+    tampered = replace(
+        execution,
+        execution=execution.execution.model_copy(update={"executed_bundle_hash": tampered_bundle}),
+        artifacts=(execution.artifacts[0], driver, execution.artifacts[2]),
+    )
+    with pytest.raises(ValueError, match="CAUSAL_EXECUTION_DRIVER_MISMATCH"):
+        verify_recorded_causal_holdout(_source(), tampered, store)
 
 
 def test_invalid_predictor_is_recorded_as_failure(tmp_path: Path) -> None:
