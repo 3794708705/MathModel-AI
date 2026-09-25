@@ -70,6 +70,17 @@ from its perturbation metadata and verifies the exact model embedded in the
 deterministic program, program/bundle/code hashes, execution record, solver
 result, persisted relational columns, objective changes, and summary statistics.
 
+For an objective-free model with non-indexed, uniquely defined scalar derived
+outputs and no state variables, the program instead holds the formal result's
+decision values fixed and perturbs sourced parameters. The versioned sandbox
+evaluates each complete response equation, while a separate host evaluator
+recomputes every output from the scenario model. Reports contain response ranges,
+not a fabricated optimization objective or objective elasticity. The integrity
+audit binds the fixed point, exact scenario payload, output values, code hash,
+execution ID, and non-Mock status. Missing/cyclic equations, mismatched formal
+baseline outputs, or uncheckable responses fail closed. This tests the formal
+scalar response model; it does not establish holdout predictive superiority.
+
 ## Robustness experiments
 
 `RobustnessConfig` makes the method explicit:
@@ -83,6 +94,9 @@ result, persisted relational columns, objective changes, and summary statistics.
 
 Runs are capped at 200 by schema and 50 by default. Reports contain feasibility
 rate, objective mean/standard deviation/range/quantiles, and the worst scenario
+for optimization models. Objective-free scalar response models report response
+ranges and feasibility only; `WORST_CASE` in that mode is a declared joint
+scenario comparison, not an objective-ranked worst case.
 identity. The ROBUSTNESS gate requires every declared run to be independently
 feasible and executed.
 

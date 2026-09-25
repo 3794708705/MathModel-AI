@@ -178,6 +178,7 @@ class ExperimentRun(BaseModel):
     objective_change: float | None = Field(default=None, allow_inf_nan=False)
     objective_change_fraction: float | None = Field(default=None, allow_inf_nan=False)
     key_outputs: dict[str, float] = Field(default_factory=dict)
+    fixed_decision_values: dict[str, float] = Field(default_factory=dict)
     feasible: bool | None = None
     max_constraint_violation: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     status: ExperimentStatus
@@ -232,6 +233,8 @@ class SensitivityReport(BaseModel):
     reviewed_report_id: UUID | None = None
     reviewed_replay_ids: dict[str, UUID] = Field(default_factory=dict)
     reviewed_metric_values: dict[str, float] = Field(default_factory=dict)
+    baseline_responses: dict[str, float] = Field(default_factory=dict)
+    response_ranges: dict[str, tuple[float, float]] = Field(default_factory=dict)
     config: SensitivityConfig
     experiments: list[ExperimentRun] = Field(default_factory=list)
     parameter_elasticities: dict[str, float] = Field(default_factory=dict)
@@ -336,6 +339,8 @@ class RobustnessReport(BaseModel):
     reviewed_report_id: UUID | None = None
     reviewed_replay_ids: dict[str, UUID] = Field(default_factory=dict)
     reviewed_metric_values: dict[str, float] = Field(default_factory=dict)
+    baseline_responses: dict[str, float] = Field(default_factory=dict)
+    response_ranges: dict[str, tuple[float, float]] = Field(default_factory=dict)
     method: RobustnessMethod
     config: RobustnessConfig
     experiments: list[ExperimentRun] = Field(default_factory=list)

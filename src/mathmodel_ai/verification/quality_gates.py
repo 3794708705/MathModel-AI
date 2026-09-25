@@ -6,6 +6,7 @@ from collections import defaultdict
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.schemas.independent_verification import ReviewedValidationEvidence
 from mathmodel_ai.schemas.quality import QualityGateResult, QualityGateStatus
+from mathmodel_ai.schemas.solver import SolverName
 from mathmodel_ai.schemas.verification import (
     ExperimentReportStatus,
     ExperimentRun,
@@ -69,6 +70,27 @@ def sensitivity_quality_gate(
             errors=list(dict.fromkeys(errors)),
             warnings=report.warnings,
         )
+    if report.baseline_responses:
+        checks = {
+            "experiments_present": bool(report.experiments),
+            "all_experiments_executed": bool(report.experiments)
+            and all(item.execution_record_id is not None for item in report.experiments),
+            "all_experiments_pass": report.status is ExperimentReportStatus.PASS,
+            "no_failed_runs": report.failed_runs == 0,
+            "response_summary_recomputed": _response_summary_matches(
+                report.baseline_responses, report.response_ranges, report.experiments
+            ),
+            "no_objective_fabricated": report.baseline_objective is None,
+        }
+        errors = [f"SENSITIVITY_GATE_FAIL:{name}" for name, passed in checks.items() if not passed]
+        errors.extend(report.errors)
+        return QualityGateResult(
+            gate="SENSITIVITY",
+            status=QualityGateStatus.PASS if not errors else QualityGateStatus.RETRY,
+            checks=checks,
+            errors=list(dict.fromkeys(errors)),
+            warnings=report.warnings,
+        )
     checks = {
         "experiments_present": bool(report.experiments),
         "all_experiments_executed": bool(report.experiments)
@@ -108,6 +130,28 @@ def robustness_quality_gate(
             "no_objective_fabricated": report.baseline_objective is None and not report.experiments,
             "report_pass": report.status is ExperimentReportStatus.PASS,
             "method_explicit": report.method is report.config.method,
+        }
+        errors = [f"ROBUSTNESS_GATE_FAIL:{name}" for name, passed in checks.items() if not passed]
+        errors.extend(report.errors)
+        return QualityGateResult(
+            gate="ROBUSTNESS",
+            status=QualityGateStatus.PASS if not errors else QualityGateStatus.RETRY,
+            checks=checks,
+            errors=list(dict.fromkeys(errors)),
+            warnings=report.warnings,
+        )
+    if report.baseline_responses:
+        checks = {
+            "method_explicit": report.method is report.config.method,
+            "experiments_present": bool(report.experiments),
+            "all_experiments_executed": bool(report.experiments)
+            and all(item.execution_record_id is not None for item in report.experiments),
+            "all_experiments_pass": report.status is ExperimentReportStatus.PASS,
+            "full_feasibility_rate": report.summary.feasibility_rate == 1.0,
+            "response_summary_recomputed": _response_summary_matches(
+                report.baseline_responses, report.response_ranges, report.experiments
+            ),
+            "no_objective_fabricated": report.baseline_objective is None,
         }
         errors = [f"ROBUSTNESS_GATE_FAIL:{name}" for name, passed in checks.items() if not passed]
         errors.extend(report.errors)
@@ -232,6 +276,34 @@ def verified_result_quality_gate(
     reviewed_robustness = reviewed and _reviewed_report_matches(
         robustness, reviewed_evidence, parameter_only=False
     )
+    response_mode = bool(
+        sensitivity.baseline_responses
+        and sensitivity.baseline_responses == robustness.baseline_responses
+        and sensitivity.baseline_objective is None
+        and robustness.baseline_objective is None
+        and not reviewed
+    )
+    response_sensitivity_valid = response_mode and _response_summary_matches(
+        sensitivity.baseline_responses, sensitivity.response_ranges, sensitivity.experiments
+    )
+    response_robustness_valid = response_mode and _response_summary_matches(
+        robustness.baseline_responses, robustness.response_ranges, robustness.experiments
+    )
+    nonobjective_validation = not any(
+        item.category.value == "OBJECTIVE" for item in validation.metric_recalculations
+    )
+    if response_mode:
+        baseline_consistent = nonobjective_validation
+    elif reviewed:
+        baseline_consistent = bool(
+            reviewed_sensitivity
+            and reviewed_robustness
+            and sensitivity.baseline_objective is None
+            and robustness.baseline_objective is None
+            and nonobjective_validation
+        )
+    else:
+        baseline_consistent = _baseline_objective_matches(validation, sensitivity, robustness)
     sensitivity_experiments_pass = bool(sensitivity.experiments) and all(
         item.status is ExperimentStatus.PASS for item in sensitivity.experiments
     )
@@ -253,21 +325,7 @@ def verified_result_quality_gate(
             item.status.value == "PASS" for item in validation.requirement_checks
         ),
         "validation_report_integrity": not validation_integrity_errors,
-        "baseline_objective_matches_validation": (
-            reviewed_sensitivity
-            and reviewed_robustness
-            and sensitivity.baseline_objective is None
-            and robustness.baseline_objective is None
-            and not any(
-                item.category.value == "OBJECTIVE" for item in validation.metric_recalculations
-            )
-        )
-        if reviewed
-        else _baseline_objective_matches(
-            validation,
-            sensitivity,
-            robustness,
-        ),
+        "baseline_objective_matches_validation": baseline_consistent,
         "sensitivity_pass": sensitivity.status is ExperimentReportStatus.PASS,
         "sensitivity_experiments_pass": reviewed_sensitivity
         if reviewed
@@ -275,13 +333,17 @@ def verified_result_quality_gate(
         "sensitivity_design_matches_config": reviewed_sensitivity
         if reviewed
         else _sensitivity_design_matches(sensitivity),
-        "sensitivity_deltas_recomputed": reviewed_sensitivity
+        "sensitivity_deltas_recomputed": response_sensitivity_valid
+        if response_mode
+        else reviewed_sensitivity
         if reviewed
         else _objective_deltas_match(
             sensitivity.baseline_objective,
             sensitivity.experiments,
         ),
-        "sensitivity_summary_recomputed": reviewed_sensitivity
+        "sensitivity_summary_recomputed": response_sensitivity_valid
+        if response_mode
+        else reviewed_sensitivity
         if reviewed
         else _sensitivity_summary_matches(sensitivity),
         "sensitivity_execution_integrity": not sensitivity_integrity_errors,
@@ -292,13 +354,17 @@ def verified_result_quality_gate(
         "robustness_design_matches_config": reviewed_robustness
         if reviewed
         else _robustness_design_matches(robustness),
-        "robustness_deltas_recomputed": reviewed_robustness
+        "robustness_deltas_recomputed": response_robustness_valid
+        if response_mode
+        else reviewed_robustness
         if reviewed
         else _objective_deltas_match(
             robustness.baseline_objective,
             robustness.experiments,
         ),
-        "robustness_summary_recomputed": reviewed_robustness
+        "robustness_summary_recomputed": response_robustness_valid
+        if response_mode
+        else reviewed_robustness
         if reviewed
         else _robustness_summary_matches(robustness),
         "robustness_execution_integrity": not robustness_integrity_errors,
@@ -485,6 +551,33 @@ def _objective_deltas_match(baseline: float | None, records: list[ExperimentRun]
         ):
             return False
     return True
+
+
+def _response_summary_matches(
+    baseline: dict[str, float],
+    ranges: dict[str, tuple[float, float]],
+    records: list[ExperimentRun],
+) -> bool:
+    if not baseline or not records:
+        return False
+    if any(
+        item.solver is not SolverName.SCALAR_RESPONSE
+        or item.objective_value is not None
+        or item.objective_change is not None
+        or item.objective_change_fraction is not None
+        or item.fixed_decision_values != records[0].fixed_decision_values
+        or set(item.key_outputs) != set(baseline) | set(item.fixed_decision_values)
+        for item in records
+    ):
+        return False
+    expected = {
+        symbol: (
+            min(item.key_outputs[symbol] for item in records),
+            max(item.key_outputs[symbol] for item in records),
+        )
+        for symbol in baseline
+    }
+    return ranges == expected
 
 
 def _sensitivity_summary_matches(report: SensitivityReport) -> bool:

@@ -15,7 +15,9 @@ from mathmodel_ai.schemas.verification import (
 )
 from mathmodel_ai.solvers.base import SolverExecution
 from mathmodel_ai.solvers.router import SolverRouter
+from mathmodel_ai.solvers.scalar_response import ScalarResponseSolver
 from mathmodel_ai.verification.experiment_integrity import ExperimentIntegrityVerifier
+from mathmodel_ai.verification.scalar_response import evaluate_scalar_responses
 from mathmodel_ai.verification.validation import IndependentValidator
 
 
@@ -33,11 +35,106 @@ class ExperimentEngine:
         solver_router: SolverRouter,
         validator: IndependentValidator,
         integrity_verifier: ExperimentIntegrityVerifier | None = None,
+        response_solver: ScalarResponseSolver | None = None,
     ) -> None:
         self._algorithm_selector = algorithm_selector
         self._solver_router = solver_router
         self._validator = validator
         self._integrity_verifier = integrity_verifier or ExperimentIntegrityVerifier(validator)
+        self._response_solver = response_solver
+
+    def execute_response(
+        self,
+        *,
+        model: MathematicalModel,
+        perturbations: list[ParameterPerturbation],
+        options: SolverOptions,
+        experiment_type: str,
+        fixed_decision_values: dict[str, float],
+    ) -> ExperimentOutcome:
+        scenario = self.perturb_model(model, perturbations)
+        base_digest = mathematical_model_digest(model)
+        scenario_digest = mathematical_model_digest(scenario)
+        try:
+            if self._response_solver is None:
+                raise ValueError("scalar response runtime is not configured")
+            expected = evaluate_scalar_responses(scenario, fixed_decision_values)
+            execution = self._response_solver.solve(
+                scenario,
+                options.model_copy(update={"initial_point": fixed_decision_values}),
+            )
+        except Exception as exc:
+            return ExperimentOutcome(
+                record=ExperimentRun(
+                    experiment_type=experiment_type,
+                    base_model_digest=base_digest,
+                    scenario_model_digest=scenario_digest,
+                    perturbations=perturbations,
+                    fixed_decision_values=fixed_decision_values,
+                    status=ExperimentStatus.FAIL,
+                    error=f"{type(exc).__name__}: {exc}",
+                ),
+                execution=None,
+            )
+        result = execution.result
+        feasible, max_violation, failed_checks = self._validator.candidate_is_feasible(
+            scenario, result.variable_values
+        )
+        outputs_match = all(
+            math.isclose(
+                result.variable_values.get(symbol, float("nan")),
+                value,
+                rel_tol=1e-9,
+                abs_tol=1e-9,
+            )
+            for symbol, value in expected.items()
+        )
+        execution_valid = (
+            execution.execution.record.status is ExecutionStatus.SUCCEEDED
+            and execution.execution.record.exit_code == 0
+            and not execution.execution.record.is_mock
+        )
+        errors = []
+        if not execution_valid:
+            errors.append("response execution did not prove non-Mock success")
+        if not feasible or not result.is_feasible:
+            errors.append("independent scenario checks failed: " + ", ".join(failed_checks))
+        if not outputs_match:
+            errors.append("sandbox responses disagree with independent model equations")
+        provisional = ExperimentRun(
+            experiment_type=experiment_type,
+            base_model_digest=base_digest,
+            scenario_model_digest=scenario_digest,
+            perturbations=perturbations,
+            solver=result.solver_name,
+            solver_status=result.status,
+            execution_record_id=execution.execution.record.run_id,
+            key_outputs=result.variable_values,
+            fixed_decision_values=fixed_decision_values,
+            feasible=feasible and result.is_feasible,
+            max_constraint_violation=max_violation,
+            status=ExperimentStatus.FAIL,
+            error="; ".join(errors) or None,
+        )
+        integrity = self._integrity_verifier.audit(
+            base_model=model, record=provisional, execution=execution
+        )
+        errors.extend(integrity.errors)
+        passed = (
+            execution_valid
+            and feasible
+            and result.is_feasible
+            and outputs_match
+            and integrity.valid
+        )
+        return ExperimentOutcome(
+            record=ExperimentRun(
+                **provisional.model_dump(exclude={"experiment_id", "status", "error"}),
+                status=ExperimentStatus.PASS if passed else ExperimentStatus.FAIL,
+                error="; ".join(errors) or None,
+            ),
+            execution=execution,
+        )
 
     def execute(
         self,

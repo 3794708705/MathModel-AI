@@ -94,6 +94,7 @@ from mathmodel_ai.solvers.generated import GeneratedProgramExecutor
 from mathmodel_ai.solvers.gurobi import GurobiSolver
 from mathmodel_ai.solvers.ortools import ORToolsSolver
 from mathmodel_ai.solvers.router import SolverRouter
+from mathmodel_ai.solvers.scalar_response import ScalarResponseSolver
 from mathmodel_ai.solvers.scipy import SciPySolver
 from mathmodel_ai.submission.package import SubmissionIntegrityVerifier, SubmissionPackageBuilder
 from mathmodel_ai.submission.profiles import (
@@ -388,6 +389,7 @@ def create_app(
         solver_router=solver_router,
         validator=validator,
         integrity_verifier=experiment_integrity_verifier,
+        response_solver=ScalarResponseSolver(sandbox=solver_sandbox, store=file_store),
     )
     application.state.independent_validator = validator
     application.state.experiment_integrity_verifier = experiment_integrity_verifier

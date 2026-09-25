@@ -20,6 +20,10 @@ from mathmodel_ai.schemas.verification import (
 )
 from mathmodel_ai.verification.experiments import ExperimentEngine, ExperimentOutcome
 from mathmodel_ai.verification.reviewed_response import reviewed_response_summary
+from mathmodel_ai.verification.scalar_response import (
+    formal_baseline_responses,
+    response_ranges,
+)
 
 
 class RobustnessAnalyzer:
@@ -81,9 +85,7 @@ class RobustnessAnalyzer:
                     summary=RobustnessSummary(requested_runs=0, successful_runs=0, failed_runs=0),
                     status=ExperimentReportStatus.PASS,
                 ), []
-            return self._blocked(
-                model, result, validation, sensitivity, config, "baseline objective is absent"
-            ), []
+            return self._analyze_responses(model, result, validation, sensitivity, config)
         if config.method is RobustnessMethod.BOOTSTRAP:
             return self._blocked(
                 model,
@@ -176,6 +178,88 @@ class RobustnessAnalyzer:
             ),
             outcomes,
         )
+
+    def _analyze_responses(
+        self,
+        model: MathematicalModel,
+        result: ResultRecord,
+        validation: ValidationReport,
+        sensitivity: SensitivityReport,
+        config: RobustnessConfig,
+    ) -> tuple[RobustnessReport, list[ExperimentOutcome]]:
+        if config.method is RobustnessMethod.BOOTSTRAP:
+            return self._blocked(
+                model,
+                result,
+                validation,
+                sensitivity,
+                config,
+                "bootstrap requires an explicit data-resampling contract not present in the model",
+            ), []
+        try:
+            fixed, baseline = formal_baseline_responses(model, result)
+            if baseline != sensitivity.baseline_responses:
+                raise ValueError("sensitivity response baseline differs from formal result")
+            parameters = self._engine.select_scalar_parameters(
+                model, config.parameter_symbols, limit=20
+            )
+            if not parameters:
+                raise ValueError("no sourced scalar parameters are eligible for scenarios")
+        except ValueError as exc:
+            return self._blocked(model, result, validation, sensitivity, config, str(exc)), []
+        fractions = self._scenario_fractions(config, len(parameters))
+        outcomes = [
+            self._engine.execute_response(
+                model=model,
+                perturbations=[
+                    self._engine.perturbation(parameter, value, fraction)
+                    for (parameter, value), fraction in zip(parameters, scenario, strict=True)
+                ],
+                options=config.solver_options,
+                experiment_type=f"ROBUSTNESS:{config.method.value}:SCALAR_RESPONSE:{index}",
+                fixed_decision_values=fixed,
+            )
+            for index, scenario in enumerate(fractions[: config.max_runs], start=1)
+        ]
+        records = [item.record for item in outcomes]
+        passed = [item for item in records if item.status is ExperimentStatus.PASS]
+        failed = [item for item in records if item.status is ExperimentStatus.FAIL]
+        summary = RobustnessSummary(
+            requested_runs=len(records),
+            successful_runs=len(passed),
+            failed_runs=len(failed),
+            feasibility_rate=len(passed) / len(records) if records else None,
+        )
+        status = (
+            ExperimentReportStatus.PASS
+            if records and not failed
+            else ExperimentReportStatus.PARTIAL
+            if passed
+            else ExperimentReportStatus.FAIL
+        )
+        return RobustnessReport(
+            project_id=model.project_id,
+            problem_id=model.problem_id,
+            model_id=model.model_id,
+            model_version=model.version,
+            model_digest=result.model_digest,
+            result_id=result.result_id,
+            validation_id=validation.validation_id,
+            sensitivity_id=sensitivity.sensitivity_id,
+            baseline_responses=baseline,
+            response_ranges=response_ranges(baseline, [item.key_outputs for item in passed]),
+            method=config.method,
+            config=config,
+            experiments=records,
+            summary=summary,
+            status=status,
+            errors=[item.error for item in failed if item.error],
+            warnings=(
+                ["robustness scenarios were truncated by max_runs"]
+                if len(fractions) > config.max_runs
+                else []
+            ),
+        ), outcomes
 
     @staticmethod
     def _scenario_fractions(config: RobustnessConfig, parameter_count: int) -> list[list[float]]:

@@ -17,6 +17,7 @@ class SolverName(StrEnum):
     SCIPY = "SCIPY"
     GUROBI = "GUROBI"
     ORTOOLS = "ORTOOLS"
+    SCALAR_RESPONSE = "SCALAR_RESPONSE"
 
 
 class SolverFamily(StrEnum):
@@ -25,6 +26,7 @@ class SolverFamily(StrEnum):
     SCIPY_MINIMIZE = "SCIPY_MINIMIZE"
     GUROBI = "GUROBI"
     ORTOOLS_CP_SAT = "ORTOOLS_CP_SAT"
+    SCALAR_RESPONSE = "SCALAR_RESPONSE"
 
 
 class SolverCapability(StrEnum):

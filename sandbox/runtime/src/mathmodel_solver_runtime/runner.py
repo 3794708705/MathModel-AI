@@ -72,6 +72,37 @@ def _resolved_scalar_values(model: dict[str, Any], values: dict[str, float]) -> 
     return resolved
 
 
+def _solve_scalar_response(payload: dict[str, Any]) -> dict[str, Any]:
+    """Evaluate scalar model responses at a fixed, explicitly supplied decision point."""
+    started = monotonic()
+    model = payload["model"]
+    if model.get("objective") is not None or model.get("state_variables"):
+        raise ValueError("scalar response requires an objective-free model without states")
+    decisions = model.get("decision_variables", [])
+    derived = model.get("derived_variables", [])
+    if not derived or any(item.get("index_sets") for item in [*decisions, *derived]):
+        raise ValueError("scalar response requires non-indexed derived outputs")
+    fixed = payload["options"].get("initial_point", {})
+    symbols = {str(item["symbol"]) for item in decisions}
+    if set(fixed) != symbols:
+        raise ValueError("scalar response fixed point must cover exactly the decision symbols")
+    values = _resolved_scalar_values(
+        model, {**_parameters(model), **{key: float(value) for key, value in fixed.items()}}
+    )
+    outputs = {str(item["symbol"]): values[str(item["symbol"])] for item in derived}
+    if any(not math.isfinite(value) for value in outputs.values()):
+        raise ValueError("scalar response must be finite")
+    return {
+        "solver_version": "scalar-response-v1",
+        "native_status": 0,
+        "success": True,
+        "message": "fixed-point scalar response evaluated",
+        "objective": None,
+        "variables": {**fixed, **outputs},
+        "runtime_seconds": monotonic() - started,
+    }
+
+
 def _linearize(
     expression: dict[str, Any],
     variable_symbols: set[str],
@@ -537,6 +568,8 @@ def _solve_gurobi(payload: dict[str, Any]) -> dict[str, Any]:
 
 def solve(payload: dict[str, Any]) -> dict[str, Any]:
     backend = payload["backend"]
+    if backend == "scalar_response":
+        return _solve_scalar_response(payload)
     if backend == "scipy":
         return _solve_scipy(payload)
     if backend == "ortools":
