@@ -26,12 +26,15 @@ from mathmodel_ai.schemas.program import GeneratedProgramStatus
 from mathmodel_ai.schemas.solver import GeneratedResultPayload
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec
 from mathmodel_ai.verification.causal_holdout import (
+    SWING_PROTOCOL,
     AuditedCausalEvidence,
     CausalHoldoutResult,
     ConditionalRandomnessClaim,
+    ImminentSwingClaim,
     MatchFlowClaim,
     assess_binary_calibration,
     assess_conditional_randomness,
+    assess_imminent_swing,
     assess_match_flow,
     causal_trace_payload,
 )
@@ -377,6 +380,7 @@ class CausalBenchmarkEvaluator:
             CausalScienceCheck.RANDOMNESS_TEST in policy.required_scientific_checks
         )
         flow_required = CausalScienceCheck.MATCH_FLOW in policy.required_scientific_checks
+        swing_required = CausalScienceCheck.SWING_PREDICTION in policy.required_scientific_checks
         training_spec = CausalBinarySpec(
             source_sha256=split.training_sha256,
             group_column=policy.group_column,
@@ -406,6 +410,10 @@ class CausalBenchmarkEvaluator:
             match_flow=(
                 assess_match_flow(split.training_csv, training_spec) if flow_required else None
             ),
+            swing_claim=(
+                self._swing_claim(project_id, formal_result_id) if swing_required else None
+            ),
+            swing=(assess_imminent_swing(source, spec, result) if swing_required else None),
             randomness=(
                 assess_conditional_randomness(split.training_csv, training_spec)
                 if randomness_required
@@ -458,6 +466,18 @@ class CausalBenchmarkEvaluator:
             if values is not None
             else None
         )
+
+    def _swing_claim(self, project_id: UUID, formal_result_id: UUID) -> ImminentSwingClaim | None:
+        parsed = self._formal_payload(project_id, formal_result_id)
+        if parsed is None:
+            return None
+        payload, artifact_sha256 = parsed
+        protocol = payload.metrics.get("swing_event_protocol")
+        if protocol is None:
+            return None
+        if protocol != SWING_PROTOCOL:
+            raise QualityGateError("CAUSAL_SWING_PROTOCOL_INVALID")
+        return ImminentSwingClaim(protocol=protocol, result_artifact_sha256=artifact_sha256)
 
     def _formal_payload(
         self, project_id: UUID, formal_result_id: UUID

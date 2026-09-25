@@ -22,6 +22,7 @@ from mathmodel_ai.mathematical.workflow import MathematicalWorkflow, SolveStageO
 from mathmodel_ai.reasoning.repository import ReasoningRepository
 from mathmodel_ai.reasoning.state_machine import ensure_transition
 from mathmodel_ai.routing.schemas import EscalationLevel, TaskProfile, TaskType
+from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.independent_verification import ReviewedValidationEvidence
 from mathmodel_ai.schemas.mathematical import MathematicalModelRef
 from mathmodel_ai.schemas.problem_state import (
@@ -49,8 +50,10 @@ from mathmodel_ai.schemas.verification import (
     SensitivityConfig,
     SensitivityReport,
     SensitivityReportRef,
+    ValidationCheckStatus,
     ValidationReport,
     ValidationReportRef,
+    ValidationStatus,
 )
 from mathmodel_ai.solvers.base import SolverExecution
 from mathmodel_ai.verification.causal_holdout import AuditedCausalEvidence
@@ -479,7 +482,7 @@ class VerificationWorkflow:
         )
         self._require_pass(validation.gate)
         if causal_auditor is not None and reviewed_evidence is None:
-            raise QualityGateError("CAUSAL_HOLDOUT_REVIEWED_REQUIREMENT_POLICY_MISSING")
+            self._require_complete_causal_policy(validation.report, causal_auditor())
         sensitivity = self.sensitivity(
             project_id, config=sensitivity_config, reviewed_evidence=reviewed_evidence
         )
@@ -500,6 +503,30 @@ class VerificationWorkflow:
             robustness=robustness,
             red_team=red_team,
         )
+
+    @staticmethod
+    def _require_complete_causal_policy(
+        report: ValidationReport, evidence: AuditedCausalEvidence
+    ) -> None:
+        """Permit a model-independent host policy only with every science check."""
+        required = {f"causal_science:{check.value}" for check in CausalScienceCheck}
+        if report.status is not ValidationStatus.PASS:
+            raise QualityGateError("CAUSAL_HOLDOUT_REVIEWED_REQUIREMENT_POLICY_MISSING")
+        checks = {item.requirement: item for item in report.requirement_checks}
+        if (
+            evidence.formal_result_id != report.result_id
+            or evidence.science_policy_sha256 is None
+            or len(evidence.source_sha256) != 64
+            or {f"causal_science:{check.value}" for check in evidence.required_scientific_checks}
+            != required
+            or not required <= checks.keys()
+            or any(checks[name].status is not ValidationCheckStatus.PASS for name in required)
+            or not any(
+                ref == f"causal_science_policy_sha256:{evidence.science_policy_sha256}"
+                for ref in report.evidence_refs
+            )
+        ):
+            raise QualityGateError("CAUSAL_HOLDOUT_REVIEWED_REQUIREMENT_POLICY_MISSING")
 
     async def repair_until_clear(
         self,

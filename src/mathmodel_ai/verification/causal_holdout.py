@@ -89,6 +89,90 @@ class MatchFlowClaim:
     result_artifact_sha256: str
 
 
+@dataclass(frozen=True)
+class ImminentSwingAssessment:
+    """One-point-ahead sign reversals of the pre-outcome adjusted flow."""
+
+    eligible_points: int
+    observed_swings: int
+    brier: float
+    baseline_brier: float
+
+
+@dataclass(frozen=True)
+class ImminentSwingClaim:
+    protocol: str
+    result_artifact_sha256: str
+
+
+SWING_PROTOCOL = "next-point-flow-sign-reversal-v1"
+
+
+def assess_imminent_swing(
+    source: bytes, spec: CausalBinarySpec, result: CausalHoldoutResult
+) -> ImminentSwingAssessment:
+    """Transform sealed point forecasts into pre-outcome event forecasts.
+
+    A swing is a strict sign reversal of the rolling adjusted residual flow
+    after the imminent point. Only positions with a full prior window count.
+    The predictor is queried before that outcome; neither it nor the formal
+    solver receives future labels.
+    """
+    heldout = set(result.heldout_groups)
+    if (
+        not heldout
+        or len(result.predictions) != len(result.observations)
+        or len(result.predictions) != len(result.baseline_predictions)
+    ):
+        raise ValueError("CAUSAL_SWING_TRACE_INVALID")
+    recent: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=spec.history_window))
+    prediction_index = 0
+    eligible = events = 0
+    loss = baseline_loss = 0.0
+    for feature, outcome in iter_causal_binary_points(source, spec):
+        if feature.group not in heldout:
+            continue
+        if prediction_index >= len(result.predictions):
+            raise ValueError("CAUSAL_SWING_TRACE_INVALID")
+        prediction = result.predictions[prediction_index]
+        recorded_outcome = result.observations[prediction_index]
+        baseline = (1 + feature.prior_condition_positive) / (2 + feature.prior_condition_count)
+        if (
+            outcome != recorded_outcome
+            or not math.isfinite(prediction)
+            or not 0 <= prediction <= 1
+            or not math.isclose(result.baseline_predictions[prediction_index], baseline)
+        ):
+            raise ValueError("CAUSAL_SWING_TRACE_INVALID")
+        window = recent[feature.group]
+        if len(window) == spec.history_window:
+            before = math.fsum(window) / len(window)
+            event_by_outcome: list[int] = []
+            for candidate in (0.0, 1.0):
+                updated = [*list(window)[1:], candidate - baseline]
+                after = math.fsum(updated) / len(updated)
+                event_by_outcome.append(int(before * after < 0))
+            event = event_by_outcome[int(outcome)]
+            forecast = prediction * event_by_outcome[1] + (1 - prediction) * event_by_outcome[0]
+            baseline_forecast = (
+                baseline * event_by_outcome[1] + (1 - baseline) * event_by_outcome[0]
+            )
+            eligible += 1
+            events += event
+            loss += (forecast - event) ** 2
+            baseline_loss += (baseline_forecast - event) ** 2
+        window.append(outcome - baseline)
+        prediction_index += 1
+    if prediction_index != len(result.predictions) or eligible == 0:
+        raise ValueError("CAUSAL_SWING_TRACE_INVALID")
+    return ImminentSwingAssessment(
+        eligible_points=eligible,
+        observed_swings=events,
+        brier=loss / eligible,
+        baseline_brier=baseline_loss / eligible,
+    )
+
+
 def assess_match_flow(source: bytes, spec: CausalBinarySpec) -> MatchFlowAssessment:
     """Pre-outcome rolling mean of server-adjusted residuals, in CSV row order."""
     recent: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=spec.history_window))
@@ -230,6 +314,8 @@ class AuditedCausalEvidence:
     training_sha256: str | None = None
     match_flow: MatchFlowAssessment | None = None
     match_flow_claim: MatchFlowClaim | None = None
+    swing: ImminentSwingAssessment | None = None
+    swing_claim: ImminentSwingClaim | None = None
 
 
 def causal_trace_payload(

@@ -9,6 +9,7 @@ from mathmodel_ai.verification.causal_holdout import (
     CausalHoldoutResult,
     assess_binary_calibration,
     assess_conditional_randomness,
+    assess_imminent_swing,
     assess_match_flow,
     causal_trace_payload,
     evaluate_causal_holdout,
@@ -166,3 +167,44 @@ def test_match_flow_is_pre_outcome_grouped_and_source_bound() -> None:
     altered = source.replace(b"A,1,1,1", b"A,1,2,1")
     with pytest.raises(ValueError, match="CAUSAL_CSV_SIZE_OR_HASH_MISMATCH"):
         assess_match_flow(altered, spec)
+
+
+def test_imminent_swing_uses_only_pre_outcome_forecasts_and_replays_labels() -> None:
+    source, spec = _fixture()
+    result = evaluate_causal_holdout(source, spec, RecordingPredictor(), fraction=0.25, salt="v1")
+    assessed = assess_imminent_swing(source, spec, result)
+    assert assessed.eligible_points == len(result.predictions) - spec.history_window
+    assert 0 <= assessed.observed_swings <= assessed.eligible_points
+    assert 0 <= assessed.brier <= 1
+    assert assessed.brier == pytest.approx(assessed.baseline_brier)
+    with pytest.raises(ValueError, match="CAUSAL_SWING_TRACE_INVALID"):
+        assess_imminent_swing(source, spec, replace(result, observations=(1.0,) * 3))
+    with pytest.raises(ValueError, match="CAUSAL_SWING_TRACE_INVALID"):
+        assess_imminent_swing(source, spec, replace(result, baseline_predictions=()))
+
+
+def test_imminent_swing_forecast_is_a_counterfactual_before_current_label() -> None:
+    source = b"match,server,winner\nA,1,1\nB,1,1\nB,1,1\nB,1,2\n"
+    spec = CausalBinarySpec(
+        source_sha256=hashlib.sha256(source).hexdigest(),
+        group_column="match",
+        condition_column="server",
+        outcome_column="winner",
+        positive_value="1",
+        negative_value="2",
+        history_window=2,
+    )
+    result = CausalHoldoutResult(
+        heldout_groups=("B",),
+        training_groups=("A",),
+        predictions=(0.5, 0.5, 0.8),
+        observations=(1.0, 1.0, 0.0),
+        baseline_predictions=(0.5, 2 / 3, 0.75),
+        brier=0.38,
+        baseline_brier=0.0,
+    )
+    assessment = assess_imminent_swing(source, spec, result)
+    assert assessment.eligible_points == 1
+    assert assessment.observed_swings == 1
+    assert assessment.brier == pytest.approx(0.64)
+    assert assessment.baseline_brier == pytest.approx(0.5625)

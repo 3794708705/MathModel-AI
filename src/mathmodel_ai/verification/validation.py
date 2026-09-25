@@ -33,6 +33,7 @@ from mathmodel_ai.schemas.verification import (
     VariableValidationCheck,
 )
 from mathmodel_ai.verification.causal_holdout import (
+    SWING_PROTOCOL,
     AuditedCausalEvidence,
     assess_binary_calibration,
 )
@@ -126,6 +127,7 @@ class IndependentValidator:
                 errors.append("VALIDATION_FAIL:CAUSAL_CALIBRATION_RECOMPUTATION_MISMATCH")
         randomness_valid = self._randomness_claim_matches(causal_evidence)
         flow_valid = self._match_flow_claim_matches(causal_evidence)
+        swing_valid = self._swing_claim_matches(causal_evidence)
         metrics = [
             *self._metric_checks(model, result, solver_run, values),
             *self._reviewed_metric_checks(reviewed_evidence),
@@ -146,6 +148,7 @@ class IndependentValidator:
             calibration_valid=calibration_valid,
             randomness_valid=randomness_valid,
             flow_valid=flow_valid,
+            swing_valid=swing_valid,
         )
 
         failures = [
@@ -279,6 +282,14 @@ class IndependentValidator:
                                 + sha256_json(asdict(causal_evidence.match_flow))
                             ]
                             if causal_evidence.match_flow is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_holdout_swing_sha256:"
+                                + sha256_json(asdict(causal_evidence.swing))
+                            ]
+                            if causal_evidence.swing is not None
                             else []
                         ),
                     ]
@@ -769,6 +780,26 @@ class IndependentValidator:
                         ),
                     )
                 )
+        if evidence.swing is not None:
+            for name, value in (
+                ("swing_brier", evidence.swing.brier),
+                ("swing_baseline_brier", evidence.swing.baseline_brier),
+            ):
+                checks.append(
+                    MetricRecalculation(
+                        metric_id=f"causal_holdout:{name}",
+                        category=ValidationCheckCategory.OUTPUT,
+                        recomputed_value=value if bound else None,
+                        absolute_tolerance=0,
+                        relative_tolerance=0,
+                        status=ValidationCheckStatus.PASS if bound else ValidationCheckStatus.FAIL,
+                        message=(
+                            "independently scored pre-outcome imminent-swing forecast"
+                            if bound
+                            else "imminent-swing forecast is not bound to formal result"
+                        ),
+                    )
+                )
         return checks
 
     @staticmethod
@@ -878,6 +909,7 @@ class IndependentValidator:
         calibration_valid: bool,
         randomness_valid: bool,
         flow_valid: bool,
+        swing_valid: bool,
     ) -> list[ValidationRequirementCheck]:
         objective_metrics = [
             item for item in metrics if item.category is ValidationCheckCategory.OBJECTIVE
@@ -915,6 +947,7 @@ class IndependentValidator:
             calibration_valid=calibration_valid,
             randomness_valid=randomness_valid,
             flow_valid=flow_valid,
+            swing_valid=swing_valid,
         )
         causal_names = {item.requirement for item in causal_checks}
         for requirement in model.validation_requirements:
@@ -964,6 +997,7 @@ class IndependentValidator:
         calibration_valid: bool,
         randomness_valid: bool,
         flow_valid: bool,
+        swing_valid: bool,
     ) -> list[ValidationRequirementCheck]:
         if evidence is None:
             return []
@@ -991,11 +1025,16 @@ class IndependentValidator:
                 if capability is CausalScienceCheck.MATCH_FLOW
                 and evidence.match_flow_claim is not None
                 and not flow_valid
+                else ValidationCheckStatus.FAIL
+                if capability is CausalScienceCheck.SWING_PREDICTION
+                and evidence.swing_claim is not None
+                and not swing_valid
                 else ValidationCheckStatus.PASS
                 if capability is CausalScienceCheck.HELDOUT_PREDICTION
                 or (capability is CausalScienceCheck.CALIBRATION_ASSESSMENT and calibration_valid)
                 or (capability is CausalScienceCheck.RANDOMNESS_TEST and randomness_valid)
                 or (capability is CausalScienceCheck.MATCH_FLOW and flow_valid)
+                or (capability is CausalScienceCheck.SWING_PREDICTION and swing_valid)
                 else ValidationCheckStatus.UNCHECKED
             )
             checks.append(
@@ -1038,6 +1077,18 @@ class IndependentValidator:
                             if capability is CausalScienceCheck.MATCH_FLOW
                             and evidence.match_flow is not None
                             and evidence.match_flow_claim is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_holdout_swing_sha256:"
+                                + sha256_json(asdict(evidence.swing)),
+                                "causal_swing_result_artifact_sha256:"
+                                + evidence.swing_claim.result_artifact_sha256,
+                            ]
+                            if capability is CausalScienceCheck.SWING_PREDICTION
+                            and evidence.swing is not None
+                            and evidence.swing_claim is not None
                             else []
                         ),
                     ],
@@ -1095,6 +1146,24 @@ class IndependentValidator:
                 math.isclose(reported, expected, rel_tol=1e-9, abs_tol=1e-9)
                 for reported, expected in zip(claim.values, reference.values, strict=True)
             )
+        )
+
+    @staticmethod
+    def _swing_claim_matches(evidence: AuditedCausalEvidence | None) -> bool:
+        if evidence is None or evidence.swing is None or evidence.swing_claim is None:
+            return False
+        claim = evidence.swing_claim
+        assessment = evidence.swing
+        return (
+            claim.protocol == SWING_PROTOCOL
+            and len(claim.result_artifact_sha256) == 64
+            and all(character in "0123456789abcdef" for character in claim.result_artifact_sha256)
+            and assessment.eligible_points > 0
+            and 0 <= assessment.observed_swings <= assessment.eligible_points
+            and math.isfinite(assessment.brier)
+            and math.isfinite(assessment.baseline_brier)
+            and 0 <= assessment.brier <= 1
+            and 0 <= assessment.baseline_brier <= 1
         )
 
     @staticmethod

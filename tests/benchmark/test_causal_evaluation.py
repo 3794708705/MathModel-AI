@@ -38,6 +38,7 @@ from mathmodel_ai.schemas.program import (
     generated_program_hash,
 )
 from mathmodel_ai.schemas.solver import SolverName, SolverStatus
+from mathmodel_ai.verification.causal_holdout import SWING_PROTOCOL
 from tests.benchmark.test_causal_inputs import _fixture
 from tests.mathematical.helpers import lp_model
 
@@ -233,6 +234,7 @@ def test_randomness_claim_must_come_from_exact_formal_result_artifact(tmp_path: 
                 "conditional_randomness_statistic": 0.125,
                 "conditional_randomness_p": 0.2,
                 "conditional_randomness_replicates": 499,
+                "swing_event_protocol": SWING_PROTOCOL,
             },
             "is_feasible": True,
         }
@@ -273,6 +275,10 @@ def test_randomness_claim_must_come_from_exact_formal_result_artifact(tmp_path: 
     assert flow_claim is not None
     assert flow_claim.values == (0.0, 0.5)
     assert flow_claim.result_artifact_sha256 == stored.sha256
+    swing_claim = evaluator._swing_claim(state.project_id, formal.result.result_id)
+    assert swing_claim is not None
+    assert swing_claim.protocol == SWING_PROTOCOL
+    assert swing_claim.result_artifact_sha256 == stored.sha256
     repository.list_artifacts.return_value = [artifact.model_copy(update={"sha256": "0" * 64})]
     with pytest.raises(QualityGateError, match="CAUSAL_SCIENCE_RESULT_ARTIFACT_MISMATCH"):
         evaluator._randomness_claim(state.project_id, formal.result.result_id)
@@ -310,10 +316,12 @@ def test_generated_predictor_evaluates_in_isolation_and_persists_evidence(
         causal_policy=bundle.causal_policy.model_copy(
             update={
                 "problem_sha256": bundle.manifest.resources[0].sha256,
+                "history_window": 1,
                 "required_scientific_checks": [
                     CausalScienceCheck.HELDOUT_PREDICTION,
                     CausalScienceCheck.MATCH_FLOW,
                     CausalScienceCheck.RANDOMNESS_TEST,
+                    CausalScienceCheck.SWING_PREDICTION,
                 ],
             }
         ),
@@ -354,6 +362,9 @@ def test_generated_predictor_evaluates_in_isolation_and_persists_evidence(
     assert validation_evidence.match_flow is not None
     assert validation_evidence.match_flow_claim is None
     assert len(validation_evidence.match_flow.values) == bundle.causal_split.training_rows
+    assert validation_evidence.swing is not None
+    assert validation_evidence.swing.eligible_points == 1
+    assert validation_evidence.swing_claim is None
     assert validation_evidence.randomness.point_count == bundle.causal_split.training_rows
     assert validation_evidence.randomness.replicates == 499
     assert 0 < validation_evidence.randomness.two_sided_p <= 1

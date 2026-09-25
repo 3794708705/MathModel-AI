@@ -228,8 +228,23 @@ reference reconstructs a pre-outcome rolling mean of condition-adjusted
 residuals for every row. Its `match_flow` check passes only when the same
 row-aligned series is present in the exact formal `result.json` and agrees
 pointwise. This does not prove that a paper visualizes or explains the flow.
-Swing prediction remains `UNCHECKED` until a future-event evaluator exists.
-Unknown agent-declared requirements
+The one-point imminent-swing protocol defines an event as a strict sign
+reversal of that rolling flow after the next point, excluding positions without
+a full prior window. Before revealing the point outcome, the trusted host
+transforms the isolated model's point probability into an event probability by
+evaluating both possible outcomes. It then scores those sealed forecasts and a
+condition-adjusted baseline on held-out matches. The check requires the model's
+exact formal `result.json` to declare the protocol; absence remains
+`UNCHECKED`, and another protocol fails. This is a narrow, one-point event,
+not evidence of all momentum swings or predictive improvement. Associated
+factor analysis and paper visualizations remain separate obligations.
+
+For causal cases without a fixed-model reviewed sidecar, the aggregate
+verification may continue only if all five host-owned scientific checks, all
+model-declared validation requirements, the source-bound policy reference,
+and the formal validation gate pass. Sensitivity, robustness, and Red Team
+retain their existing gates and independent re-audit; an incomplete host policy
+still fails closed. Unknown agent-declared requirements
 likewise remain `UNCHECKED`; no wording or keyword match upgrades them to PASS.
 
 The aggregate verification endpoint intentionally stops at Red Team. It never

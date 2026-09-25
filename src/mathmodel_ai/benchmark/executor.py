@@ -1024,6 +1024,21 @@ class PipelineBenchmarkExecutor:
             if CausalScienceCheck.MATCH_FLOW in policy.required_scientific_checks
             else ""
         )
+        swing_guidance = (
+            " For causal_science:swing_prediction, if the formal model adopts "
+            "a one-point imminent event defined as a strict sign reversal of "
+            "the pre-outcome history_window residual flow after the next point, "
+            "write metrics.swing_event_protocol='next-point-flow-sign-reversal-v1' "
+            "in result.json. The host will transform each isolated held-out "
+            "pre-outcome point probability into a swing-event probability by "
+            "evaluating both possible next outcomes and will score it against "
+            "the held-out event and a condition-adjusted baseline. Points without "
+            "a full prior window are excluded. Do not claim that a one-point "
+            "event captures every kind of future momentum swing, or infer "
+            "predictive skill before seeing the independent holdout score."
+            if CausalScienceCheck.SWING_PREDICTION in policy.required_scientific_checks
+            else ""
+        )
         return [
             "CAUSAL_HOLDOUT_PROTOCOL: The provided CSV contains only training groups. "
             "The benchmark host retains complete groups for an unseen test. "
@@ -1040,6 +1055,7 @@ class PipelineBenchmarkExecutor:
             + science_guidance
             + randomness_guidance
             + flow_guidance
+            + swing_guidance
         ]
 
     @staticmethod

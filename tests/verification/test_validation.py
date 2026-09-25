@@ -1,7 +1,8 @@
 import asyncio
 from copy import deepcopy
 from dataclasses import replace
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -28,10 +29,13 @@ from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.results import EvidenceChainReport
 from mathmodel_ai.schemas.verification import ValidationCheckStatus, ValidationStatus
 from mathmodel_ai.verification.causal_holdout import (
+    SWING_PROTOCOL,
     AuditedCausalEvidence,
     CausalHoldoutResult,
     ConditionalRandomnessAssessment,
     ConditionalRandomnessClaim,
+    ImminentSwingAssessment,
+    ImminentSwingClaim,
     MatchFlowAssessment,
     MatchFlowClaim,
     assess_binary_calibration,
@@ -455,6 +459,59 @@ def test_causal_workflow_stops_after_formal_report_without_reviewed_policy() -> 
     workflow.validate.assert_called_once()  # type: ignore[attr-defined]
 
 
+def test_complete_host_causal_policy_can_continue_without_fixed_model_sidecar() -> None:
+    result_id = uuid4()
+    policy_digest = "c" * 64
+    evidence = AuditedCausalEvidence(
+        formal_result_id=result_id,
+        holdout_execution_id=uuid4(),
+        source_sha256="a" * 64,
+        trace_sha256="b" * 64,
+        result=CausalHoldoutResult(
+            heldout_groups=("B",),
+            training_groups=("A",),
+            predictions=(0.6,),
+            observations=(1.0,),
+            baseline_predictions=(0.5,),
+            brier=0.16,
+            baseline_brier=0.25,
+        ),
+        science_policy_sha256=policy_digest,
+        required_scientific_checks=tuple(CausalScienceCheck),
+    )
+    report = SimpleNamespace(
+        status=ValidationStatus.PASS,
+        result_id=result_id,
+        evidence_refs=[f"causal_science_policy_sha256:{policy_digest}"],
+        requirement_checks=[
+            SimpleNamespace(
+                requirement=f"causal_science:{check.value}",
+                status=ValidationCheckStatus.PASS,
+            )
+            for check in CausalScienceCheck
+        ],
+    )
+    workflow = object.__new__(VerificationWorkflow)
+    workflow.validate = Mock(  # type: ignore[method-assign]
+        return_value=SimpleNamespace(gate=Mock(status=QualityGateStatus.PASS), report=report)
+    )
+    workflow.sensitivity = Mock(  # type: ignore[method-assign]
+        return_value=Mock(gate=Mock(status=QualityGateStatus.PASS))
+    )
+    workflow.robustness = Mock(  # type: ignore[method-assign]
+        return_value=Mock(gate=Mock(status=QualityGateStatus.PASS))
+    )
+    workflow.red_team = AsyncMock(return_value=Mock())  # type: ignore[method-assign]
+    auditor = Mock(return_value=evidence)
+    asyncio.run(workflow.run(uuid4(), causal_auditor=auditor))
+    workflow.red_team.assert_awaited_once()  # type: ignore[attr-defined]
+    report.requirement_checks[-1].status = ValidationCheckStatus.UNCHECKED
+    with pytest.raises(
+        QualityGateError, match="CAUSAL_HOLDOUT_REVIEWED_REQUIREMENT_POLICY_MISSING"
+    ):
+        asyncio.run(workflow.run(uuid4(), causal_auditor=auditor))
+
+
 def test_host_causal_obligations_survive_model_omission_and_keep_gate_closed() -> None:
     model, result, solver_run, _, _, evidence = result_bundle()
     model = model.model_copy(
@@ -568,6 +625,27 @@ def test_host_causal_obligations_survive_model_omission_and_keep_gate_closed() -
     assert {item.requirement: item.status for item in flow_report.requirement_checks}[
         "causal_science:match_flow"
     ] is ValidationCheckStatus.PASS
+    swing_claimed = replace(
+        flow_claimed,
+        swing=ImminentSwingAssessment(
+            eligible_points=5, observed_swings=1, brier=0.12, baseline_brier=0.15
+        ),
+        swing_claim=ImminentSwingClaim(protocol=SWING_PROTOCOL, result_artifact_sha256="f" * 64),
+    )
+    swing_report = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=swing_claimed,
+    )
+    assert {item.requirement: item.status for item in swing_report.requirement_checks}[
+        "causal_science:swing_prediction"
+    ] is ValidationCheckStatus.PASS
+    assert any(
+        item.metric_id == "causal_holdout:swing_brier" and item.recomputed_value == 0.12
+        for item in swing_report.metric_recalculations
+    )
     assert flow_claimed.match_flow_claim is not None
     wrong_flow = replace(
         flow_claimed,
