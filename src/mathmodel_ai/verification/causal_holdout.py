@@ -91,16 +91,12 @@ class MatchFlowClaim:
 
 def assess_match_flow(source: bytes, spec: CausalBinarySpec) -> MatchFlowAssessment:
     """Pre-outcome rolling mean of server-adjusted residuals, in CSV row order."""
-    recent: dict[str, deque[float]] = defaultdict(
-        lambda: deque(maxlen=spec.history_window)
-    )
+    recent: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=spec.history_window))
     values: list[float] = []
     for feature, outcome in iter_causal_binary_points(source, spec):
         window = recent[feature.group]
         values.append(math.fsum(window) / len(window) if window else 0.0)
-        baseline = (1 + feature.prior_condition_positive) / (
-            2 + feature.prior_condition_count
-        )
+        baseline = (1 + feature.prior_condition_positive) / (2 + feature.prior_condition_count)
         window.append(outcome - baseline)
     return MatchFlowAssessment(
         source_sha256=spec.source_sha256,

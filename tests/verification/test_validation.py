@@ -550,17 +550,13 @@ def test_host_causal_obligations_survive_model_omission_and_keep_gate_closed() -
         evidence=evidence,
         causal_evidence=claimed,
     )
-    assert {
-        item.requirement: item.status for item in claimed_report.requirement_checks
-    }["causal_science:randomness_test"] is ValidationCheckStatus.PASS
+    assert {item.requirement: item.status for item in claimed_report.requirement_checks}[
+        "causal_science:randomness_test"
+    ] is ValidationCheckStatus.PASS
     flow_claimed = replace(
         claimed,
-        match_flow=MatchFlowAssessment(
-            source_sha256="e" * 64, window=8, values=(0.0, 0.5, -0.25)
-        ),
-        match_flow_claim=MatchFlowClaim(
-            values=(0.0, 0.5, -0.25), result_artifact_sha256="f" * 64
-        ),
+        match_flow=MatchFlowAssessment(source_sha256="e" * 64, window=8, values=(0.0, 0.5, -0.25)),
+        match_flow_claim=MatchFlowClaim(values=(0.0, 0.5, -0.25), result_artifact_sha256="f" * 64),
     )
     flow_report = validator.validate(
         model=model,
@@ -569,9 +565,9 @@ def test_host_causal_obligations_survive_model_omission_and_keep_gate_closed() -
         evidence=evidence,
         causal_evidence=flow_claimed,
     )
-    assert {
-        item.requirement: item.status for item in flow_report.requirement_checks
-    }["causal_science:match_flow"] is ValidationCheckStatus.PASS
+    assert {item.requirement: item.status for item in flow_report.requirement_checks}[
+        "causal_science:match_flow"
+    ] is ValidationCheckStatus.PASS
     assert flow_claimed.match_flow_claim is not None
     wrong_flow = replace(
         flow_claimed,
@@ -584,9 +580,9 @@ def test_host_causal_obligations_survive_model_omission_and_keep_gate_closed() -
         evidence=evidence,
         causal_evidence=wrong_flow,
     )
-    assert {
-        item.requirement: item.status for item in wrong_flow_report.requirement_checks
-    }["causal_science:match_flow"] is ValidationCheckStatus.FAIL
+    assert {item.requirement: item.status for item in wrong_flow_report.requirement_checks}[
+        "causal_science:match_flow"
+    ] is ValidationCheckStatus.FAIL
     assert claimed.randomness_claim is not None
     wrong_claim = replace(
         claimed,
@@ -599,9 +595,9 @@ def test_host_causal_obligations_survive_model_omission_and_keep_gate_closed() -
         evidence=evidence,
         causal_evidence=wrong_claim,
     )
-    assert {
-        item.requirement: item.status for item in rejected_claim.requirement_checks
-    }["causal_science:randomness_test"] is ValidationCheckStatus.FAIL
+    assert {item.requirement: item.status for item in rejected_claim.requirement_checks}[
+        "causal_science:randomness_test"
+    ] is ValidationCheckStatus.FAIL
     assert (
         validator.audit_report(
             report=report,

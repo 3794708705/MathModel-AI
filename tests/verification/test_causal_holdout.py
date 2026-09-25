@@ -130,9 +130,7 @@ def test_conditional_randomness_is_source_bound_and_not_a_momentum_claim() -> No
     assert first.point_count == 12
     assert first.transition_count == 8
     assert 0 < first.two_sided_p <= 1
-    assert first.seed_sha256 == hashlib.sha256(
-        b"conditional-randomness-v1:" + source
-    ).hexdigest()
+    assert first.seed_sha256 == hashlib.sha256(b"conditional-randomness-v1:" + source).hexdigest()
     changed = source.replace(b"A,1,1,1", b"A,1,2,1")
     with pytest.raises(ValueError, match="CAUSAL_CSV_SIZE_OR_HASH_MISMATCH"):
         assess_conditional_randomness(changed, spec, replicates=99)
