@@ -172,13 +172,24 @@ class ExpectedStructuralFact(BaseModel):
     source_location: str = Field(min_length=1)
 
 
+class CausalScienceCheck(StrEnum):
+    """Host-owned scientific obligations, independent of a generated model's prose."""
+
+    HELDOUT_PREDICTION = "heldout_prediction"
+    CALIBRATION_ASSESSMENT = "calibration_assessment"
+    MATCH_FLOW = "match_flow"
+    RANDOMNESS_TEST = "randomness_test"
+    SWING_PREDICTION = "swing_prediction"
+
+
 class CausalHoldoutPolicy(BaseModel):
-    """Benchmark-owned input split; never supplied by a solve agent."""
+    """Benchmark-owned split and science checklist; never supplied by a solve agent."""
 
     model_config = ConfigDict(extra="forbid")
 
     version: Literal["1"]
     resource_id: str = Field(pattern=r"^RESOURCE-[A-Za-z0-9_-]+$")
+    problem_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
     source_sha256: str = Field(pattern=SHA256_PATTERN)
     group_column: str = Field(min_length=1)
     condition_column: str = Field(min_length=1)
@@ -188,6 +199,7 @@ class CausalHoldoutPolicy(BaseModel):
     history_window: int = Field(default=8, ge=1, le=1000)
     fraction: float = Field(gt=0, lt=1)
     salt: str = Field(min_length=1, max_length=128)
+    required_scientific_checks: list[CausalScienceCheck] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def columns_and_codes_are_distinct(self) -> CausalHoldoutPolicy:
@@ -195,6 +207,14 @@ class CausalHoldoutPolicy(BaseModel):
             raise ValueError("causal holdout columns must be distinct")
         if self.positive_value == self.negative_value:
             raise ValueError("causal holdout outcome codes must differ")
+        if len(self.required_scientific_checks) != len(set(self.required_scientific_checks)):
+            raise ValueError("causal scientific checks must be unique")
+        if self.required_scientific_checks and (
+            CausalScienceCheck.HELDOUT_PREDICTION not in self.required_scientific_checks
+        ):
+            raise ValueError("causal scientific checks require heldout prediction")
+        if self.required_scientific_checks and self.problem_sha256 is None:
+            raise ValueError("causal scientific checks require a problem source digest")
         return self
 
 

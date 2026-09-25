@@ -197,6 +197,28 @@ This is an additional logical-AND gate. It cannot set `verified_result_id`, clea
 existing Phase 5 failures, repair a model, or override provider, literature,
 paper, submission, security, and benchmark gates.
 
+### Group-held-out binary prediction evidence
+
+For a benchmark with `causal-holdout-v1.json`, the trusted host keeps the
+complete official CSV. Modeling and solving see training groups only; the
+generated predictor receives one pre-outcome feature at a time in an isolated
+container. The auxiliary execution records the exact formal result, source
+digest, and whole science-policy digest. Formal VALIDATE re-reads the training
+file and stored artifacts, replays the official labels and group split, and
+recalculates Brier loss and its pre-outcome baseline. Red Team audits the same
+persisted evidence again; a repaired formal result cannot reuse the old trace.
+
+The policy may also list host-owned scientific checks, bound to the official
+problem-file digest and included in the solve input digest. These checks are
+present even if an agent omits them from `validation_requirements`. The current
+binary evaluator can independently assess held-out prediction and calibration.
+Calibration uses ten fixed-width probability bins and descriptive expected
+calibration error, `sum_b |sum_predicted_b - sum_observed_b| / N`; it asserts
+neither good calibration nor an improvement over baseline. Match-flow,
+randomness, and swing-prediction checks remain `UNCHECKED` until their own
+result-bound independent evaluators exist. Unknown agent-declared requirements
+likewise remain `UNCHECKED`; no wording or keyword match upgrades them to PASS.
+
 The aggregate verification endpoint intentionally stops at Red Team. It never
 starts repair implicitly; callers must choose the repair endpoint or bounded
 repair loop after inspecting Critical findings.

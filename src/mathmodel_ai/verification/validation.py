@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import math
+from dataclasses import asdict
 
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.paper.hashing import sha256_json
+from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.execution import ExecutionStatus
 from mathmodel_ai.schemas.independent_verification import (
     IndependentStatus,
@@ -30,7 +32,10 @@ from mathmodel_ai.schemas.verification import (
     ValidationStatus,
     VariableValidationCheck,
 )
-from mathmodel_ai.verification.causal_holdout import AuditedCausalEvidence
+from mathmodel_ai.verification.causal_holdout import (
+    AuditedCausalEvidence,
+    assess_binary_calibration,
+)
 from mathmodel_ai.verification.evaluator import (
     IndependentEvaluationError,
     IndependentExpressionEvaluator,
@@ -109,10 +114,22 @@ class IndependentValidator:
         )
         if not causal_bound:
             errors.append("VALIDATION_FAIL:CAUSAL_HOLDOUT_FORMAL_RESULT_MISMATCH")
+        calibration_valid = False
+        if causal_evidence is not None and causal_evidence.calibration is not None:
+            try:
+                calibration_valid = causal_evidence.calibration == assess_binary_calibration(
+                    causal_evidence.result
+                )
+            except ValueError:
+                pass
+            if not calibration_valid:
+                errors.append("VALIDATION_FAIL:CAUSAL_CALIBRATION_RECOMPUTATION_MISMATCH")
         metrics = [
             *self._metric_checks(model, result, solver_run, values),
             *self._reviewed_metric_checks(reviewed_evidence),
-            *self._causal_metric_checks(causal_evidence, bound=causal_bound),
+            *self._causal_metric_checks(
+                causal_evidence, bound=causal_bound, calibration_valid=calibration_valid
+            ),
         ]
         requirement_checks = self._requirement_checks(
             model,
@@ -122,6 +139,9 @@ class IndependentValidator:
             metrics=metrics,
             reviewed_evidence=reviewed_evidence,
             reviewed_errors=reviewed_errors,
+            causal_evidence=causal_evidence,
+            causal_bound=causal_bound and evidence.valid,
+            calibration_valid=calibration_valid,
         )
 
         failures = [
@@ -213,6 +233,21 @@ class IndependentValidator:
                         f"causal_holdout_execution:{causal_evidence.holdout_execution_id}",
                         f"causal_source_sha256:{causal_evidence.source_sha256}",
                         f"causal_trace_sha256:{causal_evidence.trace_sha256}",
+                        *(
+                            [
+                                f"causal_science_policy_sha256:{causal_evidence.science_policy_sha256}"
+                            ]
+                            if causal_evidence.science_policy_sha256 is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_calibration_sha256:"
+                                + sha256_json(asdict(causal_evidence.calibration))
+                            ]
+                            if causal_evidence.calibration is not None
+                            else []
+                        ),
                     ]
                     if causal_evidence is not None
                     else []
@@ -635,11 +670,11 @@ class IndependentValidator:
 
     @staticmethod
     def _causal_metric_checks(
-        evidence: AuditedCausalEvidence | None, *, bound: bool
+        evidence: AuditedCausalEvidence | None, *, bound: bool, calibration_valid: bool
     ) -> list[MetricRecalculation]:
         if evidence is None:
             return []
-        return [
+        checks = [
             MetricRecalculation(
                 metric_id=f"causal_holdout:{name}",
                 category=ValidationCheckCategory.OUTPUT,
@@ -658,6 +693,29 @@ class IndependentValidator:
                 ("baseline_brier", evidence.result.baseline_brier),
             )
         ]
+        if evidence.calibration is not None:
+            checks.append(
+                MetricRecalculation(
+                    metric_id="causal_holdout:calibration_ece",
+                    category=ValidationCheckCategory.OUTPUT,
+                    recomputed_value=(
+                        evidence.calibration.ece if bound and calibration_valid else None
+                    ),
+                    absolute_tolerance=0,
+                    relative_tolerance=0,
+                    status=(
+                        ValidationCheckStatus.PASS
+                        if bound and calibration_valid
+                        else ValidationCheckStatus.FAIL
+                    ),
+                    message=(
+                        "independently recomputed holdout reliability bins and ECE"
+                        if bound and calibration_valid
+                        else "holdout calibration could not be independently recomputed"
+                    ),
+                )
+            )
+        return checks
 
     @staticmethod
     def _reviewed_metric_checks(
@@ -761,6 +819,9 @@ class IndependentValidator:
         metrics: list[MetricRecalculation],
         reviewed_evidence: ReviewedValidationEvidence | None,
         reviewed_errors: list[str],
+        causal_evidence: AuditedCausalEvidence | None,
+        causal_bound: bool,
+        calibration_valid: bool,
     ) -> list[ValidationRequirementCheck]:
         objective_metrics = [
             item for item in metrics if item.category is ValidationCheckCategory.OBJECTIVE
@@ -792,6 +853,10 @@ class IndependentValidator:
             else {}
         )
         checks: list[ValidationRequirementCheck] = []
+        causal_checks = self._causal_requirement_checks(
+            causal_evidence, bound=causal_bound, calibration_valid=calibration_valid
+        )
+        causal_names = {item.requirement for item in causal_checks}
         for requirement in model.validation_requirements:
             binding = reviewed_bindings.get(requirement)
             if binding is not None and reviewed_evidence is not None:
@@ -804,6 +869,8 @@ class IndependentValidator:
                     )
                 )
                 continue
+            if requirement in causal_names:
+                continue  # The host check below covers this exact declared identifier.
             normalized = " ".join(requirement.casefold().split())
             relevant: list[ValidationCheckStatus] = []
             refs: list[str] = []
@@ -824,6 +891,59 @@ class IndependentValidator:
                     status=status,
                     evidence_refs=refs,
                     message=f"validation requirement is {status.value.lower()}: {requirement}",
+                )
+            )
+        checks.extend(causal_checks)
+        return checks
+
+    @staticmethod
+    def _causal_requirement_checks(
+        evidence: AuditedCausalEvidence | None, *, bound: bool, calibration_valid: bool
+    ) -> list[ValidationRequirementCheck]:
+        if evidence is None:
+            return []
+        policy_valid = (
+            evidence.science_policy_sha256 is not None
+            and len(evidence.science_policy_sha256) == 64
+            and all(character in "0123456789abcdef" for character in evidence.science_policy_sha256)
+            and len(set(evidence.required_scientific_checks))
+            == len(evidence.required_scientific_checks)
+        )
+        checks: list[ValidationRequirementCheck] = []
+        for capability in evidence.required_scientific_checks:
+            status = (
+                ValidationCheckStatus.FAIL
+                if not bound or not policy_valid
+                else ValidationCheckStatus.FAIL
+                if capability is CausalScienceCheck.CALIBRATION_ASSESSMENT
+                and evidence.calibration is not None
+                and not calibration_valid
+                else ValidationCheckStatus.PASS
+                if capability is CausalScienceCheck.HELDOUT_PREDICTION
+                or (capability is CausalScienceCheck.CALIBRATION_ASSESSMENT and calibration_valid)
+                else ValidationCheckStatus.UNCHECKED
+            )
+            checks.append(
+                ValidationRequirementCheck(
+                    requirement=f"causal_science:{capability.value}",
+                    status=status,
+                    evidence_refs=[
+                        f"causal_holdout_execution:{evidence.holdout_execution_id}",
+                        f"causal_trace_sha256:{evidence.trace_sha256}",
+                        f"causal_science_policy_sha256:{evidence.science_policy_sha256}",
+                        *(
+                            [
+                                "causal_calibration_sha256:"
+                                + sha256_json(asdict(evidence.calibration))
+                            ]
+                            if capability is CausalScienceCheck.CALIBRATION_ASSESSMENT
+                            and evidence.calibration is not None
+                            else []
+                        ),
+                    ],
+                    message=(
+                        f"host scientific check is {status.value.lower()}: {capability.value}"
+                    ),
                 )
             )
         return checks

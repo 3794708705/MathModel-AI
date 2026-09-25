@@ -15,6 +15,7 @@ from mathmodel_ai.sandbox.causal_holdout import (
 from mathmodel_ai.schemas.execution import ExecutionStatus, SandboxLimits
 from mathmodel_ai.schemas.files import ArtifactKind
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec
+from mathmodel_ai.verification.causal_holdout import assess_binary_calibration
 
 IMAGE = "mathmodel-ai-sandbox:phase3"
 
@@ -223,4 +224,8 @@ class Predictor:
     assert len(run.result.training_groups) == 25
     assert len(run.result.predictions) > 100
     assert run.result.brier == pytest.approx(run.result.baseline_brier)
+    calibration = assess_binary_calibration(run.result)
+    assert calibration.count == len(run.result.predictions)
+    assert sum(item.count for item in calibration.bins) == calibration.count
+    assert 0 <= calibration.ece <= 1
     assert verify_recorded_causal_holdout(source, run, store) == run.result

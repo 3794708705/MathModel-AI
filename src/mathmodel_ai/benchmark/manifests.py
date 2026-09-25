@@ -12,6 +12,7 @@ from mathmodel_ai.schemas.benchmark import (
     BenchmarkCaseManifest,
     BenchmarkPhase,
     BenchmarkResource,
+    BenchmarkResourceRole,
     CausalHoldoutPolicy,
     ModelingCategory,
     benchmark_manifest_digest,
@@ -95,6 +96,14 @@ class BenchmarkManifestRegistry:
         visible_artifacts: tuple[BlindSolveArtifact, ...] | None = None
         split: CausalInputSplit | None = None
         if policy is not None:
+            if policy.problem_sha256 is not None:
+                problems = [
+                    item
+                    for item in artifacts
+                    if item.resource.role is BenchmarkResourceRole.PROBLEM
+                ]
+                if len(problems) != 1 or sha256_bytes(problems[0].content) != policy.problem_sha256:
+                    raise ValueError("CAUSAL_SCIENCE_PROBLEM_SOURCE_MISMATCH")
             target = next(
                 (item for item in artifacts if item.resource.resource_id == policy.resource_id),
                 None,
@@ -140,6 +149,7 @@ class BenchmarkManifestRegistry:
             "resources": digest_payload,
         }
         if split is not None:
+            assert policy is not None
             digest_input["causal_split"] = {
                 "source_sha256": split.source_sha256,
                 "training_sha256": split.training_sha256,
@@ -147,6 +157,7 @@ class BenchmarkManifestRegistry:
                 "heldout_groups": split.heldout_groups,
                 "training_groups": split.training_groups,
             }
+            digest_input["causal_science_policy_sha256"] = sha256_json(policy)
         return BlindSolveBundle(
             manifest=manifest,
             artifacts=tuple(artifacts),

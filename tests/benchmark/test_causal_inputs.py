@@ -14,6 +14,7 @@ from mathmodel_ai.schemas.benchmark import (
     BenchmarkPhase,
     BenchmarkResource,
     BenchmarkResourceRole,
+    CausalScienceCheck,
     GroundTruthPolicy,
     ModelingCategory,
 )
@@ -166,6 +167,56 @@ def test_solve_input_digest_binds_holdout_policy(tmp_path: Path) -> None:
     assert before.causal_split.policy_sha256 != after.causal_split.policy_sha256
 
 
+def test_solve_input_digest_binds_scientific_obligations(tmp_path: Path) -> None:
+    registry, cache = _fixture(tmp_path)
+    before = registry.load_blind_solve_bundle("BENCH-CAUSAL-TEST", cache)
+    path = tmp_path / "manifests" / "case-001" / "causal-holdout-v1.json"
+    policy = json.loads(path.read_text(encoding="utf-8"))
+    policy["required_scientific_checks"] = [
+        CausalScienceCheck.HELDOUT_PREDICTION,
+        CausalScienceCheck.MATCH_FLOW,
+    ]
+    policy["problem_sha256"] = hashlib.sha256(b"problem").hexdigest()
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    after = registry.load_blind_solve_bundle("BENCH-CAUSAL-TEST", cache)
+    assert before.solve_input_digest != after.solve_input_digest
+    assert before.causal_split is not None and after.causal_split is not None
+    assert before.causal_split.policy_sha256 == after.causal_split.policy_sha256
+    assert after.causal_policy is not None
+    assert after.causal_policy.required_scientific_checks == [
+        CausalScienceCheck.HELDOUT_PREDICTION,
+        CausalScienceCheck.MATCH_FLOW,
+    ]
+
+
+@pytest.mark.parametrize(
+    "checks",
+    [["match_flow"], ["heldout_prediction", "heldout_prediction"]],
+)
+def test_causal_science_policy_rejects_incomplete_or_duplicate_checks(
+    tmp_path: Path, checks: list[str]
+) -> None:
+    registry, cache = _fixture(tmp_path)
+    path = tmp_path / "manifests" / "case-001" / "causal-holdout-v1.json"
+    policy = json.loads(path.read_text(encoding="utf-8"))
+    policy["required_scientific_checks"] = checks
+    policy["problem_sha256"] = hashlib.sha256(b"problem").hexdigest()
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    with pytest.raises(ValueError, match="causal scientific checks"):
+        registry.load_blind_solve_bundle("BENCH-CAUSAL-TEST", cache)
+
+
+def test_scientific_obligations_reject_a_different_problem_source(tmp_path: Path) -> None:
+    registry, cache = _fixture(tmp_path)
+    path = tmp_path / "manifests" / "case-001" / "causal-holdout-v1.json"
+    policy = json.loads(path.read_text(encoding="utf-8"))
+    policy["required_scientific_checks"] = ["heldout_prediction"]
+    policy["problem_sha256"] = "0" * 64
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    with pytest.raises(ValueError, match="CAUSAL_SCIENCE_PROBLEM_SOURCE_MISMATCH"):
+        registry.load_blind_solve_bundle("BENCH-CAUSAL-TEST", cache)
+
+
 def test_official_c_cache_is_split_without_new_benchmark_run() -> None:
     root = Path(__file__).resolve().parents[2]
     cache = root / "var/benchmarks/cache/BENCH-MCM2024-C"
@@ -175,6 +226,12 @@ def test_official_c_cache_is_split_without_new_benchmark_run() -> None:
         "BENCH-MCM2024-C", cache
     )
     assert bundle.causal_split is not None
+    assert bundle.causal_policy is not None
+    assert bundle.causal_policy.required_scientific_checks == list(CausalScienceCheck)
+    assert (
+        "causal_science:randomness_test"
+        in PipelineBenchmarkExecutor._causal_user_guidance(bundle)[0]
+    )
     assert len(bundle.causal_split.heldout_groups) == 6
     assert len(bundle.causal_split.training_groups) == 25
     assert bundle.causal_split.training_rows + bundle.causal_split.heldout_rows == 7284

@@ -1,5 +1,6 @@
 import asyncio
 from copy import deepcopy
+from dataclasses import replace
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -7,6 +8,7 @@ import pytest
 
 from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
+from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.files import ArtifactKind, ArtifactRecord
 from mathmodel_ai.schemas.independent_verification import (
     CsvObservationSpec,
@@ -25,7 +27,11 @@ from mathmodel_ai.schemas.mathematical import ExpressionKind, MathExpression
 from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.results import EvidenceChainReport
 from mathmodel_ai.schemas.verification import ValidationCheckStatus, ValidationStatus
-from mathmodel_ai.verification.causal_holdout import AuditedCausalEvidence, CausalHoldoutResult
+from mathmodel_ai.verification.causal_holdout import (
+    AuditedCausalEvidence,
+    CausalHoldoutResult,
+    assess_binary_calibration,
+)
 from mathmodel_ai.verification.evaluator import (
     IndependentEvaluationError,
     IndependentExpressionEvaluator,
@@ -443,6 +449,98 @@ def test_causal_workflow_stops_after_formal_report_without_reviewed_policy() -> 
     ):
         asyncio.run(workflow.run(uuid4(), causal_auditor=Mock()))
     workflow.validate.assert_called_once()  # type: ignore[attr-defined]
+
+
+def test_host_causal_obligations_survive_model_omission_and_keep_gate_closed() -> None:
+    model, result, solver_run, _, _, evidence = result_bundle()
+    model = model.model_copy(
+        update={"validation_requirements": ["causal_science:heldout_prediction"]}
+    )
+    digest = mathematical_model_digest(model)
+    result = result.model_copy(update={"model_digest": digest})
+    solver_run = solver_run.model_copy(update={"model_digest": digest})
+    causal = AuditedCausalEvidence(
+        formal_result_id=result.result_id,
+        holdout_execution_id=uuid4(),
+        source_sha256="a" * 64,
+        trace_sha256="b" * 64,
+        science_policy_sha256="c" * 64,
+        required_scientific_checks=(
+            CausalScienceCheck.HELDOUT_PREDICTION,
+            CausalScienceCheck.CALIBRATION_ASSESSMENT,
+            CausalScienceCheck.MATCH_FLOW,
+            CausalScienceCheck.RANDOMNESS_TEST,
+            CausalScienceCheck.SWING_PREDICTION,
+        ),
+        result=CausalHoldoutResult(
+            heldout_groups=("match-2",),
+            training_groups=("match-1",),
+            predictions=(0.6,),
+            observations=(1.0,),
+            baseline_predictions=(0.5,),
+            brier=0.16,
+            baseline_brier=0.25,
+        ),
+    )
+    causal = replace(causal, calibration=assess_binary_calibration(causal.result))
+    validator = IndependentValidator()
+    report = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=causal,
+    )
+    checks = {item.requirement: item.status for item in report.requirement_checks}
+    assert len(report.requirement_checks) == 5
+    assert checks["causal_science:heldout_prediction"] is ValidationCheckStatus.PASS
+    assert checks["causal_science:calibration_assessment"] is ValidationCheckStatus.PASS
+    assert any(ref.startswith("causal_calibration_sha256:") for ref in report.evidence_refs)
+    assert any(
+        item.metric_id == "causal_holdout:calibration_ece"
+        and item.status is ValidationCheckStatus.PASS
+        for item in report.metric_recalculations
+    )
+    assert all(
+        status is ValidationCheckStatus.UNCHECKED
+        for name, status in checks.items()
+        if name
+        not in {"causal_science:heldout_prediction", "causal_science:calibration_assessment"}
+    )
+    assert report.status is ValidationStatus.NOT_EVALUABLE
+    assert validation_quality_gate(report).status.value == "RETRY"
+    assert (
+        validator.audit_report(
+            report=report,
+            model=model,
+            result=result,
+            solver_run=solver_run,
+            evidence=evidence,
+            causal_evidence=causal,
+        )
+        == []
+    )
+    missing_policy = replace(causal, science_policy_sha256=None)
+    rejected = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=missing_policy,
+    )
+    assert rejected.status is ValidationStatus.FAIL
+    assert all(item.status is ValidationCheckStatus.FAIL for item in rejected.requirement_checks)
+    assert causal.calibration is not None
+    corrupted = replace(causal, calibration=replace(causal.calibration, ece=0.0))
+    mismatched = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=corrupted,
+    )
+    assert "VALIDATION_FAIL:CAUSAL_CALIBRATION_RECOMPUTATION_MISMATCH" in mismatched.errors
+    assert mismatched.status is ValidationStatus.FAIL
 
 
 @pytest.mark.parametrize(

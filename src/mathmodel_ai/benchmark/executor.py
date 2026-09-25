@@ -984,6 +984,15 @@ class PipelineBenchmarkExecutor:
             return []
         if policy is None:
             raise QualityGateError("CAUSAL_HOLDOUT_POLICY_MISSING")
+        science_guidance = (
+            " Preserve these exact validation requirement identifiers in the formal model: "
+            + ", ".join(
+                f"causal_science:{item.value}" for item in policy.required_scientific_checks
+            )
+            + ". The host checks every listed obligation even if the model omits it."
+            if policy.required_scientific_checks
+            else ""
+        )
         return [
             "CAUSAL_HOLDOUT_PROTOCOL: The provided CSV contains only training groups. "
             "The benchmark host retains complete groups for an unseen test. "
@@ -995,7 +1004,7 @@ class PipelineBenchmarkExecutor:
             "float) -> None and predict(feature: dict) -> float in [0,1]. The host "
             "will fit on training rows then request held-out predictions one point at a "
             "time. Do not embed, infer, or request held-out labels. Any claimed "
-            "holdout metric must await the independent host trace."
+            "holdout metric must await the independent host trace." + science_guidance
         ]
 
     @staticmethod

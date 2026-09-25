@@ -1,10 +1,13 @@
 import hashlib
 import json
+from dataclasses import replace
 
 import pytest
 
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec, CausalFeature
 from mathmodel_ai.verification.causal_holdout import (
+    CausalHoldoutResult,
+    assess_binary_calibration,
     causal_trace_payload,
     evaluate_causal_holdout,
     heldout_groups,
@@ -96,3 +99,23 @@ def test_trace_recomputes_labels_split_baseline_and_loss() -> None:
     altered_source = source.replace(b"A,1,1,1", b"A,1,2,1")
     with pytest.raises(ValueError, match="CAUSAL_CSV_SIZE_OR_HASH_MISMATCH"):
         verify_causal_trace(altered_source, payload)
+
+
+def test_calibration_recomputes_fixed_probability_bins_without_skill_claim() -> None:
+    result = CausalHoldoutResult(
+        heldout_groups=("B",),
+        training_groups=("A",),
+        predictions=(0.0, 0.2, 0.8, 1.0),
+        observations=(0.0, 1.0, 1.0, 0.0),
+        baseline_predictions=(0.5,) * 4,
+        brier=0.42,
+        baseline_brier=0.25,
+    )
+    assessment = assess_binary_calibration(result, bin_count=5)
+    assert assessment.count == 4
+    assert assessment.ece == pytest.approx(0.4)
+    assert [item.count for item in assessment.bins] == [1, 1, 0, 0, 2]
+    assert assessment.bins[4].mean_prediction == pytest.approx(0.9)
+    assert assessment.bins[4].observed_rate == pytest.approx(0.5)
+    with pytest.raises(ValueError, match="CAUSAL_CALIBRATION_INPUT_INVALID"):
+        assess_binary_calibration(replace(result, predictions=(float("nan"),)))

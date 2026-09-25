@@ -11,6 +11,7 @@ from mathmodel_ai.files.storage import FileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.mathematical.repository import MathematicalRepository
 from mathmodel_ai.mathematical.workflow import MathematicalRunOutcome
+from mathmodel_ai.paper.hashing import sha256_json
 from mathmodel_ai.sandbox.causal_holdout import (
     IsolatedCausalHoldout,
     run_isolated_causal_holdout,
@@ -23,6 +24,7 @@ from mathmodel_ai.verification.causal_binary import CausalBinarySpec
 from mathmodel_ai.verification.causal_holdout import (
     AuditedCausalEvidence,
     CausalHoldoutResult,
+    assess_binary_calibration,
     causal_trace_payload,
 )
 
@@ -174,6 +176,7 @@ class CausalBenchmarkEvaluator:
             model_digest=program.model_digest,
             generated_program_id=program.program_id,
             formal_result_id=formal_result.result_id,
+            science_policy_sha256=sha256_json(policy),
         )
         self._repository.persist_auxiliary_execution(run.execution, list(run.artifacts))
         if run.execution.status is not ExecutionStatus.SUCCEEDED or run.result is None:
@@ -262,6 +265,8 @@ class CausalBenchmarkEvaluator:
         ):
             raise QualityGateError("CAUSAL_HOLDOUT_PERSISTED_EVIDENCE_MISMATCH")
         holdout = holdouts[0]
+        if holdout.environment.get("science_policy_sha256") != sha256_json(policy):
+            raise QualityGateError("CAUSAL_HOLDOUT_SCIENCE_POLICY_MISMATCH")
         if (
             holdout.execution_origin is not ExecutionOrigin.GENERATED_PROGRAM
             or holdout.model_digest != mathematical_model_digest(formal.model)
@@ -353,4 +358,7 @@ class CausalBenchmarkEvaluator:
             source_sha256=policy.source_sha256,
             trace_sha256=hashlib.sha256(trace).hexdigest(),
             result=result,
+            science_policy_sha256=sha256_json(policy),
+            required_scientific_checks=tuple(policy.required_scientific_checks),
+            calibration=assess_binary_calibration(result),
         )

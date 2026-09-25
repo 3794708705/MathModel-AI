@@ -160,9 +160,15 @@ def run_isolated_causal_holdout(
     model_digest: str | None = None,
     generated_program_id: UUID | None = None,
     formal_result_id: UUID | None = None,
+    science_policy_sha256: str | None = None,
 ) -> IsolatedCausalHoldout:
     """Return a real execution record even when Docker or predictor code fails."""
     encoded = predictor_code.encode("utf-8")
+    if science_policy_sha256 is not None and (
+        len(science_policy_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in science_policy_sha256)
+    ):
+        raise ValueError("causal science policy digest is invalid")
     if not encoded or len(encoded) > 2 * 1024 * 1024:
         raise ValueError("isolated predictor code must contain at most 2 MiB")
     run_id = uuid4()
@@ -329,6 +335,11 @@ def run_isolated_causal_holdout(
             "executor": "docker-causal-stream",
             "source_sha256": spec.source_sha256,
             **({"formal_result_id": str(formal_result_id)} if formal_result_id else {}),
+            **(
+                {"science_policy_sha256": science_policy_sha256}
+                if science_policy_sha256 is not None
+                else {}
+            ),
         },
         start_time=started,
         end_time=ended,

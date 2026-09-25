@@ -19,6 +19,7 @@ from mathmodel_ai.db.models import Problem, Project
 from mathmodel_ai.files.storage import LocalFileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.mathematical.repository import MathematicalRepository
+from mathmodel_ai.paper.hashing import sha256_json
 from mathmodel_ai.schemas.execution import (
     ExecutionOrigin,
     ExecutionRecord,
@@ -240,6 +241,9 @@ def test_generated_predictor_evaluates_in_isolation_and_persists_evidence(
     assert result.execution.environment["formal_result_id"] == str(
         mathematical.solve_stage.result.result_id
     )
+    assert result.execution.environment["science_policy_sha256"] == sha256_json(
+        bundle.causal_policy
+    )
     assert (
         result.execution.generated_program_id
         == mathematical.solve_stage.execution.program.program_id
@@ -261,6 +265,8 @@ def test_generated_predictor_evaluates_in_isolation_and_persists_evidence(
         holdout_execution_id=result.execution.run_id,
     )
     assert validation_evidence.result == replayed
+    assert validation_evidence.calibration is not None
+    assert validation_evidence.calibration.count == len(replayed.predictions)
     assert validation_evidence.formal_result_id == mathematical.solve_stage.result.result_id
     assert validation_evidence.source_sha256 == bundle.causal_split.source_sha256  # type: ignore[union-attr]
     artifacts = repository.list_artifacts.return_value
@@ -280,9 +286,22 @@ def test_generated_predictor_evaluates_in_isolation_and_persists_evidence(
     altered_policy = replace(
         bundle, causal_policy=bundle.causal_policy.model_copy(update={"salt": "changed-salt"})
     )
-    with pytest.raises(ValueError, match="CAUSAL_EXECUTION_POLICY_MISMATCH"):
+    with pytest.raises(QualityGateError, match="CAUSAL_HOLDOUT_SCIENCE_POLICY_MISMATCH"):
         evaluator.audit_persisted(
             bundle=altered_policy,
+            project_id=state.project_id,
+            formal_result_id=mathematical.solve_stage.result.result_id,
+            holdout_execution_id=result.execution.run_id,
+        )
+    changed_obligations = replace(
+        bundle,
+        causal_policy=bundle.causal_policy.model_copy(
+            update={"required_scientific_checks": ["heldout_prediction", "match_flow"]}
+        ),
+    )
+    with pytest.raises(QualityGateError, match="CAUSAL_HOLDOUT_SCIENCE_POLICY_MISMATCH"):
+        evaluator.audit_validation_evidence(
+            bundle=changed_obligations,
             project_id=state.project_id,
             formal_result_id=mathematical.solve_stage.result.result_id,
             holdout_execution_id=result.execution.run_id,

@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from typing import Protocol, cast
 from uuid import UUID
 
+from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.verification.causal_binary import (
     CausalBinarySpec,
     CausalFeature,
@@ -37,6 +38,58 @@ class CausalHoldoutResult:
 
 
 @dataclass(frozen=True)
+class CausalCalibrationBin:
+    index: int
+    count: int
+    mean_prediction: float | None
+    observed_rate: float | None
+
+
+@dataclass(frozen=True)
+class CausalCalibrationAssessment:
+    count: int
+    ece: float
+    bins: tuple[CausalCalibrationBin, ...]
+
+
+def assess_binary_calibration(
+    result: CausalHoldoutResult, *, bin_count: int = 10
+) -> CausalCalibrationAssessment:
+    """Fixed-width reliability bins and descriptive ECE; no quality threshold."""
+    if (
+        not 2 <= bin_count <= 100
+        or not result.predictions
+        or len(result.predictions) != len(result.observations)
+    ):
+        raise ValueError("CAUSAL_CALIBRATION_INPUT_INVALID")
+    counts = [0] * bin_count
+    predicted = [0.0] * bin_count
+    observed = [0.0] * bin_count
+    for probability, outcome in zip(result.predictions, result.observations, strict=True):
+        if not math.isfinite(probability) or not 0 <= probability <= 1 or outcome not in (0.0, 1.0):
+            raise ValueError("CAUSAL_CALIBRATION_INPUT_INVALID")
+        index = min(int(probability * bin_count), bin_count - 1)
+        counts[index] += 1
+        predicted[index] += probability
+        observed[index] += outcome
+    total = len(result.predictions)
+    bins = tuple(
+        CausalCalibrationBin(
+            index=index,
+            count=counts[index],
+            mean_prediction=predicted[index] / counts[index] if counts[index] else None,
+            observed_rate=observed[index] / counts[index] if counts[index] else None,
+        )
+        for index in range(bin_count)
+    )
+    return CausalCalibrationAssessment(
+        count=total,
+        ece=math.fsum(abs(p - y) for p, y in zip(predicted, observed, strict=True)) / total,
+        bins=bins,
+    )
+
+
+@dataclass(frozen=True)
 class AuditedCausalEvidence:
     """A formal-result-bound holdout replay, constructed by the trusted evaluator."""
 
@@ -45,6 +98,9 @@ class AuditedCausalEvidence:
     source_sha256: str
     trace_sha256: str
     result: CausalHoldoutResult
+    science_policy_sha256: str | None = None
+    required_scientific_checks: tuple[CausalScienceCheck, ...] = ()
+    calibration: CausalCalibrationAssessment | None = None
 
 
 def causal_trace_payload(
