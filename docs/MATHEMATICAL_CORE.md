@@ -21,6 +21,10 @@ Objectives, constraints, and equations use a bounded recursive `MathExpression`
 tree with constant, symbol, add, subtract, multiply, divide, power, and negate
 nodes. Deterministic code walks this tree for reference discovery, evaluation,
 linearization, unit composition, feasibility checking, and solver translation.
+The deterministic SciPy nonlinear runtime resolves uniquely defined, acyclic
+derived scalar equations at each candidate point before evaluating objectives
+and constraints, then reports those derived values with the decision values for
+independent verification. Undefined or non-finite values remain failures.
 There is no `eval`, regex reconstruction from LaTeX, or general-purpose CAS.
 LaTeX remains explanatory equation metadata, not executable truth.
 

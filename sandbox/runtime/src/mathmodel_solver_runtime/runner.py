@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from time import monotonic
 from typing import Any
 
@@ -38,6 +39,37 @@ def _evaluate(expression: dict[str, Any], values: dict[str, float]) -> float:
     if kind == "NEGATE":
         return -operands[0]
     raise ValueError(f"unsupported expression kind {kind}")
+
+
+def _resolved_scalar_values(model: dict[str, Any], values: dict[str, float]) -> dict[str, float]:
+    """Evaluate uniquely defined derived scalars from the current candidate point."""
+    resolved = dict(values)
+    derived = {str(item["symbol"]) for item in model.get("derived_variables", [])}
+    definitions: dict[str, list[dict[str, Any]]] = {}
+    for equation in model.get("equations", []):
+        lhs = equation["lhs"]
+        if lhs["kind"] == "SYMBOL" and lhs["symbol"] in derived:
+            definitions.setdefault(str(lhs["symbol"]), []).append(equation["rhs"])
+    pending = {
+        symbol: expressions[0]
+        for symbol, expressions in definitions.items()
+        if len(expressions) == 1 and symbol not in resolved
+    }
+    for _ in range(len(pending)):
+        progress = False
+        for symbol, expression in list(pending.items()):
+            try:
+                value = _evaluate(expression, resolved)
+            except KeyError:
+                continue
+            if isinstance(value, complex) or not math.isfinite(value):
+                raise ValueError(f"derived scalar {symbol} is not finite real")
+            resolved[symbol] = value
+            del pending[symbol]
+            progress = True
+        if not progress:
+            break
+    return resolved
 
 
 def _linearize(
@@ -277,10 +309,13 @@ def _solve_scipy(payload: dict[str, Any]) -> dict[str, Any]:
     maximize = model["objective"]["sense"] == "MAXIMIZE"
 
     def values(vector: Any) -> dict[str, float]:
-        return {
-            **parameters,
-            **{symbol: float(value) for symbol, value in zip(symbols, vector, strict=True)},
-        }
+        return _resolved_scalar_values(
+            model,
+            {
+                **parameters,
+                **{symbol: float(value) for symbol, value in zip(symbols, vector, strict=True)},
+            },
+        )
 
     def objective(vector: Any) -> float:
         observed = _evaluate(model["objective"]["expression"], values(vector))
@@ -329,15 +364,15 @@ def _solve_scipy(payload: dict[str, Any]) -> dict[str, Any]:
         constraints=nonlinear_constraints,
         options=minimize_options,
     )
-    observed_values = (
-        {symbol: float(value) for symbol, value in zip(symbols, result.x, strict=True)}
-        if result.x is not None
-        else {}
-    )
+    observed = values(result.x) if result.x is not None else {}
+    result_symbols = set(symbols) | {
+        str(item["symbol"]) for item in model.get("derived_variables", [])
+    }
+    observed_values = {
+        symbol: value for symbol, value in observed.items() if symbol in result_symbols
+    }
     observed_objective = (
-        _evaluate(model["objective"]["expression"], {**parameters, **observed_values})
-        if result.x is not None
-        else None
+        _evaluate(model["objective"]["expression"], observed) if result.x is not None else None
     )
     return {
         "solver_version": scipy.__version__,

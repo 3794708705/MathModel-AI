@@ -8,7 +8,7 @@ from mathmodel_ai.files.storage import LocalFileStore
 from mathmodel_ai.mathematical.algorithms import AlgorithmSelector
 from mathmodel_ai.sandbox.executor import SandboxExecutor
 from mathmodel_ai.schemas.execution import ExecutionStatus, SandboxLimits
-from mathmodel_ai.schemas.mathematical import ExpressionKind, MathExpression
+from mathmodel_ai.schemas.mathematical import ExpressionKind, MathExpression, VariableRole
 from mathmodel_ai.schemas.solver import SolverName, SolverOptions, SolverStatus
 from mathmodel_ai.solvers.base import RawSolverOutput
 from mathmodel_ai.solvers.gurobi import GurobiSolver
@@ -16,11 +16,17 @@ from mathmodel_ai.solvers.ortools import ORToolsSolver
 from mathmodel_ai.solvers.router import SolverRouter
 from mathmodel_ai.solvers.scipy import SciPySolver, canonicalize_scipy_status
 from tests.mathematical.helpers import (
+    add,
+    constant,
     infeasible_model,
     lp_model,
     milp_model,
     nlp_model,
+    power,
+    subtract,
+    symbol,
     unbounded_model,
+    variable,
 )
 
 IMAGE = "mathmodel-ai-solver:phase4"
@@ -117,6 +123,52 @@ def test_real_lp_and_milp_decision_values_are_not_mocked_or_rounded_relaxation(
     assert lp.result.variable_values == pytest.approx({"x": 10, "y": 0}, abs=1e-7)
     assert milp.result.variable_values == pytest.approx({"x": 0, "y": 2}, abs=1e-7)
     assert 4 * milp.result.variable_values["x"] + 3 * milp.result.variable_values["y"] <= 6
+
+
+def test_real_nlp_resolves_derived_scalar_in_objective_and_constraint(tmp_path: Path) -> None:
+    base = nlp_model()
+    assert base.objective is not None
+    derived = variable("z").model_copy(update={"role": VariableRole.DERIVED})
+    definition = base.equations[0].model_copy(
+        update={
+            "equation_id": "EQ-derived-z",
+            "lhs": symbol("z"),
+            "rhs": add(symbol("x"), constant(1)),
+        }
+    )
+    constraint = base.constraints[0].model_copy(
+        update={
+            "constraint_id": "CON-derived-z",
+            "expression": symbol("z"),
+            "rhs": constant(1),
+            "equation_ref": "EQ-derived-z",
+        }
+    )
+    model = base.model_copy(
+        update={
+            "derived_variables": [derived],
+            "equations": [*base.equations, definition],
+            "constraints": [constraint],
+            "objective": base.objective.model_copy(
+                update={
+                    "expression": add(
+                        power(subtract(symbol("z"), constant(3)), 2),
+                        power(symbol("y"), 2),
+                    )
+                }
+            ),
+        }
+    )
+
+    outcome = _solver(tmp_path).solve(model, SolverOptions())
+
+    assert outcome.execution.record.status is ExecutionStatus.SUCCEEDED
+    assert outcome.result.status is SolverStatus.OPTIMAL
+    assert outcome.result.objective_value == pytest.approx(0, abs=1e-6)
+    assert outcome.result.variable_values["x"] == pytest.approx(2, abs=1e-3)
+    assert outcome.result.variable_values["z"] == pytest.approx(3, abs=1e-3)
+    assert outcome.result.feasibility is not None
+    assert outcome.result.feasibility.violated_constraints == []
 
 
 def test_real_ortools_cp_sat_solves_integral_model(tmp_path: Path) -> None:
