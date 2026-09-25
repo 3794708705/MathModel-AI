@@ -827,7 +827,10 @@ def test_model_gate_rejects_scalar_optimization_misclassified_as_time_series() -
     mislabeled = base.model_copy(update={"model_family": ModelFamily.TIME_SERIES})
     gate = model_quality_gate(mislabeled, state)
     assert gate.status is QualityGateStatus.RETRY
-    assert "MODEL_GATE_FAIL:SCALAR_OPTIMIZATION_MISCLASSIFIED_AS_TIME_SERIES" in gate.errors
+    assert "MODEL_GATE_FAIL:SCALAR_OPTIMIZATION_UNSUPPORTED_FAMILY:time_series" in gate.errors
+    chained = base.model_copy(update={"model_family": ModelFamily.MODEL_CHAIN})
+    chain_gate = model_quality_gate(chained, state)
+    assert "MODEL_GATE_FAIL:SCALAR_OPTIMIZATION_UNSUPPORTED_FAMILY:model_chain" in chain_gate.errors
     assert model_quality_gate(base, state).status is QualityGateStatus.PASS
 
 
