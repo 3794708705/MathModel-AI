@@ -105,6 +105,12 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
     unsupported_bound_scalars = _unsupported_bound_scalars(model, state)
     objective_decision_coupling = _objective_depends_on_decision(model)
     fixed_constraint_violations = _decision_independent_constraint_violations(model)
+    scalar_objective_family_valid = not (
+        model.model_family is ModelFamily.TIME_SERIES
+        and model.objective is not None
+        and not model.state_variables
+        and not any(item.index_sets for item in model.decision_variables)
+    )
     data_bindings_reach_core = _data_bindings_reach_core(model)
     data_required = any(
         requirement.availability is DataAvailability.PROVIDED
@@ -122,6 +128,7 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         "decision_variables_present": bool(model.decision_variables),
         "optimization_objective_present": not optimization or model.objective is not None,
         "objective_depends_on_decision": objective_decision_coupling,
+        "scalar_objective_family_valid": scalar_objective_family_valid,
         "decision_independent_constraints_feasible": not fixed_constraint_violations,
         "symbol_registry_valid": symbols.report.valid,
         "parameter_sources_present": all(
@@ -142,6 +149,8 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         "solver_requirements_valid": solver_requirements_valid,
     }
     errors = [f"MODEL_GATE_FAIL:{name}" for name, passed in checks.items() if not passed]
+    if not scalar_objective_family_valid:
+        errors.append("MODEL_GATE_FAIL:SCALAR_OPTIMIZATION_MISCLASSIFIED_AS_TIME_SERIES")
     errors.extend(
         f"MODEL_GATE_FAIL:UNAVAILABLE_SCALAR_INPUT:{symbol}"
         for symbol in sorted(unavailable_scalar_inputs)

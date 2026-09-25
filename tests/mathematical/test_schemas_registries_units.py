@@ -53,6 +53,7 @@ from mathmodel_ai.schemas.mathematical import (
     UnitExpression,
     VariableRole,
 )
+from mathmodel_ai.schemas.model_selection import ModelFamily
 from mathmodel_ai.schemas.problem_analysis import (
     EvidenceItem,
     EvidenceSource,
@@ -813,6 +814,20 @@ def test_model_gate_rejects_fixed_infeasible_hard_constraint_before_solver() -> 
         update={"constraints": [*base.constraints, bound.model_copy(update={"is_hard": False})]}
     )
     assert model_quality_gate(soft_bound, state).checks["decision_independent_constraints_feasible"]
+    assert model_quality_gate(base, state).status is QualityGateStatus.PASS
+
+
+def test_model_gate_rejects_scalar_optimization_misclassified_as_time_series() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    mislabeled = base.model_copy(update={"model_family": ModelFamily.TIME_SERIES})
+    gate = model_quality_gate(mislabeled, state)
+    assert gate.status is QualityGateStatus.RETRY
+    assert "MODEL_GATE_FAIL:SCALAR_OPTIMIZATION_MISCLASSIFIED_AS_TIME_SERIES" in gate.errors
     assert model_quality_gate(base, state).status is QualityGateStatus.PASS
 
 

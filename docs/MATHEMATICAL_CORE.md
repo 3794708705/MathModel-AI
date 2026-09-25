@@ -63,7 +63,7 @@ understanding/profiles, and user guidance. It performs one
 the complete machine contract. Deterministic code then binds project/problem,
 the repository-assigned stable `model_id`, next version, selected candidate ID,
 and `READY` status. The minimum route is `FLAGSHIP_XHIGH`, and its `AgentRun`
-records prompt version `4.3.0`, provider/model/reasoning, usage, latency, state
+records the current prompt version, provider/model/reasoning, usage, latency, state
 versions, retries, and Mock status.
 
 Every accepted revision also receives a canonical SHA-256 `model_digest` over
@@ -80,6 +80,11 @@ SOLVE is blocked unless deterministic checks confirm:
 - the selected candidate exists and matches the model;
 - target subproblems and data bindings resolve;
 - decision variables and required optimization objective exist;
+- a scalar optimization objective without time-indexed state is not mislabeled
+  `TIME_SERIES`, which would leave later independent parameter experiments
+  without a compatible deterministic solver;
+- any decision-independent scalar hard constraint provable from sourced
+  parameters and defining equations is feasible before code generation;
 - symbol, parameter-source, and equation registries are valid;
 - objective/constraint equation references exist;
 - no explicit dimensional failure exists;
