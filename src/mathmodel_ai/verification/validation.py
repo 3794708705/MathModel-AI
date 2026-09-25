@@ -124,6 +124,8 @@ class IndependentValidator:
                 pass
             if not calibration_valid:
                 errors.append("VALIDATION_FAIL:CAUSAL_CALIBRATION_RECOMPUTATION_MISMATCH")
+        randomness_valid = self._randomness_claim_matches(causal_evidence)
+        flow_valid = self._match_flow_claim_matches(causal_evidence)
         metrics = [
             *self._metric_checks(model, result, solver_run, values),
             *self._reviewed_metric_checks(reviewed_evidence),
@@ -142,6 +144,8 @@ class IndependentValidator:
             causal_evidence=causal_evidence,
             causal_bound=causal_bound and evidence.valid,
             calibration_valid=calibration_valid,
+            randomness_valid=randomness_valid,
+            flow_valid=flow_valid,
         )
 
         failures = [
@@ -232,6 +236,11 @@ class IndependentValidator:
                     [
                         f"causal_holdout_execution:{causal_evidence.holdout_execution_id}",
                         f"causal_source_sha256:{causal_evidence.source_sha256}",
+                        *(
+                            [f"causal_training_sha256:{causal_evidence.training_sha256}"]
+                            if causal_evidence.training_sha256 is not None
+                            else []
+                        ),
                         f"causal_trace_sha256:{causal_evidence.trace_sha256}",
                         *(
                             [
@@ -246,6 +255,30 @@ class IndependentValidator:
                                 + sha256_json(asdict(causal_evidence.calibration))
                             ]
                             if causal_evidence.calibration is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_training_randomness_sha256:"
+                                + sha256_json(asdict(causal_evidence.randomness))
+                            ]
+                            if causal_evidence.randomness is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_randomness_result_artifact_sha256:"
+                                + causal_evidence.randomness_claim.result_artifact_sha256
+                            ]
+                            if causal_evidence.randomness_claim is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_training_match_flow_sha256:"
+                                + sha256_json(asdict(causal_evidence.match_flow))
+                            ]
+                            if causal_evidence.match_flow is not None
                             else []
                         ),
                     ]
@@ -715,6 +748,27 @@ class IndependentValidator:
                     ),
                 )
             )
+        if evidence.randomness is not None:
+            for name, value in (
+                ("lag1_residual_statistic", evidence.randomness.observed_statistic),
+                ("conditional_randomness_p", evidence.randomness.two_sided_p),
+            ):
+                checks.append(
+                    MetricRecalculation(
+                        metric_id=f"causal_training:{name}",
+                        category=ValidationCheckCategory.OUTPUT,
+                        recomputed_value=value if bound else None,
+                        absolute_tolerance=0,
+                        relative_tolerance=0,
+                        status=ValidationCheckStatus.PASS if bound else ValidationCheckStatus.FAIL,
+                        message=(
+                            "host-computed training-data null statistic; "
+                            "not a verification of a solver claim"
+                            if bound
+                            else "training-data null statistic is not bound to the formal result"
+                        ),
+                    )
+                )
         return checks
 
     @staticmethod
@@ -822,6 +876,8 @@ class IndependentValidator:
         causal_evidence: AuditedCausalEvidence | None,
         causal_bound: bool,
         calibration_valid: bool,
+        randomness_valid: bool,
+        flow_valid: bool,
     ) -> list[ValidationRequirementCheck]:
         objective_metrics = [
             item for item in metrics if item.category is ValidationCheckCategory.OBJECTIVE
@@ -854,7 +910,11 @@ class IndependentValidator:
         )
         checks: list[ValidationRequirementCheck] = []
         causal_checks = self._causal_requirement_checks(
-            causal_evidence, bound=causal_bound, calibration_valid=calibration_valid
+            causal_evidence,
+            bound=causal_bound,
+            calibration_valid=calibration_valid,
+            randomness_valid=randomness_valid,
+            flow_valid=flow_valid,
         )
         causal_names = {item.requirement for item in causal_checks}
         for requirement in model.validation_requirements:
@@ -898,7 +958,12 @@ class IndependentValidator:
 
     @staticmethod
     def _causal_requirement_checks(
-        evidence: AuditedCausalEvidence | None, *, bound: bool, calibration_valid: bool
+        evidence: AuditedCausalEvidence | None,
+        *,
+        bound: bool,
+        calibration_valid: bool,
+        randomness_valid: bool,
+        flow_valid: bool,
     ) -> list[ValidationRequirementCheck]:
         if evidence is None:
             return []
@@ -918,9 +983,19 @@ class IndependentValidator:
                 if capability is CausalScienceCheck.CALIBRATION_ASSESSMENT
                 and evidence.calibration is not None
                 and not calibration_valid
+                else ValidationCheckStatus.FAIL
+                if capability is CausalScienceCheck.RANDOMNESS_TEST
+                and evidence.randomness_claim is not None
+                and not randomness_valid
+                else ValidationCheckStatus.FAIL
+                if capability is CausalScienceCheck.MATCH_FLOW
+                and evidence.match_flow_claim is not None
+                and not flow_valid
                 else ValidationCheckStatus.PASS
                 if capability is CausalScienceCheck.HELDOUT_PREDICTION
                 or (capability is CausalScienceCheck.CALIBRATION_ASSESSMENT and calibration_valid)
+                or (capability is CausalScienceCheck.RANDOMNESS_TEST and randomness_valid)
+                or (capability is CausalScienceCheck.MATCH_FLOW and flow_valid)
                 else ValidationCheckStatus.UNCHECKED
             )
             checks.append(
@@ -940,6 +1015,31 @@ class IndependentValidator:
                             and evidence.calibration is not None
                             else []
                         ),
+                        *(
+                            [
+                                "causal_training_randomness_sha256:"
+                                + sha256_json(asdict(evidence.randomness)),
+                                f"causal_training_sha256:{evidence.training_sha256}",
+                                "causal_randomness_result_artifact_sha256:"
+                                + evidence.randomness_claim.result_artifact_sha256,
+                            ]
+                            if capability is CausalScienceCheck.RANDOMNESS_TEST
+                            and evidence.randomness is not None
+                            and evidence.randomness_claim is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_training_match_flow_sha256:"
+                                + sha256_json(asdict(evidence.match_flow)),
+                                "causal_match_flow_result_artifact_sha256:"
+                                + evidence.match_flow_claim.result_artifact_sha256,
+                            ]
+                            if capability is CausalScienceCheck.MATCH_FLOW
+                            and evidence.match_flow is not None
+                            and evidence.match_flow_claim is not None
+                            else []
+                        ),
                     ],
                     message=(
                         f"host scientific check is {status.value.lower()}: {capability.value}"
@@ -947,6 +1047,55 @@ class IndependentValidator:
                 )
             )
         return checks
+
+    @staticmethod
+    def _randomness_claim_matches(evidence: AuditedCausalEvidence | None) -> bool:
+        if (
+            evidence is None
+            or evidence.randomness is None
+            or evidence.randomness_claim is None
+            or evidence.training_sha256 is None
+        ):
+            return False
+        reference = evidence.randomness
+        claim = evidence.randomness_claim
+        return (
+            len(evidence.training_sha256) == 64
+            and all(character in "0123456789abcdef" for character in evidence.training_sha256)
+            and len(claim.result_artifact_sha256) == 64
+            and all(character in "0123456789abcdef" for character in claim.result_artifact_sha256)
+            and claim.replicates == reference.replicates
+            and math.isclose(
+                claim.observed_statistic,
+                reference.observed_statistic,
+                rel_tol=1e-9,
+                abs_tol=1e-12,
+            )
+            and math.isclose(claim.two_sided_p, reference.two_sided_p, abs_tol=1e-12)
+        )
+
+    @staticmethod
+    def _match_flow_claim_matches(evidence: AuditedCausalEvidence | None) -> bool:
+        if (
+            evidence is None
+            or evidence.match_flow is None
+            or evidence.match_flow_claim is None
+            or evidence.training_sha256 is None
+        ):
+            return False
+        reference = evidence.match_flow
+        claim = evidence.match_flow_claim
+        return (
+            reference.source_sha256 == evidence.training_sha256
+            and len(claim.result_artifact_sha256) == 64
+            and all(character in "0123456789abcdef" for character in claim.result_artifact_sha256)
+            and len(claim.values) == len(reference.values)
+            and bool(claim.values)
+            and all(
+                math.isclose(reported, expected, rel_tol=1e-9, abs_tol=1e-9)
+                for reported, expected in zip(claim.values, reference.values, strict=True)
+            )
+        )
 
     @staticmethod
     def _numeric_environment(

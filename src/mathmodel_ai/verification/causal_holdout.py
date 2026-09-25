@@ -8,7 +8,10 @@ not a security boundary against an untrusted model reading the original CSV.
 import hashlib
 import json
 import math
+import random
+from collections import defaultdict, deque
 from dataclasses import asdict, dataclass
+from itertools import pairwise
 from typing import Protocol, cast
 from uuid import UUID
 
@@ -50,6 +53,131 @@ class CausalCalibrationAssessment:
     count: int
     ece: float
     bins: tuple[CausalCalibrationBin, ...]
+
+
+@dataclass(frozen=True)
+class ConditionalRandomnessAssessment:
+    """Within-group/condition permutation test for adjacent residual dependence."""
+
+    point_count: int
+    transition_count: int
+    observed_statistic: float
+    null_mean: float
+    two_sided_p: float
+    replicates: int
+    seed_sha256: str
+
+
+@dataclass(frozen=True)
+class ConditionalRandomnessClaim:
+    observed_statistic: float
+    two_sided_p: float
+    replicates: int
+    result_artifact_sha256: str
+
+
+@dataclass(frozen=True)
+class MatchFlowAssessment:
+    source_sha256: str
+    window: int
+    values: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class MatchFlowClaim:
+    values: tuple[float, ...]
+    result_artifact_sha256: str
+
+
+def assess_match_flow(source: bytes, spec: CausalBinarySpec) -> MatchFlowAssessment:
+    """Pre-outcome rolling mean of server-adjusted residuals, in CSV row order."""
+    recent: dict[str, deque[float]] = defaultdict(
+        lambda: deque(maxlen=spec.history_window)
+    )
+    values: list[float] = []
+    for feature, outcome in iter_causal_binary_points(source, spec):
+        window = recent[feature.group]
+        values.append(math.fsum(window) / len(window) if window else 0.0)
+        baseline = (1 + feature.prior_condition_positive) / (
+            2 + feature.prior_condition_count
+        )
+        window.append(outcome - baseline)
+    return MatchFlowAssessment(
+        source_sha256=spec.source_sha256,
+        window=spec.history_window,
+        values=tuple(values),
+    )
+
+
+def assess_conditional_randomness(
+    source: bytes, spec: CausalBinarySpec, *, replicates: int = 499
+) -> ConditionalRandomnessAssessment:
+    """Test point ordering while retaining each group's condition-specific outcomes.
+
+    The null is exchangeability within each group/condition stratum. This is a
+    descriptive diagnostic, not evidence of psychological or causal momentum.
+    """
+    if not 99 <= replicates <= 9999:
+        raise ValueError("CAUSAL_RANDOMNESS_REPLICATES_INVALID")
+    groups: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    for feature, outcome in iter_causal_binary_points(source, spec):
+        groups[feature.group].append((feature.condition, outcome))
+    point_count = sum(len(points) for points in groups.values())
+    transition_count = sum(max(0, len(points) - 1) for points in groups.values())
+    if transition_count == 0:
+        raise ValueError("CAUSAL_RANDOMNESS_NO_TRANSITIONS")
+    rates: dict[tuple[str, str], float] = {}
+    for group, points in groups.items():
+        counts: dict[str, list[float]] = defaultdict(list)
+        for condition, outcome in points:
+            counts[condition].append(outcome)
+        for condition, outcomes in counts.items():
+            rates[(group, condition)] = math.fsum(outcomes) / len(outcomes)
+
+    def statistic(permuted: dict[str, list[float]]) -> float:
+        total = 0.0
+        for group, points in groups.items():
+            outcomes = permuted[group]
+            residuals = [
+                outcome - rates[(group, condition)]
+                for (condition, _), outcome in zip(points, outcomes, strict=True)
+            ]
+            total += math.fsum(a * b for a, b in pairwise(residuals))
+        return total / transition_count
+
+    observed = statistic(
+        {group: [outcome for _, outcome in points] for group, points in groups.items()}
+    )
+    seed = hashlib.sha256(b"conditional-randomness-v1:" + source).digest()
+    rng = random.Random(int.from_bytes(seed, "big"))
+    simulated: list[float] = []
+    for _ in range(replicates):
+        permuted: dict[str, list[float]] = {}
+        for group, points in groups.items():
+            by_condition: dict[str, list[float]] = defaultdict(list)
+            for condition, outcome in points:
+                by_condition[condition].append(outcome)
+            for outcomes in by_condition.values():
+                rng.shuffle(outcomes)
+            offsets: dict[str, int] = defaultdict(int)
+            ordered: list[float] = []
+            for condition, _ in points:
+                ordered.append(by_condition[condition][offsets[condition]])
+                offsets[condition] += 1
+            permuted[group] = ordered
+        simulated.append(statistic(permuted))
+    mean = math.fsum(simulated) / replicates
+    deviation = abs(observed - mean)
+    extreme = sum(abs(value - mean) >= deviation for value in simulated)
+    return ConditionalRandomnessAssessment(
+        point_count=point_count,
+        transition_count=transition_count,
+        observed_statistic=observed,
+        null_mean=mean,
+        two_sided_p=(extreme + 1) / (replicates + 1),
+        replicates=replicates,
+        seed_sha256=seed.hex(),
+    )
 
 
 def assess_binary_calibration(
@@ -101,6 +229,11 @@ class AuditedCausalEvidence:
     science_policy_sha256: str | None = None
     required_scientific_checks: tuple[CausalScienceCheck, ...] = ()
     calibration: CausalCalibrationAssessment | None = None
+    randomness: ConditionalRandomnessAssessment | None = None
+    randomness_claim: ConditionalRandomnessClaim | None = None
+    training_sha256: str | None = None
+    match_flow: MatchFlowAssessment | None = None
+    match_flow_claim: MatchFlowClaim | None = None
 
 
 def causal_trace_payload(

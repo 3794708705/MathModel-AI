@@ -1,3 +1,4 @@
+import json
 import subprocess
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -20,7 +21,9 @@ from mathmodel_ai.files.storage import LocalFileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.mathematical.repository import MathematicalRepository
 from mathmodel_ai.paper.hashing import sha256_json
+from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.execution import (
+    ExecutionArtifact,
     ExecutionOrigin,
     ExecutionRecord,
     ExecutionStatus,
@@ -34,6 +37,7 @@ from mathmodel_ai.schemas.program import (
     GeneratedSourceFile,
     generated_program_hash,
 )
+from mathmodel_ai.schemas.solver import SolverName, SolverStatus
 from tests.benchmark.test_causal_inputs import _fixture
 from tests.mathematical.helpers import lp_model
 
@@ -209,6 +213,71 @@ def test_generated_predictor_source_is_required_before_execution(tmp_path: Path)
     repository.persist_auxiliary_execution.assert_not_called()
 
 
+def test_randomness_claim_must_come_from_exact_formal_result_artifact(tmp_path: Path) -> None:
+    evaluator, _, _, state, repository = _setup(tmp_path, include_predictor=True)
+    formal = evaluator._mathematics.get_result_context.return_value
+    formal.solver_run.result = SimpleNamespace(
+        solver_name=SolverName.SCIPY,
+        status=SolverStatus.FEASIBLE,
+        objective_value=None,
+        variable_values={},
+    )
+    raw = json.dumps(
+        {
+            "solver_name": "SCIPY",
+            "model_digest": formal.result.model_digest,
+            "status": "FEASIBLE",
+            "variable_values": {},
+            "series": {"match_flow": [0.0, 0.5]},
+            "metrics": {
+                "conditional_randomness_statistic": 0.125,
+                "conditional_randomness_p": 0.2,
+                "conditional_randomness_replicates": 499,
+            },
+            "is_feasible": True,
+        }
+    ).encode()
+    artifact_id = uuid4()
+    stored = evaluator._store.store_artifact(
+        raw, project_id=state.project_id, artifact_id=artifact_id, filename="result.json"
+    )
+    artifact = ArtifactRecord(
+        artifact_id=artifact_id,
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        execution_run_id=formal.execution.run_id,
+        kind=ArtifactKind.SANDBOX_OUTPUT,
+        name="result.json",
+        mime_type="application/json",
+        size_bytes=stored.size_bytes,
+        sha256=stored.sha256,
+        storage_key=stored.storage_key,
+    )
+    repository.list_artifacts.return_value = [artifact]
+    formal.execution.artifacts.append(
+        ExecutionArtifact(
+            artifact_id=artifact.artifact_id,
+            name=artifact.name,
+            mime_type=artifact.mime_type,
+            size_bytes=artifact.size_bytes,
+            sha256=artifact.sha256,
+            storage_key=artifact.storage_key,
+        )
+    )
+    claim = evaluator._randomness_claim(state.project_id, formal.result.result_id)
+    assert claim is not None
+    assert claim.observed_statistic == 0.125
+    assert claim.two_sided_p == 0.2
+    assert claim.result_artifact_sha256 == stored.sha256
+    flow_claim = evaluator._match_flow_claim(state.project_id, formal.result.result_id)
+    assert flow_claim is not None
+    assert flow_claim.values == (0.0, 0.5)
+    assert flow_claim.result_artifact_sha256 == stored.sha256
+    repository.list_artifacts.return_value = [artifact.model_copy(update={"sha256": "0" * 64})]
+    with pytest.raises(QualityGateError, match="CAUSAL_SCIENCE_RESULT_ARTIFACT_MISMATCH"):
+        evaluator._randomness_claim(state.project_id, formal.result.result_id)
+
+
 def test_causal_evaluator_rejects_wrong_training_and_model_identity(tmp_path: Path) -> None:
     evaluator, bundle, mathematical, state, repository = _setup(tmp_path, include_predictor=True)
     state.registered_files[0].sha256 = "0" * 64
@@ -235,6 +304,20 @@ def test_generated_predictor_evaluates_in_isolation_and_persists_evidence(
     tmp_path: Path,
 ) -> None:
     evaluator, bundle, mathematical, state, repository = _setup(tmp_path, include_predictor=True)
+    assert bundle.causal_policy is not None
+    bundle = replace(
+        bundle,
+        causal_policy=bundle.causal_policy.model_copy(
+            update={
+                "problem_sha256": bundle.manifest.resources[0].sha256,
+                "required_scientific_checks": [
+                    CausalScienceCheck.HELDOUT_PREDICTION,
+                    CausalScienceCheck.MATCH_FLOW,
+                    CausalScienceCheck.RANDOMNESS_TEST,
+                ],
+            }
+        ),
+    )
     result = evaluator.evaluate(bundle=bundle, mathematical=mathematical, state=state)  # type: ignore[arg-type]
     assert result.execution.status is ExecutionStatus.SUCCEEDED
     assert result.execution.execution_origin is ExecutionOrigin.GENERATED_PROGRAM
@@ -267,6 +350,13 @@ def test_generated_predictor_evaluates_in_isolation_and_persists_evidence(
     assert validation_evidence.result == replayed
     assert validation_evidence.calibration is not None
     assert validation_evidence.calibration.count == len(replayed.predictions)
+    assert validation_evidence.randomness is not None
+    assert validation_evidence.match_flow is not None
+    assert validation_evidence.match_flow_claim is None
+    assert len(validation_evidence.match_flow.values) == bundle.causal_split.training_rows
+    assert validation_evidence.randomness.point_count == bundle.causal_split.training_rows
+    assert validation_evidence.randomness.replicates == 499
+    assert 0 < validation_evidence.randomness.two_sided_p <= 1
     assert validation_evidence.formal_result_id == mathematical.solve_stage.result.result_id
     assert validation_evidence.source_sha256 == bundle.causal_split.source_sha256  # type: ignore[union-attr]
     artifacts = repository.list_artifacts.return_value
@@ -390,4 +480,5 @@ def test_generated_holdout_is_reaudited_from_real_database(tmp_path: Path) -> No
         holdout_execution_id=run.execution.run_id,
     )
     assert formal_validation.result == run.result
+    assert formal_validation.randomness is None
     assert formal_validation.holdout_execution_id == run.execution.run_id

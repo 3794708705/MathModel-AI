@@ -25,6 +25,7 @@ from mathmodel_ai.schemas.benchmark import (
     BenchmarkMetric,
     BenchmarkMetricKind,
     BenchmarkRunRequest,
+    CausalScienceCheck,
     FailureCategory,
     FailureSeverity,
     benchmark_failure_digest,
@@ -993,18 +994,52 @@ class PipelineBenchmarkExecutor:
             if policy.required_scientific_checks
             else ""
         )
+        randomness_guidance = (
+            " For causal_science:randomness_test, compute a training-only conditional "
+            "permutation diagnostic and put three flat metrics in result.json: "
+            "conditional_randomness_statistic, conditional_randomness_p, and "
+            "conditional_randomness_replicates. Group points in CSV order by match; "
+            "within each match and condition, center binary outcomes by that stratum's "
+            "observed mean. The statistic is the sum of adjacent residual products "
+            "within matches divided by the number of within-match transitions. "
+            "For 499 null draws, independently shuffle outcomes within every "
+            "match-condition stratum using Python random.Random seeded with the integer "
+            "SHA-256 digest of b'conditional-randomness-v1:' plus the exact training CSV "
+            "bytes. The two-sided p-value is (extreme+1)/500, with extremeness measured "
+            "around the simulated mean. This is a conditional association test, not a "
+            "causal or psychological momentum claim."
+            if CausalScienceCheck.RANDOMNESS_TEST in policy.required_scientific_checks
+            else ""
+        )
+        flow_guidance = (
+            " For causal_science:match_flow, write series.match_flow in result.json "
+            "with exactly one finite value per training CSV row, preserving row order. "
+            "Before each point, compute the mean of up to history_window prior "
+            "within-match residuals (zero if none), where each residual is the "
+            "observed positive-player outcome minus the pre-outcome, same-condition "
+            "Beta(1,1) baseline (1+prior wins)/(2+prior count). Update after writing "
+            "the current value; never use a future point in its flow score. "
+            "Positive means the encoded positive class is outperforming the "
+            "condition-adjusted baseline; negative favors the other class."
+            if CausalScienceCheck.MATCH_FLOW in policy.required_scientific_checks
+            else ""
+        )
         return [
             "CAUSAL_HOLDOUT_PROTOCOL: The provided CSV contains only training groups. "
             "The benchmark host retains complete groups for an unseen test. "
             f"Group={policy.group_column}; condition={policy.condition_column}; "
             f"outcome={policy.outcome_column} (positive={policy.positive_value}, "
-            f"negative={policy.negative_value}). Use only pre-outcome information for "
+            f"negative={policy.negative_value}); history_window={policy.history_window}. "
+            "Use only pre-outcome information for "
             "pointwise predictions. In addition to result.json, include a source file "
             "causal_predictor.py defining class Predictor with fit(feature: dict, outcome: "
             "float) -> None and predict(feature: dict) -> float in [0,1]. The host "
             "will fit on training rows then request held-out predictions one point at a "
             "time. Do not embed, infer, or request held-out labels. Any claimed "
-            "holdout metric must await the independent host trace." + science_guidance
+            "holdout metric must await the independent host trace."
+            + science_guidance
+            + randomness_guidance
+            + flow_guidance
         ]
 
     @staticmethod

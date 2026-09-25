@@ -214,9 +214,22 @@ present even if an agent omits them from `validation_requirements`. The current
 binary evaluator can independently assess held-out prediction and calibration.
 Calibration uses ten fixed-width probability bins and descriptive expected
 calibration error, `sum_b |sum_predicted_b - sum_observed_b| / N`; it asserts
-neither good calibration nor an improvement over baseline. Match-flow,
-randomness, and swing-prediction checks remain `UNCHECKED` until their own
-result-bound independent evaluators exist. Unknown agent-declared requirements
+neither good calibration nor an improvement over baseline. The host also
+computes a training-only conditional-randomness reference: within each match
+and condition, 499 source-seeded permutations preserve outcome counts and
+compare lag-one adjusted residual products. Its source digest, statistic,
+simulation count and descriptive two-sided probability enter validation
+evidence. If—and only if—the exact persisted formal `result.json` reports the
+named statistic, p-value and simulation count, the validator compares all
+three against this training-only reference. A missing claim remains
+`UNCHECKED`; a mismatched claim fails. Neither a matching test nor a small
+p-value establishes psychological or causal momentum. A second training-only
+reference reconstructs a pre-outcome rolling mean of condition-adjusted
+residuals for every row. Its `match_flow` check passes only when the same
+row-aligned series is present in the exact formal `result.json` and agrees
+pointwise. This does not prove that a paper visualizes or explains the flow.
+Swing prediction remains `UNCHECKED` until a future-event evaluator exists.
+Unknown agent-declared requirements
 likewise remain `UNCHECKED`; no wording or keyword match upgrades them to PASS.
 
 The aggregate verification endpoint intentionally stops at Red Team. It never

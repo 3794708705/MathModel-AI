@@ -8,6 +8,8 @@ from mathmodel_ai.verification.causal_binary import CausalBinarySpec, CausalFeat
 from mathmodel_ai.verification.causal_holdout import (
     CausalHoldoutResult,
     assess_binary_calibration,
+    assess_conditional_randomness,
+    assess_match_flow,
     causal_trace_payload,
     evaluate_causal_holdout,
     heldout_groups,
@@ -119,3 +121,50 @@ def test_calibration_recomputes_fixed_probability_bins_without_skill_claim() -> 
     assert assessment.bins[4].observed_rate == pytest.approx(0.5)
     with pytest.raises(ValueError, match="CAUSAL_CALIBRATION_INPUT_INVALID"):
         assess_binary_calibration(replace(result, predictions=(float("nan"),)))
+
+
+def test_conditional_randomness_is_source_bound_and_not_a_momentum_claim() -> None:
+    source, spec = _fixture()
+    first = assess_conditional_randomness(source, spec, replicates=99)
+    assert first == assess_conditional_randomness(source, spec, replicates=99)
+    assert first.point_count == 12
+    assert first.transition_count == 8
+    assert 0 < first.two_sided_p <= 1
+    assert first.seed_sha256 == hashlib.sha256(
+        b"conditional-randomness-v1:" + source
+    ).hexdigest()
+    changed = source.replace(b"A,1,1,1", b"A,1,2,1")
+    with pytest.raises(ValueError, match="CAUSAL_CSV_SIZE_OR_HASH_MISMATCH"):
+        assess_conditional_randomness(changed, spec, replicates=99)
+    with pytest.raises(ValueError, match="CAUSAL_RANDOMNESS_REPLICATES_INVALID"):
+        assess_conditional_randomness(source, spec, replicates=1)
+
+
+def test_conditional_randomness_preserves_server_strata() -> None:
+    source = b"match,server,winner\nA,1,1\nA,2,2\nA,1,1\nA,2,2\n"
+    spec = CausalBinarySpec(
+        source_sha256=hashlib.sha256(source).hexdigest(),
+        group_column="match",
+        condition_column="server",
+        outcome_column="winner",
+        positive_value="1",
+        negative_value="2",
+    )
+    result = assess_conditional_randomness(source, spec, replicates=99)
+    assert result.observed_statistic == 0
+    assert result.null_mean == 0
+    assert result.two_sided_p == 1
+
+
+def test_match_flow_is_pre_outcome_grouped_and_source_bound() -> None:
+    source, spec = _fixture()
+    flow = assess_match_flow(source, spec)
+    assert len(flow.values) == 12
+    assert flow.source_sha256 == spec.source_sha256
+    assert flow.window == spec.history_window
+    assert flow.values[0] == 0.0
+    assert flow.values[1] == pytest.approx(0.5)
+    assert flow.values[3] == 0.0  # A new match cannot inherit A's point history.
+    altered = source.replace(b"A,1,1,1", b"A,1,2,1")
+    with pytest.raises(ValueError, match="CAUSAL_CSV_SIZE_OR_HASH_MISMATCH"):
+        assess_match_flow(altered, spec)

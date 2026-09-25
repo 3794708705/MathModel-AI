@@ -1,6 +1,8 @@
 """Bind an automatically generated predictor to sealed benchmark evaluation."""
 
 import hashlib
+import json
+import math
 from pathlib import Path
 from uuid import UUID
 
@@ -17,14 +19,20 @@ from mathmodel_ai.sandbox.causal_holdout import (
     run_isolated_causal_holdout,
     verify_recorded_causal_holdout,
 )
+from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.execution import ExecutionOrigin, ExecutionStatus, SandboxLimits
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.program import GeneratedProgramStatus
+from mathmodel_ai.schemas.solver import GeneratedResultPayload
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec
 from mathmodel_ai.verification.causal_holdout import (
     AuditedCausalEvidence,
     CausalHoldoutResult,
+    ConditionalRandomnessClaim,
+    MatchFlowClaim,
     assess_binary_calibration,
+    assess_conditional_randomness,
+    assess_match_flow,
     causal_trace_payload,
 )
 
@@ -342,6 +350,19 @@ class CausalBenchmarkEvaluator:
         policy = bundle.causal_policy
         if policy is None:
             raise QualityGateError("CAUSAL_HOLDOUT_POLICY_MISSING")
+        source = next(
+            (
+                item.content
+                for item in bundle.artifacts
+                if item.resource.resource_id == policy.resource_id
+            ),
+            None,
+        )
+        if source is None or hashlib.sha256(source).hexdigest() != policy.source_sha256:
+            raise QualityGateError("CAUSAL_HOLDOUT_SOURCE_MISMATCH")
+        split = bundle.causal_split
+        if split is None or hashlib.sha256(split.training_csv).hexdigest() != split.training_sha256:
+            raise QualityGateError("CAUSAL_HOLDOUT_TRAINING_BYTES_MISMATCH")
         spec = CausalBinarySpec(
             source_sha256=policy.source_sha256,
             group_column=policy.group_column,
@@ -352,6 +373,22 @@ class CausalBenchmarkEvaluator:
             history_window=policy.history_window,
         )
         trace = causal_trace_payload(spec, result, fraction=policy.fraction, salt=policy.salt)
+        randomness_required = (
+            CausalScienceCheck.RANDOMNESS_TEST in policy.required_scientific_checks
+        )
+        flow_required = CausalScienceCheck.MATCH_FLOW in policy.required_scientific_checks
+        training_spec = CausalBinarySpec(
+            source_sha256=split.training_sha256,
+            group_column=policy.group_column,
+            condition_column=policy.condition_column,
+            outcome_column=policy.outcome_column,
+            positive_value=policy.positive_value,
+            negative_value=policy.negative_value,
+            history_window=policy.history_window,
+        )
+        claim = (
+            self._randomness_claim(project_id, formal_result_id) if randomness_required else None
+        )
         return AuditedCausalEvidence(
             formal_result_id=formal_result_id,
             holdout_execution_id=holdout_execution_id,
@@ -361,4 +398,102 @@ class CausalBenchmarkEvaluator:
             science_policy_sha256=sha256_json(policy),
             required_scientific_checks=tuple(policy.required_scientific_checks),
             calibration=assess_binary_calibration(result),
+            training_sha256=split.training_sha256,
+            randomness_claim=claim,
+            match_flow_claim=(
+                self._match_flow_claim(project_id, formal_result_id) if flow_required else None
+            ),
+            match_flow=(
+                assess_match_flow(split.training_csv, training_spec) if flow_required else None
+            ),
+            randomness=(
+                assess_conditional_randomness(split.training_csv, training_spec)
+                if randomness_required
+                else None
+            ),
         )
+
+    def _randomness_claim(
+        self, project_id: UUID, formal_result_id: UUID
+    ) -> ConditionalRandomnessClaim | None:
+        parsed = self._formal_payload(project_id, formal_result_id)
+        if parsed is None:
+            return None
+        payload, artifact_sha256 = parsed
+        names = (
+            "conditional_randomness_statistic",
+            "conditional_randomness_p",
+            "conditional_randomness_replicates",
+        )
+        if not any(name in payload.metrics for name in names):
+            return None
+        statistic, p, replicates = (payload.metrics.get(name) for name in names)
+        if (
+            isinstance(statistic, bool)
+            or not isinstance(statistic, (int, float))
+            or not math.isfinite(statistic)
+            or isinstance(p, bool)
+            or not isinstance(p, (int, float))
+            or not math.isfinite(p)
+            or not 0 <= p <= 1
+            or isinstance(replicates, bool)
+            or not isinstance(replicates, int)
+        ):
+            raise QualityGateError("CAUSAL_RANDOMNESS_CLAIM_INCOMPLETE")
+        return ConditionalRandomnessClaim(
+            observed_statistic=float(statistic),
+            two_sided_p=float(p),
+            replicates=replicates,
+            result_artifact_sha256=artifact_sha256,
+        )
+
+    def _match_flow_claim(self, project_id: UUID, formal_result_id: UUID) -> MatchFlowClaim | None:
+        parsed = self._formal_payload(project_id, formal_result_id)
+        if parsed is None:
+            return None
+        payload, artifact_sha256 = parsed
+        values = payload.series.get("match_flow")
+        return (
+            MatchFlowClaim(values=tuple(values), result_artifact_sha256=artifact_sha256)
+            if values is not None
+            else None
+        )
+
+    def _formal_payload(
+        self, project_id: UUID, formal_result_id: UUID
+    ) -> tuple[GeneratedResultPayload, str] | None:
+        """Read only the exact persisted solver output, never a detached metrics file."""
+        formal = self._mathematics.get_result_context(project_id, formal_result_id)
+        named = [
+            item
+            for item in self._repository.list_artifacts(project_id)
+            if item.execution_run_id == formal.execution.run_id and item.name == "result.json"
+        ]
+        if not named:
+            return None
+        embedded = [item for item in formal.execution.artifacts if item.name == "result.json"]
+        if (
+            len(named) != 1
+            or len(embedded) != 1
+            or named[0].artifact_id != embedded[0].artifact_id
+            or named[0].sha256 != embedded[0].sha256
+            or named[0].storage_key != embedded[0].storage_key
+        ):
+            raise QualityGateError("CAUSAL_SCIENCE_RESULT_ARTIFACT_MISMATCH")
+        raw = self._store.read_bytes(named[0].storage_key, max_bytes=16 * 1024 * 1024)
+        if len(raw) != named[0].size_bytes or hashlib.sha256(raw).hexdigest() != named[0].sha256:
+            raise QualityGateError("CAUSAL_SCIENCE_RESULT_ARTIFACT_MISMATCH")
+        try:
+            payload = GeneratedResultPayload.model_validate(json.loads(raw))
+        except (ValueError, UnicodeError) as exc:
+            raise QualityGateError("CAUSAL_SCIENCE_RESULT_SCHEMA_INVALID") from exc
+        solver = formal.solver_run.result
+        if (
+            payload.model_digest != formal.result.model_digest
+            or payload.solver_name != solver.solver_name
+            or payload.status != solver.status
+            or payload.objective != solver.objective_value
+            or payload.variable_values != solver.variable_values
+        ):
+            raise QualityGateError("CAUSAL_SCIENCE_RESULT_NOT_FORMAL_SOLVE")
+        return payload, named[0].sha256
