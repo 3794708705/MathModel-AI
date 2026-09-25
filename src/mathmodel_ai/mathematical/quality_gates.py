@@ -4,7 +4,12 @@ import math
 import re
 
 from mathmodel_ai.mathematical.evidence import EvidenceIntegrityVerifier
-from mathmodel_ai.mathematical.expressions import referenced_symbols, scalar_parameter_values
+from mathmodel_ai.mathematical.expressions import (
+    ExpressionError,
+    evaluate_expression,
+    referenced_symbols,
+    scalar_parameter_values,
+)
 from mathmodel_ai.mathematical.registry import EquationRegistry, SymbolRegistry
 from mathmodel_ai.mathematical.units import UnitChecker
 from mathmodel_ai.schemas.execution import ExecutionRecord, ExecutionStatus
@@ -13,6 +18,7 @@ from mathmodel_ai.schemas.mathematical import (
     ExpressionKind,
     InterpretationResolutionStatus,
     MathematicalModel,
+    MathExpression,
     ParameterSourceType,
     UnitCheckStatus,
 )
@@ -98,6 +104,7 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
     unsupported_data_literals = _unsupported_data_literals(model, state)
     unsupported_bound_scalars = _unsupported_bound_scalars(model, state)
     objective_decision_coupling = _objective_depends_on_decision(model)
+    fixed_constraint_violations = _decision_independent_constraint_violations(model)
     data_bindings_reach_core = _data_bindings_reach_core(model)
     data_required = any(
         requirement.availability is DataAvailability.PROVIDED
@@ -115,6 +122,7 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         "decision_variables_present": bool(model.decision_variables),
         "optimization_objective_present": not optimization or model.objective is not None,
         "objective_depends_on_decision": objective_decision_coupling,
+        "decision_independent_constraints_feasible": not fixed_constraint_violations,
         "symbol_registry_valid": symbols.report.valid,
         "parameter_sources_present": all(
             bool(item.source_ref) for item in [*model.parameters, *model.constants]
@@ -145,6 +153,10 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
     errors.extend(
         f"MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:{symbol}"
         for symbol in sorted(unsupported_bound_scalars)
+    )
+    errors.extend(
+        f"MODEL_GATE_FAIL:DECISION_INDEPENDENT_CONSTRAINT_INFEASIBLE:{constraint_id}"
+        for constraint_id in fixed_constraint_violations
     )
     errors.extend(
         f"MODEL_GATE_FAIL:{item.code.value}:{item.reference}"
@@ -229,6 +241,68 @@ def _objective_depends_on_decision(model: MathematicalModel) -> bool:
             # this check rejects only objectives proven decision-independent.
             return True
     return False
+
+
+def _decision_independent_constraint_violations(model: MathematicalModel) -> list[str]:
+    """Reject hard constraints contradicted by known scalar equations alone.
+
+    This is deliberately a partial proof: unknown, cyclic, indexed, or
+    decision-dependent relations are left to the solver and independent verifier.
+    """
+    values = scalar_parameter_values([*model.parameters, *model.constants])
+    variable_symbols = {item.symbol for item in [*model.decision_variables, *model.state_variables]}
+    definitions: dict[str, list[MathExpression]] = {}
+    for equation in model.equations:
+        if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol is not None:
+            definitions.setdefault(equation.lhs.symbol, []).append(equation.rhs)
+
+    # Only unique scalar definitions can be substituted unambiguously.
+    pending = {
+        symbol: expressions[0]
+        for symbol, expressions in definitions.items()
+        if len(expressions) == 1 and symbol not in values and symbol not in variable_symbols
+    }
+    for _ in range(len(pending)):
+        progress = False
+        for symbol, expression in list(pending.items()):
+            if not referenced_symbols(expression) <= values.keys():
+                continue
+            try:
+                value = evaluate_expression(expression, values)
+            except (ExpressionError, OverflowError, ValueError):
+                continue
+            if math.isfinite(value):
+                values[symbol] = value
+                del pending[symbol]
+                progress = True
+        if not progress:
+            break
+
+    violated: list[str] = []
+    for constraint in model.constraints:
+        if not constraint.is_hard or constraint.index_scope:
+            continue
+        if (
+            not (referenced_symbols(constraint.expression) | referenced_symbols(constraint.rhs))
+            <= values.keys()
+        ):
+            continue
+        try:
+            left = evaluate_expression(constraint.expression, values)
+            right = evaluate_expression(constraint.rhs, values)
+        except (ExpressionError, OverflowError, ValueError):
+            continue
+        if not (math.isfinite(left) and math.isfinite(right)):
+            continue
+        if constraint.relation is ConstraintRelation.LE:
+            violation = left - right
+        elif constraint.relation is ConstraintRelation.GE:
+            violation = right - left
+        else:
+            violation = abs(left - right)
+        if violation > 1e-7:
+            violated.append(constraint.constraint_id)
+    return violated
 
 
 def _data_bindings_reach_core(model: MathematicalModel) -> bool:

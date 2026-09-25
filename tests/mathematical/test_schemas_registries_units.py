@@ -39,7 +39,10 @@ from mathmodel_ai.schemas.execution import (
 from mathmodel_ai.schemas.mathematical import (
     BaseDimension,
     ConstantDefinition,
+    ConstraintDefinition,
+    ConstraintRelation,
     DataBinding,
+    EquationDefinition,
     ExpressionKind,
     IndexDefinition,
     MathExpression,
@@ -70,7 +73,15 @@ from mathmodel_ai.schemas.solver import (
     SolverRun,
     SolverStatus,
 )
-from tests.mathematical.helpers import add, constant, lp_model, selected_state, symbol, variable
+from tests.mathematical.helpers import (
+    add,
+    constant,
+    lp_model,
+    selected_state,
+    subtract,
+    symbol,
+    variable,
+)
 
 
 def test_mathematical_model_round_trips_with_typed_expression_tree() -> None:
@@ -723,6 +734,86 @@ def test_model_gate_rejects_objective_constant_through_derived_equation() -> Non
         "MODEL_GATE_FAIL:objective_depends_on_decision"
         not in model_quality_gate(coupled, state).errors
     )
+
+
+def test_model_gate_rejects_fixed_infeasible_hard_constraint_before_solver() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    flow = variable("flow").model_copy(update={"role": VariableRole.DERIVED})
+    hazard = variable("hazard").model_copy(update={"role": VariableRole.DERIVED})
+    flow_equation = EquationDefinition(
+        equation_id="EQ-flow",
+        latex="flow=0.2",
+        normalized_expression="flow=0.2",
+        lhs=symbol("flow"),
+        rhs=constant(0.2),
+        meaning="fixed scalar flow",
+        source_refs=["EVID-fact-1"],
+        derivation="fixture",
+    )
+    hazard_equation = flow_equation.model_copy(
+        update={
+            "equation_id": "EQ-hazard",
+            "lhs": symbol("hazard"),
+            "rhs": subtract(symbol("flow"), constant(1.5)),
+        }
+    )
+    bound = ConstraintDefinition(
+        constraint_id="CON-hazard-min",
+        name="nonnegative hazard",
+        expression=symbol("hazard"),
+        relation=ConstraintRelation.GE,
+        rhs=constant(0),
+        normalized_expression="hazard>=0",
+        description="hazard must be nonnegative",
+        source_refs=["EVID-fact-1"],
+        equation_ref="EQ-hazard",
+    )
+    model = base.model_copy(
+        update={
+            "derived_variables": [flow, hazard],
+            "equations": [*base.equations, flow_equation, hazard_equation],
+            "constraints": [*base.constraints, bound],
+        }
+    )
+
+    gate = model_quality_gate(model, state)
+    assert gate.status is QualityGateStatus.RETRY
+    assert gate.checks["decision_independent_constraints_feasible"] is False
+    assert (
+        "MODEL_GATE_FAIL:DECISION_INDEPENDENT_CONSTRAINT_INFEASIBLE:CON-hazard-min" in gate.errors
+    )
+    feasible = model.model_copy(
+        update={
+            "equations": [
+                *base.equations,
+                flow_equation,
+                hazard_equation.model_copy(update={"rhs": add(symbol("flow"), constant(0.5))}),
+            ]
+        }
+    )
+    assert model_quality_gate(feasible, state).checks["decision_independent_constraints_feasible"]
+    decision_dependent = model.model_copy(
+        update={
+            "equations": [
+                *base.equations,
+                flow_equation.model_copy(update={"rhs": symbol("x")}),
+                hazard_equation,
+            ]
+        }
+    )
+    assert model_quality_gate(decision_dependent, state).checks[
+        "decision_independent_constraints_feasible"
+    ]
+    soft_bound = model.model_copy(
+        update={"constraints": [*base.constraints, bound.model_copy(update={"is_hard": False})]}
+    )
+    assert model_quality_gate(soft_bound, state).checks["decision_independent_constraints_feasible"]
+    assert model_quality_gate(base, state).status is QualityGateStatus.PASS
 
 
 def test_model_gate_blocks_unresolved_critical_ambiguity() -> None:
