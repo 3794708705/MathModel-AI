@@ -18,6 +18,7 @@ from mathmodel_ai.schemas.benchmark import (
     GroundTruthPolicy,
     ModelingCategory,
 )
+from mathmodel_ai.schemas.program import ExecutionStrategy
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec
 
 
@@ -139,6 +140,7 @@ def test_registry_keeps_official_bytes_but_exposes_only_training_csv(tmp_path: P
     )
     assert bundle.causal_policy.source_sha256 == bundle.causal_split.source_sha256
     guidance = PipelineBenchmarkExecutor._causal_user_guidance(bundle)
+    assert PipelineBenchmarkExecutor._execution_strategy(bundle) is ExecutionStrategy.GENERATED
     assert len(guidance) == 1
     assert "causal_predictor.py" in guidance[0]
     assert "only training groups" in guidance[0]

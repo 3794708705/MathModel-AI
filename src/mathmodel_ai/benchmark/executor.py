@@ -48,6 +48,7 @@ from mathmodel_ai.schemas.paper import (
     ReferenceMetadataStatus,
 )
 from mathmodel_ai.schemas.problem_state import ProblemState
+from mathmodel_ai.schemas.program import ExecutionStrategy
 from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.submission import (
     CompetitionProfile,
@@ -171,6 +172,7 @@ class PipelineBenchmarkExecutor:
             )
         try:
             causal_guidance = self._causal_user_guidance(bundle)
+            execution_strategy = self._execution_strategy(bundle)
             mathematical = (
                 await self._mathematical.run_reviewed(
                     state.project_id,
@@ -180,9 +182,14 @@ class PipelineBenchmarkExecutor:
                     policy_digest=reviewed.policy_digest,
                     subproblem_identity_digest=reviewed.subproblem_identity_digest,
                     user_guidance=causal_guidance,
+                    execution_strategy=execution_strategy,
                 )
                 if reviewed is not None
-                else await self._mathematical.run(state.project_id, user_guidance=causal_guidance)
+                else await self._mathematical.run(
+                    state.project_id,
+                    user_guidance=causal_guidance,
+                    execution_strategy=execution_strategy,
+                )
             )
             if (
                 mathematical.model_stage.gate.status is not QualityGateStatus.PASS
@@ -976,6 +983,16 @@ class PipelineBenchmarkExecutor:
             failures=(failure,),
             interventions=(),
             result=result,
+        )
+
+    @staticmethod
+    def _execution_strategy(bundle: BlindSolveBundle) -> ExecutionStrategy:
+        # A causal holdout must re-execute the exact predictor source bound to
+        # the formal solver program; a deterministic optimizer cannot supply it.
+        return (
+            ExecutionStrategy.GENERATED
+            if bundle.causal_split is not None
+            else ExecutionStrategy.AUTO
         )
 
     @staticmethod

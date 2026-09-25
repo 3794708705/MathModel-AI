@@ -198,6 +198,7 @@ def test_problem_text_and_paper_profile_are_derived_without_model_hints() -> Non
     )
 
     assert PipelineBenchmarkExecutor._problem_text(bundle) == content.decode()
+    assert PipelineBenchmarkExecutor._execution_strategy(bundle).value == "AUTO"
     paper_profile = PipelineBenchmarkExecutor._paper_profile(comap_mcm_2024_profile())
     assert paper_profile.competition_name == "COMAP Mathematical Contest in Modeling"
     assert paper_profile.anonymous
