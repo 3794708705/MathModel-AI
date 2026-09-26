@@ -3153,6 +3153,10 @@ export interface components {
             experiment_type: string;
             /** Feasible */
             feasible?: boolean | null;
+            /** Fixed Decision Values */
+            fixed_decision_values?: {
+                [key: string]: number;
+            };
             /** Key Outputs */
             key_outputs?: {
                 [key: string]: number;
@@ -6208,6 +6212,10 @@ export interface components {
         RobustnessReport: {
             /** Baseline Objective */
             baseline_objective?: number | null;
+            /** Baseline Responses */
+            baseline_responses?: {
+                [key: string]: number;
+            };
             config: components["schemas"]["RobustnessConfig"];
             /**
              * Created At
@@ -6238,6 +6246,13 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Response Ranges */
+            response_ranges?: {
+                [key: string]: [
+                    number,
+                    number
+                ];
+            };
             /**
              * Result Id
              * Format: uuid
@@ -6591,6 +6606,10 @@ export interface components {
         SensitivityReport: {
             /** Baseline Objective */
             baseline_objective?: number | null;
+            /** Baseline Responses */
+            baseline_responses?: {
+                [key: string]: number;
+            };
             config: components["schemas"]["SensitivityConfig"];
             /**
              * Created At
@@ -6632,6 +6651,13 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Response Ranges */
+            response_ranges?: {
+                [key: string]: [
+                    number,
+                    number
+                ];
+            };
             /**
              * Result Id
              * Format: uuid
@@ -6735,7 +6761,7 @@ export interface components {
          * SolverFamily
          * @enum {string}
          */
-        SolverFamily: "SCIPY_HIGHS" | "SCIPY_MILP" | "SCIPY_MINIMIZE" | "GUROBI" | "ORTOOLS_CP_SAT";
+        SolverFamily: "SCIPY_HIGHS" | "SCIPY_MILP" | "SCIPY_MINIMIZE" | "GUROBI" | "ORTOOLS_CP_SAT" | "SCALAR_RESPONSE";
         /** SolverHardRejection */
         SolverHardRejection: {
             family: components["schemas"]["SolverFamily"];
@@ -6746,7 +6772,7 @@ export interface components {
          * SolverName
          * @enum {string}
          */
-        SolverName: "SCIPY" | "GUROBI" | "ORTOOLS";
+        SolverName: "SCIPY" | "GUROBI" | "ORTOOLS" | "SCALAR_RESPONSE";
         /** SolverOptions */
         SolverOptions: {
             /**
