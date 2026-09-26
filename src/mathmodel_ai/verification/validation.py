@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import math
+from dataclasses import asdict
 
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
+from mathmodel_ai.mathematical.expressions import referenced_symbols
 from mathmodel_ai.paper.hashing import sha256_json
+from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.execution import ExecutionStatus
 from mathmodel_ai.schemas.independent_verification import (
     IndependentStatus,
@@ -29,6 +32,11 @@ from mathmodel_ai.schemas.verification import (
     ValidationRequirementCheck,
     ValidationStatus,
     VariableValidationCheck,
+)
+from mathmodel_ai.verification.causal_holdout import (
+    SWING_PROTOCOL,
+    AuditedCausalEvidence,
+    assess_binary_calibration,
 )
 from mathmodel_ai.verification.evaluator import (
     IndependentEvaluationError,
@@ -72,6 +80,7 @@ class IndependentValidator:
         solver_run: SolverRun,
         evidence: EvidenceChainReport,
         reviewed_evidence: ReviewedValidationEvidence | None = None,
+        causal_evidence: AuditedCausalEvidence | None = None,
     ) -> ValidationReport:
         errors: list[str] = []
         warnings: list[str] = []
@@ -102,9 +111,30 @@ class IndependentValidator:
             reviewed_evidence=reviewed_evidence,
         )
         errors.extend(f"VALIDATION_FAIL:{item}" for item in reviewed_errors)
+        causal_bound = (
+            causal_evidence is None or causal_evidence.formal_result_id == result.result_id
+        )
+        if not causal_bound:
+            errors.append("VALIDATION_FAIL:CAUSAL_HOLDOUT_FORMAL_RESULT_MISMATCH")
+        calibration_valid = False
+        if causal_evidence is not None and causal_evidence.calibration is not None:
+            try:
+                calibration_valid = causal_evidence.calibration == assess_binary_calibration(
+                    causal_evidence.result
+                )
+            except ValueError:
+                pass
+            if not calibration_valid:
+                errors.append("VALIDATION_FAIL:CAUSAL_CALIBRATION_RECOMPUTATION_MISMATCH")
+        randomness_valid = self._randomness_claim_matches(causal_evidence)
+        flow_valid = self._match_flow_claim_matches(causal_evidence)
+        swing_valid = self._swing_claim_matches(causal_evidence)
         metrics = [
             *self._metric_checks(model, result, solver_run, values),
             *self._reviewed_metric_checks(reviewed_evidence),
+            *self._causal_metric_checks(
+                causal_evidence, bound=causal_bound, calibration_valid=calibration_valid
+            ),
         ]
         requirement_checks = self._requirement_checks(
             model,
@@ -114,6 +144,12 @@ class IndependentValidator:
             metrics=metrics,
             reviewed_evidence=reviewed_evidence,
             reviewed_errors=reviewed_errors,
+            causal_evidence=causal_evidence,
+            causal_bound=causal_bound and evidence.valid,
+            calibration_valid=calibration_valid,
+            randomness_valid=randomness_valid,
+            flow_valid=flow_valid,
+            swing_valid=swing_valid,
         )
 
         failures = [
@@ -200,6 +236,67 @@ class IndependentValidator:
                     if reviewed_evidence is not None
                     else []
                 ),
+                *(
+                    [
+                        f"causal_holdout_execution:{causal_evidence.holdout_execution_id}",
+                        f"causal_source_sha256:{causal_evidence.source_sha256}",
+                        *(
+                            [f"causal_training_sha256:{causal_evidence.training_sha256}"]
+                            if causal_evidence.training_sha256 is not None
+                            else []
+                        ),
+                        f"causal_trace_sha256:{causal_evidence.trace_sha256}",
+                        *(
+                            [
+                                f"causal_science_policy_sha256:{causal_evidence.science_policy_sha256}"
+                            ]
+                            if causal_evidence.science_policy_sha256 is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_calibration_sha256:"
+                                + sha256_json(asdict(causal_evidence.calibration))
+                            ]
+                            if causal_evidence.calibration is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_training_randomness_sha256:"
+                                + sha256_json(asdict(causal_evidence.randomness))
+                            ]
+                            if causal_evidence.randomness is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_randomness_result_artifact_sha256:"
+                                + causal_evidence.randomness_claim.result_artifact_sha256
+                            ]
+                            if causal_evidence.randomness_claim is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_training_match_flow_sha256:"
+                                + sha256_json(asdict(causal_evidence.match_flow))
+                            ]
+                            if causal_evidence.match_flow is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_holdout_swing_sha256:"
+                                + sha256_json(asdict(causal_evidence.swing))
+                            ]
+                            if causal_evidence.swing is not None
+                            else []
+                        ),
+                    ]
+                    if causal_evidence is not None
+                    else []
+                ),
             ],
         )
 
@@ -212,6 +309,7 @@ class IndependentValidator:
         solver_run: SolverRun,
         evidence: EvidenceChainReport,
         reviewed_evidence: ReviewedValidationEvidence | None = None,
+        causal_evidence: AuditedCausalEvidence | None = None,
     ) -> list[str]:
         """Recompute a persisted report and compare every deterministic field."""
         recomputed = self.validate(
@@ -220,6 +318,7 @@ class IndependentValidator:
             solver_run=solver_run,
             evidence=evidence,
             reviewed_evidence=reviewed_evidence,
+            causal_evidence=causal_evidence,
         )
         deterministic_fields = (
             "project_id",
@@ -536,6 +635,7 @@ class IndependentValidator:
             plan.metrics != policy.metrics
             or plan.scenarios != policy.scenarios
             or plan.scientific_scope != policy.scientific_scope
+            or not policy.matches_observation(plan)
         ):
             errors.append("REVIEWED_PLAN_POLICY_MISMATCH")
         if report.status is not IndependentStatus.PASS or report.errors:
@@ -612,6 +712,96 @@ class IndependentValidator:
             ):
                 errors.append(f"REVIEWED_SCENARIO_FAILED_OR_TAMPERED:{spec.scenario_id}")
         return list(dict.fromkeys(errors))
+
+    @staticmethod
+    def _causal_metric_checks(
+        evidence: AuditedCausalEvidence | None, *, bound: bool, calibration_valid: bool
+    ) -> list[MetricRecalculation]:
+        if evidence is None:
+            return []
+        checks = [
+            MetricRecalculation(
+                metric_id=f"causal_holdout:{name}",
+                category=ValidationCheckCategory.OUTPUT,
+                recomputed_value=value if bound else None,
+                absolute_tolerance=0,
+                relative_tolerance=0,
+                status=ValidationCheckStatus.PASS if bound else ValidationCheckStatus.FAIL,
+                message=(
+                    f"independently replayed causal holdout {name}"
+                    if bound
+                    else "causal holdout is not bound to the formal result"
+                ),
+            )
+            for name, value in (
+                ("brier", evidence.result.brier),
+                ("baseline_brier", evidence.result.baseline_brier),
+            )
+        ]
+        if evidence.calibration is not None:
+            checks.append(
+                MetricRecalculation(
+                    metric_id="causal_holdout:calibration_ece",
+                    category=ValidationCheckCategory.OUTPUT,
+                    recomputed_value=(
+                        evidence.calibration.ece if bound and calibration_valid else None
+                    ),
+                    absolute_tolerance=0,
+                    relative_tolerance=0,
+                    status=(
+                        ValidationCheckStatus.PASS
+                        if bound and calibration_valid
+                        else ValidationCheckStatus.FAIL
+                    ),
+                    message=(
+                        "independently recomputed holdout reliability bins and ECE"
+                        if bound and calibration_valid
+                        else "holdout calibration could not be independently recomputed"
+                    ),
+                )
+            )
+        if evidence.randomness is not None:
+            for name, value in (
+                ("lag1_residual_statistic", evidence.randomness.observed_statistic),
+                ("conditional_randomness_p", evidence.randomness.two_sided_p),
+            ):
+                checks.append(
+                    MetricRecalculation(
+                        metric_id=f"causal_training:{name}",
+                        category=ValidationCheckCategory.OUTPUT,
+                        recomputed_value=value if bound else None,
+                        absolute_tolerance=0,
+                        relative_tolerance=0,
+                        status=ValidationCheckStatus.PASS if bound else ValidationCheckStatus.FAIL,
+                        message=(
+                            "host-computed training-data null statistic; "
+                            "not a verification of a solver claim"
+                            if bound
+                            else "training-data null statistic is not bound to the formal result"
+                        ),
+                    )
+                )
+        if evidence.swing is not None:
+            for name, value in (
+                ("swing_brier", evidence.swing.brier),
+                ("swing_baseline_brier", evidence.swing.baseline_brier),
+            ):
+                checks.append(
+                    MetricRecalculation(
+                        metric_id=f"causal_holdout:{name}",
+                        category=ValidationCheckCategory.OUTPUT,
+                        recomputed_value=value if bound else None,
+                        absolute_tolerance=0,
+                        relative_tolerance=0,
+                        status=ValidationCheckStatus.PASS if bound else ValidationCheckStatus.FAIL,
+                        message=(
+                            "independently scored pre-outcome imminent-swing forecast"
+                            if bound
+                            else "imminent-swing forecast is not bound to formal result"
+                        ),
+                    )
+                )
+        return checks
 
     @staticmethod
     def _reviewed_metric_checks(
@@ -715,6 +905,12 @@ class IndependentValidator:
         metrics: list[MetricRecalculation],
         reviewed_evidence: ReviewedValidationEvidence | None,
         reviewed_errors: list[str],
+        causal_evidence: AuditedCausalEvidence | None,
+        causal_bound: bool,
+        calibration_valid: bool,
+        randomness_valid: bool,
+        flow_valid: bool,
+        swing_valid: bool,
     ) -> list[ValidationRequirementCheck]:
         objective_metrics = [
             item for item in metrics if item.category is ValidationCheckCategory.OBJECTIVE
@@ -746,6 +942,15 @@ class IndependentValidator:
             else {}
         )
         checks: list[ValidationRequirementCheck] = []
+        causal_checks = self._causal_requirement_checks(
+            causal_evidence,
+            bound=causal_bound,
+            calibration_valid=calibration_valid,
+            randomness_valid=randomness_valid,
+            flow_valid=flow_valid,
+            swing_valid=swing_valid,
+        )
+        causal_names = {item.requirement for item in causal_checks}
         for requirement in model.validation_requirements:
             binding = reviewed_bindings.get(requirement)
             if binding is not None and reviewed_evidence is not None:
@@ -758,6 +963,8 @@ class IndependentValidator:
                     )
                 )
                 continue
+            if requirement in causal_names:
+                continue  # The host check below covers this exact declared identifier.
             normalized = " ".join(requirement.casefold().split())
             relevant: list[ValidationCheckStatus] = []
             refs: list[str] = []
@@ -780,7 +987,185 @@ class IndependentValidator:
                     message=f"validation requirement is {status.value.lower()}: {requirement}",
                 )
             )
+        checks.extend(causal_checks)
         return checks
+
+    @staticmethod
+    def _causal_requirement_checks(
+        evidence: AuditedCausalEvidence | None,
+        *,
+        bound: bool,
+        calibration_valid: bool,
+        randomness_valid: bool,
+        flow_valid: bool,
+        swing_valid: bool,
+    ) -> list[ValidationRequirementCheck]:
+        if evidence is None:
+            return []
+        policy_valid = (
+            evidence.science_policy_sha256 is not None
+            and len(evidence.science_policy_sha256) == 64
+            and all(character in "0123456789abcdef" for character in evidence.science_policy_sha256)
+            and len(set(evidence.required_scientific_checks))
+            == len(evidence.required_scientific_checks)
+        )
+        checks: list[ValidationRequirementCheck] = []
+        for capability in evidence.required_scientific_checks:
+            status = (
+                ValidationCheckStatus.FAIL
+                if not bound or not policy_valid
+                else ValidationCheckStatus.FAIL
+                if capability is CausalScienceCheck.CALIBRATION_ASSESSMENT
+                and evidence.calibration is not None
+                and not calibration_valid
+                else ValidationCheckStatus.FAIL
+                if capability is CausalScienceCheck.RANDOMNESS_TEST
+                and evidence.randomness_claim is not None
+                and not randomness_valid
+                else ValidationCheckStatus.FAIL
+                if capability is CausalScienceCheck.MATCH_FLOW
+                and evidence.match_flow_claim is not None
+                and not flow_valid
+                else ValidationCheckStatus.FAIL
+                if capability is CausalScienceCheck.SWING_PREDICTION
+                and evidence.swing_claim is not None
+                and not swing_valid
+                else ValidationCheckStatus.PASS
+                if capability is CausalScienceCheck.HELDOUT_PREDICTION
+                or (capability is CausalScienceCheck.CALIBRATION_ASSESSMENT and calibration_valid)
+                or (capability is CausalScienceCheck.RANDOMNESS_TEST and randomness_valid)
+                or (capability is CausalScienceCheck.MATCH_FLOW and flow_valid)
+                or (capability is CausalScienceCheck.SWING_PREDICTION and swing_valid)
+                else ValidationCheckStatus.UNCHECKED
+            )
+            checks.append(
+                ValidationRequirementCheck(
+                    requirement=f"causal_science:{capability.value}",
+                    status=status,
+                    evidence_refs=[
+                        f"causal_holdout_execution:{evidence.holdout_execution_id}",
+                        f"causal_trace_sha256:{evidence.trace_sha256}",
+                        f"causal_science_policy_sha256:{evidence.science_policy_sha256}",
+                        *(
+                            [
+                                "causal_calibration_sha256:"
+                                + sha256_json(asdict(evidence.calibration))
+                            ]
+                            if capability is CausalScienceCheck.CALIBRATION_ASSESSMENT
+                            and evidence.calibration is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_training_randomness_sha256:"
+                                + sha256_json(asdict(evidence.randomness)),
+                                f"causal_training_sha256:{evidence.training_sha256}",
+                                "causal_randomness_result_artifact_sha256:"
+                                + evidence.randomness_claim.result_artifact_sha256,
+                            ]
+                            if capability is CausalScienceCheck.RANDOMNESS_TEST
+                            and evidence.randomness is not None
+                            and evidence.randomness_claim is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_training_match_flow_sha256:"
+                                + sha256_json(asdict(evidence.match_flow)),
+                                "causal_match_flow_result_artifact_sha256:"
+                                + evidence.match_flow_claim.result_artifact_sha256,
+                            ]
+                            if capability is CausalScienceCheck.MATCH_FLOW
+                            and evidence.match_flow is not None
+                            and evidence.match_flow_claim is not None
+                            else []
+                        ),
+                        *(
+                            [
+                                "causal_holdout_swing_sha256:"
+                                + sha256_json(asdict(evidence.swing)),
+                                "causal_swing_result_artifact_sha256:"
+                                + evidence.swing_claim.result_artifact_sha256,
+                            ]
+                            if capability is CausalScienceCheck.SWING_PREDICTION
+                            and evidence.swing is not None
+                            and evidence.swing_claim is not None
+                            else []
+                        ),
+                    ],
+                    message=(
+                        f"host scientific check is {status.value.lower()}: {capability.value}"
+                    ),
+                )
+            )
+        return checks
+
+    @staticmethod
+    def _randomness_claim_matches(evidence: AuditedCausalEvidence | None) -> bool:
+        if (
+            evidence is None
+            or evidence.randomness is None
+            or evidence.randomness_claim is None
+            or evidence.training_sha256 is None
+        ):
+            return False
+        reference = evidence.randomness
+        claim = evidence.randomness_claim
+        return (
+            len(evidence.training_sha256) == 64
+            and all(character in "0123456789abcdef" for character in evidence.training_sha256)
+            and len(claim.result_artifact_sha256) == 64
+            and all(character in "0123456789abcdef" for character in claim.result_artifact_sha256)
+            and claim.replicates == reference.replicates
+            and math.isclose(
+                claim.observed_statistic,
+                reference.observed_statistic,
+                rel_tol=1e-9,
+                abs_tol=1e-12,
+            )
+            and math.isclose(claim.two_sided_p, reference.two_sided_p, abs_tol=1e-12)
+        )
+
+    @staticmethod
+    def _match_flow_claim_matches(evidence: AuditedCausalEvidence | None) -> bool:
+        if (
+            evidence is None
+            or evidence.match_flow is None
+            or evidence.match_flow_claim is None
+            or evidence.training_sha256 is None
+        ):
+            return False
+        reference = evidence.match_flow
+        claim = evidence.match_flow_claim
+        return (
+            reference.source_sha256 == evidence.training_sha256
+            and len(claim.result_artifact_sha256) == 64
+            and all(character in "0123456789abcdef" for character in claim.result_artifact_sha256)
+            and len(claim.values) == len(reference.values)
+            and bool(claim.values)
+            and all(
+                math.isclose(reported, expected, rel_tol=1e-9, abs_tol=1e-9)
+                for reported, expected in zip(claim.values, reference.values, strict=True)
+            )
+        )
+
+    @staticmethod
+    def _swing_claim_matches(evidence: AuditedCausalEvidence | None) -> bool:
+        if evidence is None or evidence.swing is None or evidence.swing_claim is None:
+            return False
+        claim = evidence.swing_claim
+        assessment = evidence.swing
+        return (
+            claim.protocol == SWING_PROTOCOL
+            and len(claim.result_artifact_sha256) == 64
+            and all(character in "0123456789abcdef" for character in claim.result_artifact_sha256)
+            and assessment.eligible_points > 0
+            and 0 <= assessment.observed_swings <= assessment.eligible_points
+            and math.isfinite(assessment.brier)
+            and math.isfinite(assessment.baseline_brier)
+            and 0 <= assessment.brier <= 1
+            and 0 <= assessment.baseline_brier <= 1
+        )
 
     @staticmethod
     def _numeric_environment(
@@ -792,7 +1177,35 @@ class IndependentValidator:
             scalar = IndependentValidator._scalar_parameter(parameter)
             if scalar is not None:
                 values[parameter.symbol] = scalar
-        values.update(variable_values)
+        derived = {item.symbol for item in model.derived_variables if not item.index_sets}
+        values.update({key: value for key, value in variable_values.items() if key not in derived})
+        definitions = {
+            symbol: [
+                equation.rhs
+                for equation in model.equations
+                if equation.lhs.kind.value == "SYMBOL" and equation.lhs.symbol == symbol
+            ]
+            for symbol in derived
+        }
+        pending = {
+            symbol: expressions[0]
+            for symbol, expressions in definitions.items()
+            if len(expressions) == 1
+        }
+        evaluator = IndependentExpressionEvaluator()
+        for _ in range(len(pending)):
+            progressed = False
+            for symbol, expression in list(pending.items()):
+                if not referenced_symbols(expression) <= set(values):
+                    continue
+                try:
+                    values[symbol] = evaluator.evaluate(expression, values)
+                except IndependentEvaluationError:
+                    continue
+                del pending[symbol]
+                progressed = True
+            if not progressed:
+                break
         return values
 
     @staticmethod

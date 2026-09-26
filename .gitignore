@@ -17,3 +17,4 @@ data/raw/
 data/cleaned/
 data/processed/
 var/
+tmp/

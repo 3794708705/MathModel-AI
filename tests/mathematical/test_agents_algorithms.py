@@ -1,10 +1,19 @@
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
 from mathmodel_ai.agents import AgentRunStatus, CodeAgent, MathModeler
+from mathmodel_ai.agents.code import (
+    reject_discarded_csv_rows,
+    reject_header_only_csv_usage,
+    reject_reused_strata_in_seeded_protocol,
+    reject_sorted_groupby_in_seeded_protocol,
+)
+from mathmodel_ai.agents.math_modeler import reject_unverifiable_causal_requirements
 from mathmodel_ai.core.config import Settings
+from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.mathematical.algorithms import AlgorithmSelector
 from mathmodel_ai.providers.factory import ProviderRegistry
 from mathmodel_ai.providers.mock import MockProvider
@@ -14,15 +23,17 @@ from mathmodel_ai.routing.router import ModelRouter
 from mathmodel_ai.routing.schemas import EscalationLevel, TaskProfile, TaskType
 from mathmodel_ai.schemas.mathematical import (
     ConvexityStatus,
+    DataBinding,
     MathematicalModel,
     MathematicalModelDraft,
     MathModelerInput,
     VariableDomain,
+    VariableRole,
 )
 from mathmodel_ai.schemas.model_selection import ModelFamily
 from mathmodel_ai.schemas.program import CodeAgentInput, GeneratedProgramDraft, GeneratedSourceFile
 from mathmodel_ai.schemas.solver import AlgorithmFamily, SolverFamily
-from tests.mathematical.helpers import lp_model, milp_model, nlp_model, selected_state
+from tests.mathematical.helpers import lp_model, milp_model, nlp_model, selected_state, symbol
 
 
 class RecordingMockProvider(MockProvider):
@@ -201,7 +212,7 @@ async def test_math_modeler_binds_identity_and_audits_xhigh_mock_route() -> None
     assert run.output.model_id == assigned_model_id
     assert run.output.project_id == state.project_id
     assert run.output.source_selected_model_id == "CAND-lp"
-    assert run.prompt_version == "4.3.0"
+    assert run.prompt_version == "4.6.9"
     assert mock.last_request is not None
     assert mock.last_request.max_output_tokens == 65_536
     assert run.routes[0].level is EscalationLevel.FLAGSHIP_XHIGH
@@ -288,7 +299,17 @@ async def test_code_agent_generates_hashed_program_without_changing_model() -> N
     agent = CodeAgent(**_agent_services(mock))  # type: ignore[arg-type]
 
     run = await agent.run(
-        CodeAgentInput(mathematical_model=model, algorithm_plan=plan),
+        CodeAgentInput(
+            mathematical_model=model,
+            algorithm_plan=plan,
+            input_manifest=[
+                {
+                    "original_name": "observations.csv",
+                    "path": "/workspace/inputs/0001-test.csv",
+                    "sha256": "a" * 64,
+                }
+            ],
+        ),
         state,
         TaskProfile(task_type=TaskType.CODE_GENERATION),
     )
@@ -300,6 +321,7 @@ async def test_code_agent_generates_hashed_program_without_changing_model() -> N
     assert len(run.output.code_hash) == 64
     assert run.output.is_mock is True
     assert '"title":"GeneratedResultPayload"' in mock.requests[0].messages[-1].content
+    assert "/workspace/inputs/0001-test.csv" in mock.requests[0].messages[-1].content
 
 
 @pytest.mark.asyncio
@@ -333,6 +355,260 @@ async def test_code_agent_blocks_obvious_hardcoded_result() -> None:
     assert any("CODE_GENERATION_BLOCKED" in error for error in run.errors)
 
 
+def test_code_agent_rejects_csv_header_only_as_data_use() -> None:
+    header_only = GeneratedProgramDraft(
+        entrypoint="solve.py",
+        files=[
+            GeneratedSourceFile(
+                path="solve.py",
+                content=(
+                    "import csv\n"
+                    "with open('/workspace/inputs/matches.csv') as source:\n"
+                    "    reader = csv.reader(source)\n"
+                    "    header = next(reader)\n"
+                ),
+            )
+        ],
+        solver_target="custom",
+        explanation="Only inspects the column names.",
+    )
+    with pytest.raises(ValueError, match="headers but no data rows"):
+        reject_header_only_csv_usage(header_only)
+
+    row_consuming = header_only.model_copy(
+        update={
+            "files": [
+                GeneratedSourceFile(
+                    path="solve.py",
+                    content=header_only.files[0].content + "    rows = list(reader)\n",
+                )
+            ]
+        }
+    )
+    reject_header_only_csv_usage(row_consuming)
+
+
+def test_seeded_permutation_code_rejects_default_sorted_groupby() -> None:
+    source = "for key, group in df.groupby(['match_id', 'server']):\n    pass\n"
+    program = GeneratedProgramDraft(
+        entrypoint="main.py",
+        files=[GeneratedSourceFile(path="main.py", content=source)],
+        solver_target="SCIPY",
+        explanation="Fixture seeded permutation loop.",
+    )
+    with pytest.raises(ValueError, match="groupby\\(sort=False\\)"):
+        reject_sorted_groupby_in_seeded_protocol(program)
+    unsorted = program.model_copy(
+        update={
+            "files": [
+                GeneratedSourceFile(
+                    path="main.py",
+                    content=source.replace(
+                        "df.groupby(['match_id', 'server'])",
+                        "df.groupby(['match_id', 'server'], sort=False)",
+                    ),
+                )
+            ]
+        }
+    )
+    reject_sorted_groupby_in_seeded_protocol(unsorted)
+
+
+def test_seeded_permutation_code_rejects_reused_in_place_strata() -> None:
+    program = GeneratedProgramDraft(
+        entrypoint="main.py",
+        files=[
+            GeneratedSourceFile(
+                path="main.py",
+                content=(
+                    "strata = {(1, 1): [0, 1]}\n"
+                    "for _ in range(499):\n"
+                    "    for key in strata:\n"
+                    "        rng.shuffle(strata[key])\n"
+                ),
+            )
+        ],
+        solver_target="SCIPY",
+        explanation="Fixture repeated seeded null draws.",
+    )
+    with pytest.raises(ValueError, match="reuses in-place shuffled strata"):
+        reject_reused_strata_in_seeded_protocol(program)
+
+    fresh = program.model_copy(
+        update={
+            "files": [
+                GeneratedSourceFile(
+                    path="main.py",
+                    content=(
+                        "original = {(1, 1): [0, 1]}\n"
+                        "for _ in range(499):\n"
+                        "    strata = {key: values[:] for key, values in original.items()}\n"
+                        "    for key in strata:\n"
+                        "        rng.shuffle(strata[key])\n"
+                    ),
+                )
+            ]
+        }
+    )
+    reject_reused_strata_in_seeded_protocol(fresh)
+
+
+def test_causal_modeler_rejects_unverifiable_stage_requirements() -> None:
+    base = lp_model()
+    guidance = [
+        "CAUSAL_HOLDOUT_PROTOCOL: require causal_science:randomness_test "
+        "and causal_science:heldout_prediction"
+    ]
+    valid = base.model_copy(
+        update={
+            "validation_requirements": [
+                "causal_science:randomness_test",
+                "recompute variable bounds and constraints",
+            ]
+        }
+    )
+    reject_unverifiable_causal_requirements(valid, guidance)
+    invalid = valid.model_copy(
+        update={
+            "validation_requirements": [
+                *valid.validation_requirements,
+                "Later sensitivity experiment is needed.",
+            ]
+        }
+    )
+    with pytest.raises(QualityGateError, match="UNVERIFIABLE_VALIDATION_REQUIREMENT"):
+        reject_unverifiable_causal_requirements(invalid, guidance)
+    reject_unverifiable_causal_requirements(invalid, [])
+
+
+def test_causal_modeler_rejects_incomplete_formal_response_before_solving() -> None:
+    base = lp_model()
+    response = base.decision_variables[1].model_copy(update={"role": VariableRole.DERIVED})
+    model = base.model_copy(
+        update={
+            "objective": None,
+            "state_variables": [],
+            "decision_variables": [base.decision_variables[0]],
+            "derived_variables": [response],
+            "equations": [],
+            "validation_requirements": [],
+        }
+    )
+    guidance = ["CAUSAL_HOLDOUT_PROTOCOL: require causal_science:heldout_prediction"]
+
+    with pytest.raises(QualityGateError, match="CAUSAL_SCALAR_RESPONSE_INCOMPLETE:y"):
+        reject_unverifiable_causal_requirements(model, guidance)
+    reject_unverifiable_causal_requirements(model, [])
+
+    defined = model.model_copy(
+        update={
+            "equations": [
+                base.equations[0].model_copy(update={"lhs": symbol("y"), "rhs": symbol("x")})
+            ]
+        }
+    )
+    reject_unverifiable_causal_requirements(defined, guidance)
+
+
+def test_code_agent_rejects_csv_row_loop_that_ignores_values() -> None:
+    ignored = GeneratedProgramDraft(
+        entrypoint="solve.py",
+        files=[
+            GeneratedSourceFile(
+                path="solve.py",
+                content=(
+                    "import csv\n"
+                    "with open('/workspace/inputs/matches.csv') as source:\n"
+                    "    reader = csv.DictReader(source)\n"
+                    "    count = 0\n"
+                    "    for row in reader:\n"
+                    "        count += 1\n"
+                    "        if count >= 5:\n"
+                    "            break\n"
+                ),
+            )
+        ],
+        solver_target="custom",
+        explanation="Only checks that a few rows exist.",
+    )
+    reject_header_only_csv_usage(ignored)
+    with pytest.raises(ValueError, match="rows are iterated but their values unused"):
+        reject_discarded_csv_rows(ignored)
+
+    used = ignored.model_copy(
+        update={
+            "files": [
+                GeneratedSourceFile(
+                    path="solve.py",
+                    content=ignored.files[0].content.replace(
+                        "        count += 1\n",
+                        "        winners = row['point_victor']\n        count += 1\n",
+                    ),
+                )
+            ]
+        }
+    )
+    reject_discarded_csv_rows(used)
+
+
+@pytest.mark.asyncio
+async def test_code_agent_retries_header_only_csv_program_with_feedback() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    model = base.model_copy(
+        update={
+            "data_bindings": [
+                DataBinding(binding_id="BIND-points", dataset_id=uuid4(), column="winner")
+            ]
+        }
+    )
+    bad = GeneratedProgramDraft(
+        entrypoint="solve.py",
+        files=[
+            GeneratedSourceFile(
+                path="solve.py", content="import csv\nr = csv.reader([])\nh = next(r)\n"
+            )
+        ],
+        solver_target="custom",
+        explanation="Header-only candidate.",
+    )
+    good = bad.model_copy(
+        update={
+            "files": [
+                GeneratedSourceFile(
+                    path="solve.py", content=bad.files[0].content + "rows = list(r)\n"
+                )
+            ]
+        }
+    )
+    mock = RecordingMockProvider([bad.model_dump_json(), good.model_dump_json()])
+    agent = CodeAgent(**{**_agent_services(mock), "max_retries": 1})  # type: ignore[arg-type]
+
+    run = await agent.run(
+        CodeAgentInput(
+            mathematical_model=model,
+            algorithm_plan=AlgorithmSelector().select(model),
+            input_manifest=[
+                {
+                    "original_name": "matches.csv",
+                    "path": "/workspace/inputs/matches.csv",
+                    "sha256": "a" * 64,
+                }
+            ],
+        ),
+        state,
+        TaskProfile(task_type=TaskType.CODE_GENERATION),
+    )
+
+    assert run.status is AgentRunStatus.SUCCEEDED, run.errors
+    assert len(mock.requests) == 2
+    assert "AUTOMATED_SOLVE_RETRY_FEEDBACK" in mock.requests[1].messages[-1].content
+
+
 def test_generated_program_rejects_solver_target_larger_than_database_contract() -> None:
     with pytest.raises(ValidationError, match="String should have at most 64 characters"):
         GeneratedProgramDraft(
@@ -345,9 +621,12 @@ def test_generated_program_rejects_solver_target_larger_than_database_contract()
 
 def test_versioned_prompt_resources_exist() -> None:
     prompts = PromptRegistry()
-    assert prompts.get("math_modeler").version == "4.3.0"
-    assert prompts.get("code_agent").version == "4.4.0"
+    assert prompts.get("math_modeler").version == "4.6.9"
+    assert "future-stage experiments" in prompts.get("math_modeler").system
+    assert prompts.get("code_agent").version == "4.7.3"
     assert (
         "must report every MathematicalModel decision variable" in prompts.get("code_agent").system
     )
+    assert "numpy.bool_" in prompts.get("code_agent").system
+    assert "Registered input manifest" in prompts.get("code_agent").user
     assert Path("src/mathmodel_ai/prompt_templates/math_modeler.prompt").is_file()

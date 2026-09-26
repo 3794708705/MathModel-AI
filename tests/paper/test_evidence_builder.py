@@ -9,7 +9,7 @@ from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.mathematical.repository import ResultContext
 from mathmodel_ai.paper.evidence import EvidenceBuildError, VerifiedEvidenceBuilder
 from mathmodel_ai.schemas.mathematical import ModelAssumption
-from mathmodel_ai.schemas.paper import EvidenceType
+from mathmodel_ai.schemas.paper import EvidenceType, PaperQualityStatus, PaperVersionRef
 from mathmodel_ai.schemas.problem_analysis import EvidenceType as StateEvidenceType
 from mathmodel_ai.schemas.problem_state import (
     ProblemState,
@@ -62,10 +62,15 @@ class _MathematicalRepository:
 class _VerificationRepository:
     def __init__(self, chain: _Chain) -> None:
         self.chain = chain
+        self.accepted_science = chain.state
 
     def load_current(self, project_id: UUID) -> ProblemState:
         assert self.chain.state.project_id == project_id
         return self.chain.state
+
+    def load_accepted_science(self, project_id: UUID) -> ProblemState:
+        assert self.accepted_science.project_id == project_id
+        return self.accepted_science
 
     def get_validation(self, project_id: UUID, report_id: UUID) -> ValidationReport:
         assert (project_id, report_id) == (
@@ -240,6 +245,37 @@ def _builder(
         ),
         mathematical,
     )
+
+
+def test_failed_paper_retry_reuses_accepted_science_revision_and_hash() -> None:
+    chain = _verified_chain()
+    builder, _ = _builder(chain)
+    original = builder.build(chain.state.project_id)
+    current = chain.state.model_copy(
+        update={
+            "schema_version": 6,
+            "version": chain.state.version + 1,
+            "current_stage": WorkflowStage.PAPER,
+            "status": WorkflowStatus.FAILED,
+            "paper_versions": [
+                PaperVersionRef(
+                    paper_id=uuid4(),
+                    version=1,
+                    verified_result_id=chain.state.verified_result_id,
+                    evidence_snapshot_hash=original.snapshot.snapshot_hash,
+                    status=PaperQualityStatus.FAILED,
+                )
+            ],
+        }
+    )
+    chain.state = current
+    retried = builder.build(current.project_id)
+    assert retried.state is current
+    assert retried.snapshot.snapshot_hash == original.snapshot.snapshot_hash
+    assert retried.snapshot.evidence_ids == original.snapshot.evidence_ids
+    chain.state = current.model_copy(update={"title": "changed scientific input"})
+    with pytest.raises(EvidenceBuildError, match="changed scientific state: title"):
+        builder.build(current.project_id)
 
 
 def test_q_evidence_builder_uses_only_explicit_verified_result_id() -> None:

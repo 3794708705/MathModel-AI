@@ -6,13 +6,15 @@ from uuid import UUID
 
 from pypdf import PdfReader
 
+from mathmodel_ai.benchmark.causal_evaluation import CausalBenchmarkEvaluator
 from mathmodel_ai.benchmark.manifests import BlindSolveBundle
 from mathmodel_ai.benchmark.repository import BenchmarkRepository
 from mathmodel_ai.benchmark.workflow import CaseExecutionOutcome
 from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.data.workflow import DataExecutionWorkflow
-from mathmodel_ai.mathematical.workflow import MathematicalWorkflow
+from mathmodel_ai.mathematical.workflow import MathematicalWorkflow, SolveStageOutcome
 from mathmodel_ai.paper.workflow import PaperWorkflow
+from mathmodel_ai.providers.security import safe_error
 from mathmodel_ai.reasoning.repository import ReasoningRepository
 from mathmodel_ai.reasoning.workflow import ReasoningWorkflow
 from mathmodel_ai.schemas.benchmark import (
@@ -23,6 +25,7 @@ from mathmodel_ai.schemas.benchmark import (
     BenchmarkMetric,
     BenchmarkMetricKind,
     BenchmarkRunRequest,
+    CausalScienceCheck,
     FailureCategory,
     FailureSeverity,
     benchmark_failure_digest,
@@ -45,6 +48,7 @@ from mathmodel_ai.schemas.paper import (
     ReferenceMetadataStatus,
 )
 from mathmodel_ai.schemas.problem_state import ProblemState
+from mathmodel_ai.schemas.program import ExecutionStrategy
 from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.submission import (
     CompetitionProfile,
@@ -54,8 +58,9 @@ from mathmodel_ai.schemas.submission import (
 )
 from mathmodel_ai.schemas.verification import ExperimentReportStatus, ValidationStatus
 from mathmodel_ai.submission.workflow import FinalSubmissionWorkflow
+from mathmodel_ai.verification.causal_holdout import AuditedCausalEvidence
 from mathmodel_ai.verification.requirements import VerificationRequirementRegistry
-from mathmodel_ai.verification.workflow import VerificationWorkflow
+from mathmodel_ai.verification.workflow import RepairStageOutcome, VerificationWorkflow
 
 ZERO = "0" * 64
 
@@ -77,6 +82,7 @@ class PipelineBenchmarkExecutor:
         reviewed_models: VerificationRequirementRegistry | None = None,
         independent_runner: Callable[[UUID, UUID], None] | None = None,
         independent_verifier: Callable[[UUID], IndependentVerificationView] | None = None,
+        causal_evaluator: CausalBenchmarkEvaluator | None = None,
     ) -> None:
         self._reasoning_repository = reasoning_repository
         self._reasoning = reasoning_workflow
@@ -89,6 +95,7 @@ class PipelineBenchmarkExecutor:
         self._reviewed_models = reviewed_models
         self._independent_runner = independent_runner
         self._independent_verifier = independent_verifier
+        self._causal_evaluator = causal_evaluator
 
     async def execute(
         self,
@@ -130,7 +137,7 @@ class PipelineBenchmarkExecutor:
                 error=exc,
             )
         try:
-            for artifact in bundle.artifacts:
+            for artifact in bundle.solver_artifacts:
                 self._data.ingest_file(
                     state.project_id,
                     BytesIO(artifact.content),
@@ -164,6 +171,8 @@ class PipelineBenchmarkExecutor:
                 error=exc,
             )
         try:
+            causal_guidance = self._causal_user_guidance(bundle)
+            execution_strategy = self._execution_strategy(bundle)
             mathematical = (
                 await self._mathematical.run_reviewed(
                     state.project_id,
@@ -172,9 +181,15 @@ class PipelineBenchmarkExecutor:
                     model_contract_digest=reviewed.model_contract_digest,
                     policy_digest=reviewed.policy_digest,
                     subproblem_identity_digest=reviewed.subproblem_identity_digest,
+                    user_guidance=causal_guidance,
+                    execution_strategy=execution_strategy,
                 )
                 if reviewed is not None
-                else await self._mathematical.run(state.project_id)
+                else await self._mathematical.run(
+                    state.project_id,
+                    user_guidance=causal_guidance,
+                    execution_strategy=execution_strategy,
+                )
             )
             if (
                 mathematical.model_stage.gate.status is not QualityGateStatus.PASS
@@ -193,6 +208,39 @@ class PipelineBenchmarkExecutor:
                 category=FailureCategory.MATHEMATICAL_MODEL,
                 error=exc,
             )
+        causal_auditor: Callable[[], AuditedCausalEvidence] | None = None
+        if bundle.causal_split is not None:
+            try:
+                if self._causal_evaluator is None:
+                    raise QualityGateError("CAUSAL_HOLDOUT_EVALUATOR_NOT_CONFIGURED")
+                causal = self._causal_evaluator.evaluate(
+                    bundle=bundle,
+                    mathematical=mathematical,
+                    state=self._reasoning_repository.load_current(state.project_id),
+                )
+                formal_result_id = mathematical.solve_stage.result.result_id
+                holdout_execution_id = causal.execution.run_id
+
+                def causal_auditor() -> AuditedCausalEvidence:
+                    assert self._causal_evaluator is not None
+                    return self._causal_evaluator.audit_validation_evidence(
+                        bundle=bundle,
+                        project_id=state.project_id,
+                        formal_result_id=formal_result_id,
+                        holdout_execution_id=holdout_execution_id,
+                    )
+
+                causal_auditor()
+            except Exception as exc:
+                return self._failed_pipeline(
+                    attempt_id,
+                    state.project_id,
+                    bundle.manifest.benchmark_id,
+                    request,
+                    stage="INDEPENDENT_VERIFICATION",
+                    category=FailureCategory.VALIDATION,
+                    error=exc,
+                )
         independent_report: IndependentVerificationReport | None = None
         reviewed_validation_evidence: ReviewedValidationEvidence | None = None
         if reviewed is not None:
@@ -230,6 +278,7 @@ class PipelineBenchmarkExecutor:
             verification = await self._verification.run(
                 state.project_id,
                 reviewed_evidence=reviewed_validation_evidence,
+                causal_auditor=causal_auditor,
             )
         except Exception as exc:
             return self._failed_pipeline(
@@ -242,6 +291,9 @@ class PipelineBenchmarkExecutor:
                 error=exc,
             )
         repair_iterations = 0
+        latest_solve = mathematical.solve_stage
+        latest_model_gate = mathematical.model_stage.gate
+        latest_formal_result_id = mathematical.solve_stage.result.result_id
         experiment_runs = (
             (independent_report.required_scenarios if independent_report is not None else 0)
             + len(verification.sensitivity.report.experiments)
@@ -249,7 +301,53 @@ class PipelineBenchmarkExecutor:
         )
         if verification.red_team.report.critical_count:
             try:
-                repair = await self._verification.repair_until_clear(state.project_id)
+                if causal_auditor is not None:
+                    if reviewed is not None or self._causal_evaluator is None:
+                        raise QualityGateError("CAUSAL_HOLDOUT_REPAIR_REEVALUATION_REQUIRED")
+
+                    async def solve_causal_repair(
+                        repaired: RepairStageOutcome,
+                    ) -> tuple[SolveStageOutcome, Callable[[], AuditedCausalEvidence] | None]:
+                        nonlocal latest_solve, latest_model_gate, latest_formal_result_id
+                        solve = await self._mathematical.solve(
+                            state.project_id,
+                            execution_strategy=ExecutionStrategy.GENERATED,
+                            user_guidance=causal_guidance,
+                        )
+                        latest_solve = solve
+                        latest_model_gate = repaired.model_gate
+                        latest_formal_result_id = solve.result.result_id
+                        if solve.gate.status is not QualityGateStatus.PASS:
+                            return solve, None
+                        assert self._causal_evaluator is not None
+                        causal = self._causal_evaluator.evaluate_solve(
+                            bundle=bundle,
+                            model=repaired.output.revised_model,
+                            solve=solve,
+                            state=self._reasoning_repository.load_current(state.project_id),
+                        )
+                        holdout_execution_id = causal.execution.run_id
+                        formal_result_id = solve.result.result_id
+
+                        def audit_repaired_holdout() -> AuditedCausalEvidence:
+                            assert self._causal_evaluator is not None
+                            return self._causal_evaluator.audit_validation_evidence(
+                                bundle=bundle,
+                                project_id=state.project_id,
+                                formal_result_id=formal_result_id,
+                                holdout_execution_id=holdout_execution_id,
+                            )
+
+                        audit_repaired_holdout()
+                        return solve, audit_repaired_holdout
+
+                    repair = await self._verification.repair_until_clear(
+                        state.project_id,
+                        user_guidance=causal_guidance,
+                        repair_solver=solve_causal_repair,
+                    )
+                else:
+                    repair = await self._verification.repair_until_clear(state.project_id)
             except Exception as exc:
                 return self._failed_pipeline(
                     attempt_id,
@@ -263,6 +361,7 @@ class PipelineBenchmarkExecutor:
             repair_iterations = len(repair.iterations)
             for iteration in repair.iterations:
                 if iteration.verification is not None:
+                    verification = iteration.verification
                     experiment_runs += len(
                         iteration.verification.sensitivity.report.experiments
                     ) + len(iteration.verification.robustness.report.experiments)
@@ -285,6 +384,16 @@ class PipelineBenchmarkExecutor:
                 bundle.manifest.benchmark_id,
                 request,
                 "full verification did not produce verified_result_id",
+            )
+        if causal_auditor is not None and (
+            verified_state.verified_result_id != latest_formal_result_id
+        ):
+            return self._failed_before_paper(
+                attempt_id,
+                state.project_id,
+                bundle.manifest.benchmark_id,
+                request,
+                "verified_result_id is not the causal holdout formal result",
             )
         if reviewed is not None and (
             independent_report is None
@@ -345,8 +454,8 @@ class PipelineBenchmarkExecutor:
         metrics = self._metrics(
             attempt_id=attempt_id,
             request=request,
-            model_passed=mathematical.model_stage.gate.status is QualityGateStatus.PASS,
-            solver_passed=mathematical.solve_stage.gate.status is QualityGateStatus.PASS,
+            model_passed=latest_model_gate.status is QualityGateStatus.PASS,
+            solver_passed=latest_solve.gate.status is QualityGateStatus.PASS,
             validation_passed=(verification.validation.report.status is ValidationStatus.PASS),
             sensitivity_passed=(
                 verification.sensitivity.report.status is ExperimentReportStatus.PASS
@@ -496,7 +605,7 @@ class PipelineBenchmarkExecutor:
             stage=stage,
             category=category,
             severity=FailureSeverity.P1,
-            cause=f"live pipeline stopped with {type(error).__name__}",
+            cause=(f"live pipeline stopped with {type(error).__name__}: {safe_error(error)}"),
             proposed_fix=(
                 "inspect persisted stage evidence, apply a generic fix, and append a rerun"
             ),
@@ -559,15 +668,61 @@ class PipelineBenchmarkExecutor:
             "submission_completeness",
             "central_model_valid",
         )
-        metrics = [self._metric(attempt_id, name, 0) for name in quality_names]
+        passed_gates = {
+            item.gate
+            for item in state.quality_gates
+            if item.status is QualityGateStatus.PASS and not item.errors
+        }
+        gate_metrics = {
+            "mathematical_validity": "VALIDATE",
+            "solver_success": "SOLVE",
+            "validation_pass": "VALIDATE",
+            "sensitivity_completion": "SENSITIVITY",
+            "robustness_completion": "ROBUSTNESS",
+            "central_model_valid": "VERIFIED",
+        }
+        metrics = [
+            self._metric(
+                attempt_id,
+                name,
+                float(gate_metrics[name] in passed_gates) if name in gate_metrics else 0,
+                evidence_status=("PASS" if gate_metrics[name] in passed_gates else "NOT_EVALUATED")
+                if name in gate_metrics
+                else (
+                    "UPSTREAM_BLOCKED"
+                    if name
+                    in {
+                        "citation_validity",
+                        "citation_support_accuracy",
+                        "paper_factual_consistency",
+                        "competition_compliance",
+                        "submission_completeness",
+                    }
+                    else "NOT_EVALUATED"
+                ),
+            )
+            for name in quality_names
+        ]
         metrics.extend(
-            self._metric(attempt_id, name, value, kind=BenchmarkMetricKind.COUNT)
+            self._metric(
+                attempt_id,
+                name,
+                value,
+                kind=BenchmarkMetricKind.COUNT,
+                evidence_status=(
+                    "PASS"
+                    if name == "unverified_central_result_count" and "VERIFIED" in passed_gates
+                    else "UPSTREAM_BLOCKED"
+                    if name == "wrong_submission_artifact_count"
+                    else "NOT_EVALUATED"
+                ),
+            )
             for name, value in {
-                "major_unanswered_subproblem_count": 1,
+                "major_unanswered_subproblem_count": 0,
                 "fabricated_result_count": 0,
-                "unverified_central_result_count": 1,
+                "unverified_central_result_count": int("VERIFIED" not in passed_gates),
                 "fabricated_critical_citation_count": 0,
-                "wrong_submission_artifact_count": 1,
+                "wrong_submission_artifact_count": 0,
                 "blocking_competition_violation_count": 0,
                 "secret_leak_count": 0,
                 "solver_calls": self._formal_solver_call_count(state),
@@ -601,6 +756,18 @@ class PipelineBenchmarkExecutor:
                     cost,
                     kind=BenchmarkMetricKind.COST,
                     unit=request.config.pricing.currency,
+                    evidence_status=(
+                        "NOT_EVALUATED"
+                        if not any(
+                            (
+                                request.config.pricing.input_per_million,
+                                request.config.pricing.cached_input_per_million,
+                                request.config.pricing.output_per_million,
+                            )
+                        )
+                        and provider_calls
+                        else "PASS"
+                    ),
                 ),
             ]
         )
@@ -730,6 +897,18 @@ class PipelineBenchmarkExecutor:
                     cost,
                     kind=BenchmarkMetricKind.COST,
                     unit=request.config.pricing.currency,
+                    evidence_status=(
+                        "NOT_EVALUATED"
+                        if not any(
+                            (
+                                request.config.pricing.input_per_million,
+                                request.config.pricing.cached_input_per_million,
+                                request.config.pricing.output_per_million,
+                            )
+                        )
+                        and usage[3]
+                        else "PASS"
+                    ),
                 ),
             ]
         )
@@ -756,6 +935,7 @@ class PipelineBenchmarkExecutor:
         *,
         kind: BenchmarkMetricKind = BenchmarkMetricKind.QUALITY,
         unit: str = "ratio",
+        evidence_status: str | None = None,
     ) -> BenchmarkMetric:
         metric = BenchmarkMetric(
             attempt_id=attempt_id,
@@ -763,7 +943,11 @@ class PipelineBenchmarkExecutor:
             kind=kind,
             value=value,
             unit=unit,
-            evidence_ref=f"phase1-7-records:{name}",
+            evidence_ref=(
+                f"{evidence_status}:phase1-7-records:{name}"
+                if evidence_status
+                else f"phase1-7-records:{name}"
+            ),
             deterministic=True,
             metric_digest=ZERO,
         )
@@ -848,6 +1032,112 @@ class PipelineBenchmarkExecutor:
             interventions=(),
             result=result,
         )
+
+    @staticmethod
+    def _execution_strategy(bundle: BlindSolveBundle) -> ExecutionStrategy:
+        # A causal holdout must re-execute the exact predictor source bound to
+        # the formal solver program; a deterministic optimizer cannot supply it.
+        return (
+            ExecutionStrategy.GENERATED
+            if bundle.causal_split is not None
+            else ExecutionStrategy.AUTO
+        )
+
+    @staticmethod
+    def _causal_user_guidance(bundle: BlindSolveBundle) -> list[str]:
+        policy = bundle.causal_policy
+        if bundle.causal_split is None:
+            return []
+        if policy is None:
+            raise QualityGateError("CAUSAL_HOLDOUT_POLICY_MISSING")
+        science_guidance = (
+            " Preserve these exact validation requirement identifiers in the formal model: "
+            + ", ".join(
+                f"causal_science:{item.value}" for item in policy.required_scientific_checks
+            )
+            + ". The host checks every listed obligation even if the model omits it."
+            " Do not add natural-language duplicates of these checks to "
+            "validation_requirements; they remain UNCHECKED without an exact "
+            "evidence contract. Record downstream sensitivity or scenario "
+            "experiments in limitations for the later experiment stages, "
+            "not as requirements of the earlier VALIDATE stage."
+            if policy.required_scientific_checks
+            else ""
+        )
+        randomness_guidance = (
+            " For causal_science:randomness_test, compute a training-only conditional "
+            "permutation diagnostic and put three flat metrics in result.json: "
+            "conditional_randomness_statistic, conditional_randomness_p, and "
+            "conditional_randomness_replicates. Group points in CSV order by match; "
+            "within each match and condition, center binary outcomes by that stratum's "
+            "observed mean. The statistic is the sum of adjacent residual products "
+            "within matches divided by the number of within-match transitions. "
+            "For 499 null draws, independently shuffle outcomes within every "
+            "match-condition stratum using Python random.Random seeded with the integer "
+            "SHA-256 digest of b'conditional-randomness-v1:' plus the exact training CSV "
+            "bytes. Advance that one RNG through matches in their first-seen CSV order "
+            "and conditions in first-seen order within each match on every draw; "
+            "a sorted group order changes the permutation sample and p-value. "
+            "If using pandas groupby, set sort=False explicitly. "
+            "On EVERY null draw, create fresh per-stratum lists from the ORIGINAL "
+            "training outcomes before shuffling; never shuffle a list already "
+            "modified by an earlier draw, even though the stratum counts match. "
+            "The two-sided p-value is (extreme+1)/500, with extremeness measured "
+            "around the simulated mean. This is a conditional association test, not a "
+            "causal or psychological momentum claim."
+            if CausalScienceCheck.RANDOMNESS_TEST in policy.required_scientific_checks
+            else ""
+        )
+        flow_guidance = (
+            " For causal_science:match_flow, write series.match_flow in result.json "
+            "with exactly one finite value per training CSV row, preserving row order. "
+            "Before each point, compute the mean of up to history_window prior "
+            "within-match residuals (zero if none). Keep exactly one rolling "
+            "residual history per group/match; do not key or reset that history "
+            "by condition/server when the condition changes within a match. "
+            "The condition/server is used only for the separate baseline counts, "
+            "where each residual is the "
+            "observed positive-player outcome minus the pre-outcome, same-condition "
+            "Beta(1,1) baseline (1+prior wins)/(2+prior count). Update after writing "
+            "the current value; never use a future point in its flow score. "
+            "Positive means the encoded positive class is outperforming the "
+            "condition-adjusted baseline; negative favors the other class."
+            if CausalScienceCheck.MATCH_FLOW in policy.required_scientific_checks
+            else ""
+        )
+        swing_guidance = (
+            " For causal_science:swing_prediction, if the formal model adopts "
+            "a one-point imminent event defined as a strict sign reversal of "
+            "the pre-outcome history_window residual flow after the next point, "
+            "write metrics.swing_event_protocol='next-point-flow-sign-reversal-v1' "
+            "in result.json. The host will transform each isolated held-out "
+            "pre-outcome point probability into a swing-event probability by "
+            "evaluating both possible next outcomes and will score it against "
+            "the held-out event and a condition-adjusted baseline. Points without "
+            "a full prior window are excluded. Do not claim that a one-point "
+            "event captures every kind of future momentum swing, or infer "
+            "predictive skill before seeing the independent holdout score."
+            if CausalScienceCheck.SWING_PREDICTION in policy.required_scientific_checks
+            else ""
+        )
+        return [
+            "CAUSAL_HOLDOUT_PROTOCOL: The provided CSV contains only training groups. "
+            "The benchmark host retains complete groups for an unseen test. "
+            f"Group={policy.group_column}; condition={policy.condition_column}; "
+            f"outcome={policy.outcome_column} (positive={policy.positive_value}, "
+            f"negative={policy.negative_value}); history_window={policy.history_window}. "
+            "Use only pre-outcome information for "
+            "pointwise predictions. In addition to result.json, include a source file "
+            "causal_predictor.py defining class Predictor with fit(feature: dict, outcome: "
+            "float) -> None and predict(feature: dict) -> float in [0,1]. The host "
+            "will fit on training rows then request held-out predictions one point at a "
+            "time. Do not embed, infer, or request held-out labels. Any claimed "
+            "holdout metric must await the independent host trace."
+            + science_guidance
+            + randomness_guidance
+            + flow_guidance
+            + swing_guidance
+        ]
 
     @staticmethod
     def _problem_text(bundle: BlindSolveBundle) -> str:

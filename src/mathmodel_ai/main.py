@@ -39,6 +39,7 @@ from mathmodel_ai.api.routes.providers import router as providers_router
 from mathmodel_ai.api.routes.reasoning import router as reasoning_router
 from mathmodel_ai.api.routes.system import router as system_router
 from mathmodel_ai.api.routes.verification import router as verification_router
+from mathmodel_ai.benchmark.causal_evaluation import CausalBenchmarkEvaluator
 from mathmodel_ai.benchmark.executor import PipelineBenchmarkExecutor
 from mathmodel_ai.benchmark.manifests import BenchmarkManifestRegistry
 from mathmodel_ai.benchmark.profiles import comap_mcm_2024_profile
@@ -93,6 +94,7 @@ from mathmodel_ai.solvers.generated import GeneratedProgramExecutor
 from mathmodel_ai.solvers.gurobi import GurobiSolver
 from mathmodel_ai.solvers.ortools import ORToolsSolver
 from mathmodel_ai.solvers.router import SolverRouter
+from mathmodel_ai.solvers.scalar_response import ScalarResponseSolver
 from mathmodel_ai.solvers.scipy import SciPySolver
 from mathmodel_ai.submission.package import SubmissionIntegrityVerifier, SubmissionPackageBuilder
 from mathmodel_ai.submission.profiles import (
@@ -387,6 +389,7 @@ def create_app(
         solver_router=solver_router,
         validator=validator,
         integrity_verifier=experiment_integrity_verifier,
+        response_solver=ScalarResponseSolver(sandbox=solver_sandbox, store=file_store),
     )
     application.state.independent_validator = validator
     application.state.experiment_integrity_verifier = experiment_integrity_verifier
@@ -420,6 +423,9 @@ def create_app(
         evidence_builder=VerifiedEvidenceBuilder(
             mathematical_repository=application.state.mathematical_repository,
             verification_repository=application.state.verification_repository,
+            independent_repository=IndependentVerificationRepository(
+                application.state.session_factory
+            ),
         ),
         literature_agent=LiteratureAgent(**shared),
         literature_source=literature_source,
@@ -436,6 +442,7 @@ def create_app(
         ),
         bundle_builder=PaperBundleBuilder(file_store),
         store=file_store,
+        reasoning_repository=application.state.reasoning_repository,
     )
     real_benchmark_profile = comap_mcm_2024_profile()
     application.state.competition_profile_registry = CompetitionProfileRegistry(
@@ -545,6 +552,14 @@ def create_app(
             reviewed_models=verification_requirement_registry,
             independent_runner=application.state.independent_verification.prepare_and_run,
             independent_verifier=application.state.independent_verification.view,
+            causal_evaluator=CausalBenchmarkEvaluator(
+                store=file_store,
+                repository=application.state.data_repository,
+                mathematics=application.state.mathematical_repository,
+                root=resolved.solver_sandbox_root,
+                image=resolved.solver_sandbox_image,
+                limits=sandbox_limits,
+            ),
         ),
         provider_configurations=application.state.provider_configurations,
     )

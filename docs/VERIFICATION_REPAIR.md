@@ -39,7 +39,7 @@ solver feasibility evaluator. It recomputes:
 The absolute and relative tolerances are configured by
 `MM_VALIDATION_ABS_TOLERANCE` and `MM_VALIDATION_REL_TOLERANCE`. Unsupported
 free-form validation requirements are `NOT_EVALUABLE`, never assumed to pass.
-Validator `5.0.1` resolves only exact supported legacy contracts (case/whitespace
+Validator `5.1.0` resolves only exact supported legacy contracts (case/whitespace
 normalization is allowed): `recompute variable bounds`, `recompute every
 constraint`, `recompute variable bounds and constraints`, `recalculate objective
 metric`, and `verify evidence trace`. Combined contracts require all components;
@@ -70,6 +70,17 @@ from its perturbation metadata and verifies the exact model embedded in the
 deterministic program, program/bundle/code hashes, execution record, solver
 result, persisted relational columns, objective changes, and summary statistics.
 
+For an objective-free model with non-indexed, uniquely defined scalar derived
+outputs and no state variables, the program instead holds the formal result's
+decision values fixed and perturbs sourced parameters. The versioned sandbox
+evaluates each complete response equation, while a separate host evaluator
+recomputes every output from the scenario model. Reports contain response ranges,
+not a fabricated optimization objective or objective elasticity. The integrity
+audit binds the fixed point, exact scenario payload, output values, code hash,
+execution ID, and non-Mock status. Missing/cyclic equations, mismatched formal
+baseline outputs, or uncheckable responses fail closed. This tests the formal
+scalar response model; it does not establish holdout predictive superiority.
+
 ## Robustness experiments
 
 `RobustnessConfig` makes the method explicit:
@@ -83,6 +94,9 @@ result, persisted relational columns, objective changes, and summary statistics.
 
 Runs are capped at 200 by schema and 50 by default. Reports contain feasibility
 rate, objective mean/standard deviation/range/quantiles, and the worst scenario
+for optimization models. Objective-free scalar response models report response
+ranges and feasibility only; `WORST_CASE` in that mode is a declared joint
+scenario comparison, not an objective-ranked worst case.
 identity. The ROBUSTNESS gate requires every declared run to be independently
 feasible and executed.
 
@@ -125,6 +139,12 @@ Repair output cannot contain or modify a Result. The repaired model re-enters th
 Phase 4 solver, then VALIDATE, SENSITIVITY, ROBUSTNESS, and RED_TEAM. The maximum
 automatic cycle count is configurable from one to three and defaults to three.
 Exhaustion records a `MODEL_REPAIR` gate and sets state to `HUMAN_REVIEW`.
+For a benchmark with a causal holdout, each accepted repaired model must use a
+new GENERATED solve and a new isolated predictor execution from that exact
+program. Its fresh execution and formal result IDs are re-audited before
+VALIDATE, SENSITIVITY, ROBUSTNESS, and RED_TEAM repeat. An unsuccessful solve,
+missing predictor, stale trace, or rejected repair stops the chain; no previous
+holdout evidence or verified result is transferred to the new revision.
 
 ## Persistence and API
 
@@ -196,6 +216,63 @@ operations:
 This is an additional logical-AND gate. It cannot set `verified_result_id`, clear
 existing Phase 5 failures, repair a model, or override provider, literature,
 paper, submission, security, and benchmark gates.
+
+### Group-held-out binary prediction evidence
+
+For a benchmark with `causal-holdout-v1.json`, the trusted host keeps the
+complete official CSV. Modeling and solving see training groups only; the
+generated predictor receives one pre-outcome feature at a time in an isolated
+container. The auxiliary execution records the exact formal result, source
+digest, and whole science-policy digest. Formal VALIDATE re-reads the training
+file and stored artifacts, replays the official labels and group split, and
+recalculates Brier loss and its pre-outcome baseline. Red Team audits the same
+persisted evidence again; a repaired formal result cannot reuse the old trace.
+
+The policy may also list host-owned scientific checks, bound to the official
+problem-file digest and included in the solve input digest. These checks are
+present even if an agent omits them from `validation_requirements`. The current
+binary evaluator can independently assess held-out prediction and calibration.
+Calibration uses ten fixed-width probability bins and descriptive expected
+calibration error, `sum_b |sum_predicted_b - sum_observed_b| / N`; it asserts
+neither good calibration nor an improvement over baseline. The host also
+computes a training-only conditional-randomness reference: within each match
+and condition, 499 source-seeded permutations preserve outcome counts and
+compare lag-one adjusted residual products. Its source digest, statistic,
+simulation count and descriptive two-sided probability enter validation
+evidence. If—and only if—the exact persisted formal `result.json` reports the
+named statistic, p-value and simulation count, the validator compares all
+three against this training-only reference. A missing claim remains
+`UNCHECKED`; a mismatched claim fails. Neither a matching test nor a small
+p-value establishes psychological or causal momentum.
+The seeded shuffles visit matches and then conditions in their first-seen CSV
+order; sorting groups changes the random sequence and is not an equivalent
+implementation. Causal code generation rejects Pandas `groupby` without an
+explicit `sort=False` before execution. For these causal cases, the modeler
+also rejects validation requirements lacking an exact current-stage contract
+before solving; downstream sensitivity and scenario obligations remain in the
+later experiment stages and limitations, not as fictitious VALIDATE passes.
+A second training-only reference reconstructs a pre-outcome rolling mean of condition-adjusted
+residuals for every row. Its `match_flow` check passes only when the same
+row-aligned series is present in the exact formal `result.json` and agrees
+pointwise. This does not prove that a paper visualizes or explains the flow.
+The one-point imminent-swing protocol defines an event as a strict sign
+reversal of that rolling flow after the next point, excluding positions without
+a full prior window. Before revealing the point outcome, the trusted host
+transforms the isolated model's point probability into an event probability by
+evaluating both possible outcomes. It then scores those sealed forecasts and a
+condition-adjusted baseline on held-out matches. The check requires the model's
+exact formal `result.json` to declare the protocol; absence remains
+`UNCHECKED`, and another protocol fails. This is a narrow, one-point event,
+not evidence of all momentum swings or predictive improvement. Associated
+factor analysis and paper visualizations remain separate obligations.
+
+For causal cases without a fixed-model reviewed sidecar, the aggregate
+verification may continue only if all five host-owned scientific checks, all
+model-declared validation requirements, the source-bound policy reference,
+and the formal validation gate pass. Sensitivity, robustness, and Red Team
+retain their existing gates and independent re-audit; an incomplete host policy
+still fails closed. Unknown agent-declared requirements
+likewise remain `UNCHECKED`; no wording or keyword match upgrades them to PASS.
 
 The aggregate verification endpoint intentionally stops at Red Team. It never
 starts repair implicitly; callers must choose the repair endpoint or bounded

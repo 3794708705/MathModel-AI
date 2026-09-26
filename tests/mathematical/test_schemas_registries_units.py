@@ -5,7 +5,13 @@ import pytest
 from pydantic import ValidationError
 
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
-from mathmodel_ai.mathematical.quality_gates import model_quality_gate, solve_quality_gate
+from mathmodel_ai.mathematical.normalization import materialize_data_bound_scalars
+from mathmodel_ai.mathematical.quality_gates import (
+    _self_referential_data_residuals,
+    _state_relations_sufficient,
+    model_quality_gate,
+    solve_quality_gate,
+)
 from mathmodel_ai.mathematical.registry import (
     EquationRegistry,
     ParameterRegistry,
@@ -18,6 +24,14 @@ from mathmodel_ai.mathematical.units import (
     parse_unit,
     same_dimension,
 )
+from mathmodel_ai.schemas.data import (
+    ColumnProfile,
+    DataProfile,
+    DataSemanticType,
+    DatasetRecord,
+    NumericStatistics,
+    ValueCount,
+)
 from mathmodel_ai.schemas.execution import (
     ExecutionOrigin,
     ExecutionRecord,
@@ -27,6 +41,10 @@ from mathmodel_ai.schemas.execution import (
 from mathmodel_ai.schemas.mathematical import (
     BaseDimension,
     ConstantDefinition,
+    ConstraintDefinition,
+    ConstraintRelation,
+    DataBinding,
+    EquationDefinition,
     ExpressionKind,
     IndexDefinition,
     MathExpression,
@@ -35,6 +53,14 @@ from mathmodel_ai.schemas.mathematical import (
     SetDefinition,
     UnitCheckStatus,
     UnitExpression,
+    VariableRole,
+)
+from mathmodel_ai.schemas.model_selection import ModelFamily
+from mathmodel_ai.schemas.problem_analysis import (
+    EvidenceItem,
+    EvidenceSource,
+    EvidenceStatus,
+    EvidenceType,
 )
 from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.results import ResultRecord
@@ -50,7 +76,17 @@ from mathmodel_ai.schemas.solver import (
     SolverRun,
     SolverStatus,
 )
-from tests.mathematical.helpers import add, lp_model, selected_state, symbol
+from tests.mathematical.helpers import (
+    add,
+    constant,
+    lp_model,
+    multiply,
+    power,
+    selected_state,
+    subtract,
+    symbol,
+    variable,
+)
 
 
 def test_mathematical_model_round_trips_with_typed_expression_tree() -> None:
@@ -324,6 +360,619 @@ def test_model_gate_accepts_valid_lp_and_rejects_required_failures() -> None:
         }
     )
     assert model_quality_gate(conflict_model, state).status is QualityGateStatus.RETRY
+
+
+def test_model_gate_rejects_three_latent_states_with_only_one_sum_relation() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    latent = [
+        variable(name).model_copy(update={"role": VariableRole.STATE})
+        for name in ("cold", "neutral", "hot")
+    ]
+    sum_equation = base.equations[0].model_copy(
+        update={
+            "equation_id": "EQ-state-sum",
+            "lhs": add(*(symbol(item.symbol) for item in latent)),
+            "rhs": constant(1),
+        }
+    )
+    underdetermined = base.model_copy(
+        update={
+            "state_variables": latent,
+            "equations": [*base.equations, sum_equation],
+        }
+    )
+    gate = model_quality_gate(underdetermined, state)
+    assert "MODEL_GATE_FAIL:state_relations_sufficient" in gate.errors
+
+    transitions = [
+        sum_equation.model_copy(
+            update={
+                "equation_id": f"EQ-state-{item.symbol}",
+                "lhs": symbol(item.symbol),
+            }
+        )
+        for item in latent
+    ]
+    complete = underdetermined.model_copy(
+        update={
+            "equations": [*base.equations, *transitions],
+        }
+    )
+    assert _state_relations_sufficient(complete)
+
+
+def test_model_gate_rejects_unmaterialized_data_bound_constraint_parameter() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    baseline = ParameterDefinition(
+        parameter_id="PAR-baseline",
+        symbol="baseline",
+        description="Row-level observation unavailable to the scalar verifier",
+        data_binding=DataBinding(binding_id="BIND-baseline", dataset_id=uuid4(), column="observed"),
+        source_type=ParameterSourceType.DATA,
+        source_ref="EVID-fact-1",
+        confidence=1,
+    )
+    constraint = base.constraints[0].model_copy(update={"rhs": symbol("baseline")})
+    model = base.model_copy(update={"parameters": [baseline], "constraints": [constraint]})
+
+    gate = model_quality_gate(model, state)
+
+    assert "MODEL_GATE_FAIL:scalar_verifier_inputs_available" in gate.errors
+    assert "MODEL_GATE_FAIL:UNAVAILABLE_SCALAR_INPUT:baseline" in gate.errors
+    materialized = model.model_copy(
+        update={"parameters": [baseline.model_copy(update={"value": 2.0})]}
+    )
+    assert (
+        "MODEL_GATE_FAIL:scalar_verifier_inputs_available"
+        not in model_quality_gate(materialized, state).errors
+    )
+
+
+def test_model_gate_rejects_data_literal_not_stated_in_cited_evidence() -> None:
+    state = selected_state()
+    state = state.model_copy(
+        update={
+            "evidence_items": [
+                EvidenceItem(
+                    evidence_id="EVID-data-file",
+                    type=EvidenceType.DATA,
+                    content="The supplied CSV contains match-level point records.",
+                    source=EvidenceSource.PROBLEM_TEXT,
+                    confidence=1,
+                    status=EvidenceStatus.ACCEPTED,
+                )
+            ]
+        }
+    )
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    parameter = ParameterDefinition(
+        parameter_id="PAR-win-rate",
+        symbol="win_rate",
+        description="Claimed observed rate",
+        value=0.5046,
+        source_type=ParameterSourceType.DATA,
+        source_ref="EVID-data-file",
+        confidence=0.9,
+    )
+    model = base.model_copy(update={"parameters": [parameter]})
+
+    gate = model_quality_gate(model, state)
+
+    assert "MODEL_GATE_FAIL:data_literals_have_numeric_evidence" in gate.errors
+    assert "MODEL_GATE_FAIL:UNSUPPORTED_DATA_LITERAL:win_rate" in gate.errors
+
+    stated = state.evidence_items[0].model_copy(
+        update={"content": "The observed win rate is 50.46% in the stated source."}
+    )
+    supported_state = state.model_copy(update={"evidence_items": [stated]})
+    assert (
+        "MODEL_GATE_FAIL:data_literals_have_numeric_evidence"
+        in model_quality_gate(model, supported_state).errors
+    )
+    supported_state = supported_state.model_copy(
+        update={"raw_problem": f"{state.raw_problem} The observed win rate is 50.46%."}
+    )
+    assert (
+        "MODEL_GATE_FAIL:data_literals_have_numeric_evidence"
+        not in model_quality_gate(model, supported_state).errors
+    )
+
+
+def test_model_gate_requires_declared_data_to_reach_core_equations() -> None:
+    state = selected_state()
+    dataset = DatasetRecord(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_file_id=uuid4(),
+        name="observations.csv",
+        row_count=5,
+        column_count=1,
+        columns=["rate"],
+    )
+    state = state.model_copy(update={"datasets": [dataset]})
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    binding = DataBinding(binding_id="BIND-rate", dataset_id=dataset.dataset_id, column="rate")
+    orphan = base.model_copy(update={"data_bindings": [binding]})
+    assert "MODEL_GATE_FAIL:data_bindings_reach_core" in model_quality_gate(orphan, state).errors
+
+    parameter = ParameterDefinition(
+        parameter_id="PAR-rate",
+        symbol="rate",
+        description="Observed rate computed from the registered dataset",
+        value=1.0,
+        data_binding=binding,
+        source_type=ParameterSourceType.DATA,
+        source_ref="EVID-fact-1",
+        confidence=1,
+    )
+    unused = orphan.model_copy(update={"parameters": [parameter]})
+    assert "MODEL_GATE_FAIL:data_bindings_reach_core" in model_quality_gate(unused, state).errors
+
+    assert base.objective is not None
+    used = unused.model_copy(
+        update={
+            "objective": base.objective.model_copy(
+                update={"expression": add(symbol("rate"), symbol("x"))}
+            )
+        }
+    )
+    assert model_quality_gate(used, state).checks["data_bindings_reach_core"]
+    mismatched = used.model_copy(
+        update={
+            "parameters": [
+                parameter.model_copy(
+                    update={"data_binding": binding.model_copy(update={"column": "other"})}
+                )
+            ]
+        }
+    )
+    assert (
+        "MODEL_GATE_FAIL:data_bindings_reach_core" in model_quality_gate(mismatched, state).errors
+    )
+
+
+def test_model_gate_rejects_omitted_provided_dataset_for_target_subproblem() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    model = base.model_copy(update={"target_subproblems": ["Q1"]})
+    assert "MODEL_GATE_FAIL:required_data_is_bound" in model_quality_gate(model, state).errors
+    dataset = DatasetRecord(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_file_id=uuid4(),
+        name="demand.csv",
+        row_count=5,
+        column_count=1,
+        columns=["demand"],
+    )
+    state = state.model_copy(update={"datasets": [dataset]})
+    assert "MODEL_GATE_FAIL:required_data_is_bound" in model_quality_gate(model, state).errors
+    assert model_quality_gate(base, state).checks["required_data_is_bound"]
+
+
+def test_model_gate_recomputes_supported_bound_scalar_from_data_profile() -> None:
+    state = selected_state()
+    dataset = DatasetRecord(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_file_id=uuid4(),
+        name="observations.csv",
+        row_count=5,
+        column_count=1,
+        columns=["rate"],
+    )
+    profile = DataProfile(
+        dataset_id=dataset.dataset_id,
+        source_file_id=dataset.source_file_id,
+        dataset_name=dataset.name,
+        row_count=5,
+        column_count=1,
+        duplicate_row_count=0,
+        duplicate_row_rate=0,
+        columns=[
+            ColumnProfile(
+                name="rate",
+                source_name="rate",
+                physical_dtype="Float64",
+                semantic_type=DataSemanticType.CONTINUOUS,
+                missing_count=0,
+                missing_rate=0,
+                unique_count=2,
+                unique_rate=0.4,
+                numeric_statistics=NumericStatistics(count=5, mean=0.4),
+            )
+        ],
+        quality_score=100,
+    )
+    state = state.model_copy(update={"datasets": [dataset], "data_profiles": [profile]})
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    binding = DataBinding(
+        binding_id="BIND-rate", dataset_id=dataset.dataset_id, column="rate", transform="mean"
+    )
+    parameter = ParameterDefinition(
+        parameter_id="PAR-rate",
+        symbol="rate",
+        description="Mean of the registered rate column",
+        value=0.4,
+        data_binding=binding,
+        source_type=ParameterSourceType.DATA,
+        source_ref="EVID-fact-1",
+        confidence=1,
+    )
+    assert base.objective is not None
+    model = base.model_copy(
+        update={
+            "data_bindings": [binding],
+            "parameters": [parameter],
+            "objective": base.objective.model_copy(
+                update={"expression": add(symbol("rate"), symbol("x"))}
+            ),
+        }
+    )
+    assert model_quality_gate(model, state).checks["bound_data_scalars_match_profile"]
+    invented = model.model_copy(
+        update={"parameters": [parameter.model_copy(update={"value": 0.5046})]}
+    )
+    assert (
+        "MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:rate" in model_quality_gate(invented, state).errors
+    )
+    assert materialize_data_bound_scalars(invented, state) == invented
+    omitted = model.model_copy(
+        update={"parameters": [parameter.model_copy(update={"value": None})]}
+    )
+    materialized = materialize_data_bound_scalars(omitted, state)
+    assert materialized.parameters[0].value == 0.4
+    assert omitted.parameters[0].value is None
+    assert materialized.objective == omitted.objective
+    assert materialized.data_bindings == omitted.data_bindings
+    assert any("materialized" in item for item in materialized.limitations)
+    assert model_quality_gate(materialized, state).checks["bound_data_scalars_match_profile"]
+    assert materialize_data_bound_scalars(materialized, state) == materialized
+    stale_state = state.model_copy(
+        update={"data_profiles": [profile.model_copy(update={"source_file_id": uuid4()})]}
+    )
+    assert (
+        "MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:rate"
+        in model_quality_gate(model, stale_state).errors
+    )
+    assert materialize_data_bound_scalars(omitted, stale_state) == omitted
+    count_binding = binding.model_copy(update={"transform": "count_nonmissing"})
+    count_model = model.model_copy(
+        update={
+            "data_bindings": [count_binding],
+            "parameters": [
+                parameter.model_copy(update={"value": 5.0, "data_binding": count_binding})
+            ],
+        }
+    )
+    assert model_quality_gate(count_model, state).checks["bound_data_scalars_match_profile"]
+    rate_binding = binding.model_copy(update={"transform": "rate_eq:1"})
+    rate_profile = profile.model_copy(
+        update={
+            "columns": [
+                profile.columns[0].model_copy(
+                    update={"top_values": [ValueCount(value="1", count=2)]}
+                )
+            ]
+        }
+    )
+    rate_state = state.model_copy(update={"data_profiles": [rate_profile]})
+    rate_model = model.model_copy(
+        update={
+            "data_bindings": [rate_binding],
+            "parameters": [parameter.model_copy(update={"data_binding": rate_binding})],
+        }
+    )
+    assert model_quality_gate(rate_model, rate_state).checks["bound_data_scalars_match_profile"]
+    unsupported = model.model_copy(
+        update={
+            "data_bindings": [binding.model_copy(update={"transform": "custom"})],
+            "parameters": [
+                parameter.model_copy(
+                    update={
+                        "value": None,
+                        "data_binding": binding.model_copy(update={"transform": "custom"}),
+                    }
+                )
+            ],
+        }
+    )
+    assert (
+        "MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:rate"
+        in model_quality_gate(unsupported, state).errors
+    )
+    assert materialize_data_bound_scalars(unsupported, state) == unsupported
+    assumed = omitted.model_copy(
+        update={
+            "parameters": [
+                omitted.parameters[0].model_copy(
+                    update={"source_type": ParameterSourceType.ASSUMPTION}
+                )
+            ]
+        }
+    )
+    assert materialize_data_bound_scalars(assumed, state) == assumed
+
+
+def test_model_gate_rejects_data_target_inside_its_own_squared_predictor() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    assert base.objective is not None
+    binding = DataBinding(
+        binding_id="BIND-target", dataset_id=uuid4(), column="outcome", transform="mean"
+    )
+    target = ParameterDefinition(
+        parameter_id="PAR-target",
+        symbol="target",
+        description="Observed target rate",
+        value=0.5,
+        data_binding=binding,
+        source_type=ParameterSourceType.DATA,
+        source_ref="EVID-fact-1",
+        confidence=1,
+    )
+    leaked_loss = power(
+        subtract(
+            add(multiply(symbol("x"), symbol("target")), symbol("y")),
+            symbol("target"),
+        ),
+        2,
+    )
+    model = base.model_copy(
+        update={
+            "parameters": [target],
+            "objective": base.objective.model_copy(update={"expression": leaked_loss}),
+        }
+    )
+    assert _self_referential_data_residuals(model) == {"target"}
+    assert (
+        "MODEL_GATE_FAIL:SELF_REFERENTIAL_DATA_TARGET:target"
+        in model_quality_gate(model, state).errors
+    )
+    indirect = model.model_copy(
+        update={
+            "derived_variables": [
+                variable("loss").model_copy(update={"role": VariableRole.DERIVED})
+            ],
+            "objective": base.objective.model_copy(update={"expression": symbol("loss")}),
+            "equations": [
+                base.equations[0].model_copy(update={"lhs": symbol("loss"), "rhs": leaked_loss})
+            ],
+        }
+    )
+    assert _self_referential_data_residuals(indirect) == {"target"}
+    clean_loss = power(
+        subtract(add(multiply(symbol("x"), symbol("y")), constant(0.1)), symbol("target")),
+        2,
+    )
+    clean = model.model_copy(
+        update={"objective": base.objective.model_copy(update={"expression": clean_loss})}
+    )
+    assert _self_referential_data_residuals(clean) == set()
+    assert (
+        _self_referential_data_residuals(
+            model.model_copy(
+                update={
+                    "parameters": [
+                        target.model_copy(update={"source_type": ParameterSourceType.ASSUMPTION})
+                    ]
+                }
+            )
+        )
+        == set()
+    )
+
+
+def test_model_gate_rejects_objective_constant_through_derived_equation() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    assert base.objective is not None
+    score = variable("score").model_copy(update={"role": VariableRole.DERIVED})
+    definition = base.equations[0].model_copy(
+        update={
+            "equation_id": "EQ-fixed-score",
+            "lhs": symbol("score"),
+            "rhs": constant(1),
+        }
+    )
+    fixed_objective = base.objective.model_copy(
+        update={"expression": symbol("score"), "equation_ref": "EQ-fixed-score"}
+    )
+    model = base.model_copy(
+        update={
+            "derived_variables": [score],
+            "equations": [*base.equations, definition],
+            "objective": fixed_objective,
+        }
+    )
+
+    assert (
+        "MODEL_GATE_FAIL:objective_depends_on_decision" in model_quality_gate(model, state).errors
+    )
+    assert (
+        "MODEL_GATE_FAIL:objective_depends_on_decision"
+        not in model_quality_gate(base, state).errors
+    )
+    coupled = model.model_copy(
+        update={
+            "equations": [
+                *base.equations,
+                definition.model_copy(update={"rhs": add(symbol("x"), constant(1))}),
+            ]
+        }
+    )
+    assert (
+        "MODEL_GATE_FAIL:objective_depends_on_decision"
+        not in model_quality_gate(coupled, state).errors
+    )
+
+
+def test_model_gate_rejects_fixed_infeasible_hard_constraint_before_solver() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    flow = variable("flow").model_copy(update={"role": VariableRole.DERIVED})
+    hazard = variable("hazard").model_copy(update={"role": VariableRole.DERIVED})
+    flow_equation = EquationDefinition(
+        equation_id="EQ-flow",
+        latex="flow=0.2",
+        normalized_expression="flow=0.2",
+        lhs=symbol("flow"),
+        rhs=constant(0.2),
+        meaning="fixed scalar flow",
+        source_refs=["EVID-fact-1"],
+        derivation="fixture",
+    )
+    hazard_equation = flow_equation.model_copy(
+        update={
+            "equation_id": "EQ-hazard",
+            "lhs": symbol("hazard"),
+            "rhs": subtract(symbol("flow"), constant(1.5)),
+        }
+    )
+    bound = ConstraintDefinition(
+        constraint_id="CON-hazard-min",
+        name="nonnegative hazard",
+        expression=symbol("hazard"),
+        relation=ConstraintRelation.GE,
+        rhs=constant(0),
+        normalized_expression="hazard>=0",
+        description="hazard must be nonnegative",
+        source_refs=["EVID-fact-1"],
+        equation_ref="EQ-hazard",
+    )
+    model = base.model_copy(
+        update={
+            "derived_variables": [flow, hazard],
+            "equations": [*base.equations, flow_equation, hazard_equation],
+            "constraints": [*base.constraints, bound],
+        }
+    )
+
+    gate = model_quality_gate(model, state)
+    assert gate.status is QualityGateStatus.RETRY
+    assert gate.checks["decision_independent_constraints_feasible"] is False
+    assert (
+        "MODEL_GATE_FAIL:DECISION_INDEPENDENT_CONSTRAINT_INFEASIBLE:CON-hazard-min" in gate.errors
+    )
+    feasible = model.model_copy(
+        update={
+            "equations": [
+                *base.equations,
+                flow_equation,
+                hazard_equation.model_copy(update={"rhs": add(symbol("flow"), constant(0.5))}),
+            ]
+        }
+    )
+    assert model_quality_gate(feasible, state).checks["decision_independent_constraints_feasible"]
+    decision_dependent = model.model_copy(
+        update={
+            "equations": [
+                *base.equations,
+                flow_equation.model_copy(update={"rhs": symbol("x")}),
+                hazard_equation,
+            ]
+        }
+    )
+    assert model_quality_gate(decision_dependent, state).checks[
+        "decision_independent_constraints_feasible"
+    ]
+    soft_bound = model.model_copy(
+        update={"constraints": [*base.constraints, bound.model_copy(update={"is_hard": False})]}
+    )
+    assert model_quality_gate(soft_bound, state).checks["decision_independent_constraints_feasible"]
+    assert model_quality_gate(base, state).status is QualityGateStatus.PASS
+
+
+def test_model_gate_rejects_scalar_optimization_misclassified_as_time_series() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    mislabeled = base.model_copy(update={"model_family": ModelFamily.TIME_SERIES})
+    gate = model_quality_gate(mislabeled, state)
+    assert gate.status is QualityGateStatus.RETRY
+    assert "MODEL_GATE_FAIL:SCALAR_OPTIMIZATION_UNSUPPORTED_FAMILY:time_series" in gate.errors
+    chained = base.model_copy(update={"model_family": ModelFamily.MODEL_CHAIN})
+    chain_gate = model_quality_gate(chained, state)
+    assert "MODEL_GATE_FAIL:SCALAR_OPTIMIZATION_UNSUPPORTED_FAMILY:model_chain" in chain_gate.errors
+    assert model_quality_gate(base, state).status is QualityGateStatus.PASS
+
+
+def test_model_gate_rejects_unmaterializable_indexed_initial_condition() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    indexed = base.decision_variables[0].model_copy(update={"index_sets": ["SET-POINTS"]})
+    initial = base.constraints[0].model_copy(
+        update={
+            "constraint_id": "CON-INIT-X",
+            "name": "first indexed state value",
+            "expression": symbol("x"),
+            "rhs": constant(0),
+            "relation": ConstraintRelation.EQ,
+            "index_scope": ["SET-POINTS"],
+        }
+    )
+    model = base.model_copy(
+        update={
+            "sets": [
+                SetDefinition(
+                    set_id="SET-POINTS",
+                    symbol="T",
+                    description="fixture time points",
+                    values=[1, 2],
+                )
+            ],
+            "decision_variables": [indexed, base.decision_variables[1]],
+            "initial_conditions": [initial],
+        }
+    )
+    gate = model_quality_gate(model, state)
+    assert "MODEL_GATE_FAIL:INDEXED_HARD_CONSTRAINT_NOT_SCALAR:CON-INIT-X:x" in gate.errors
+    assert model_quality_gate(base, state).status is QualityGateStatus.PASS
 
 
 def test_model_gate_blocks_unresolved_critical_ambiguity() -> None:

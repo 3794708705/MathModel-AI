@@ -7,6 +7,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from mathmodel_ai.mathematical.repository import MathematicalRepository, ResultContext
 from mathmodel_ai.paper.hashing import sha256_json
 from mathmodel_ai.schemas.execution import ExecutionStatus
+from mathmodel_ai.schemas.independent_verification import VerificationPlan
 from mathmodel_ai.schemas.mathematical import MathematicalModel
 from mathmodel_ai.schemas.paper import (
     EvidenceProvenance,
@@ -30,6 +31,7 @@ from mathmodel_ai.schemas.verification import (
     ValidationReport,
     ValidationStatus,
 )
+from mathmodel_ai.verification.independent_repository import IndependentVerificationRepository
 from mathmodel_ai.verification.repository import VerificationRepository
 
 
@@ -69,6 +71,7 @@ class VerifiedEvidenceBundle:
     red_team: RedTeamReport
     records: tuple[EvidenceRecord, ...]
     snapshot: EvidenceSnapshot
+    reviewed_plan: VerificationPlan | None = None
 
 
 class VerifiedEvidenceBuilder:
@@ -79,12 +82,15 @@ class VerifiedEvidenceBuilder:
         *,
         mathematical_repository: MathematicalRepository,
         verification_repository: VerificationRepository,
+        independent_repository: IndependentVerificationRepository | None = None,
     ) -> None:
         self._mathematical = mathematical_repository
         self._verification = verification_repository
+        self._independent = independent_repository
 
     def build(self, project_id: UUID) -> VerifiedEvidenceBundle:
-        state = self._verification.load_current(project_id)
+        current_state = self._verification.load_current(project_id)
+        state = self._scientific_state(current_state)
         result_id = state.verified_result_id
         if result_id is None:
             raise EvidenceBuildError("paper build requires explicit verified_result_id")
@@ -116,7 +122,7 @@ class VerifiedEvidenceBuilder:
             records,
         )
         return VerifiedEvidenceBundle(
-            state=state,
+            state=current_state,
             context=context,
             validation=validation,
             sensitivity=sensitivity,
@@ -124,7 +130,42 @@ class VerifiedEvidenceBuilder:
             red_team=red_team,
             records=records,
             snapshot=snapshot,
+            reviewed_plan=(
+                self._independent.get_by_result(result_id)
+                if self._independent is not None and sensitivity.reviewed_report_id is not None
+                else None
+            ),
         )
+
+    def _scientific_state(self, current: ProblemState) -> ProblemState:
+        if not current.paper_versions:
+            return current
+        science = self._verification.load_accepted_science(current.project_id)
+        paper_fields = {
+            "schema_version",
+            "version",
+            "paper_state",
+            "paper_versions",
+            "submission_state",
+            "submission_snapshots",
+            "current_stage",
+            "status",
+            "updated_by",
+            "update_reason",
+            "updated_at",
+        }
+        changed = [
+            name
+            for name in ProblemState.model_fields
+            if name not in paper_fields and getattr(current, name) != getattr(science, name)
+        ]
+        if changed:
+            raise EvidenceBuildError(
+                "paper continuation changed scientific state: " + ", ".join(changed)
+            )
+        if current.paper_versions[-1].verified_result_id != science.verified_result_id:
+            raise EvidenceBuildError("prior paper version targets a different verified result")
+        return science
 
     def attach_references(
         self,
@@ -189,6 +230,7 @@ class VerifiedEvidenceBuilder:
             red_team=bundle.red_team,
             records=records,
             snapshot=snapshot,
+            reviewed_plan=bundle.reviewed_plan,
         )
 
     @staticmethod

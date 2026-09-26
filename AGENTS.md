@@ -31,20 +31,11 @@ maintainability, performance, then complexity.
 - Testing: `docs/TESTING.md`
 - Execution plans: `docs/exec-plans/`
 
-Current phase: Phase 8 live Case A acceptance. Real DeepSeek smoke is human
-accepted; the provider blocker is cleared. Latest Case A rerun 13 reached a real
-FEASIBLE solve but independent validation is NOT_EVALUABLE. See the Case A
-execution plan for exact evidence. The generic versioned metric-recomputation
-and scenario-replay extension is implemented. Case A now has a reviewed v2
-modeling contract and production-eligible verification policy bound to model
-digest `16c3f292...`; its normalized initial state/time contract, fixed-ratio
-comparator, Jacobian spectrum, local sensitivity design, persistence boundary,
-and parasite interpretation are explicit assumptions/derivations. This does not
-retroactively verify rerun 13 and no fresh attempt has run. Phase 8 remains
-NOT_READY until a fresh solve produces the exact reviewed model/evidence chain.
-Preserve every historical attempt, do not substitute Mock, create a commit, or
-start B/C before A is stable. Do not rerun unsupported scientific requirements
-blindly or remove them to manufacture verification.
+The current delivery target, case status, and authorized run scope are in
+`GOAL.md`; historical Case A decisions remain in its execution plan. Preserve
+every historical attempt, never substitute Mock for a claimed live result, and
+do not rerun unsupported scientific requirements blindly or remove them to
+manufacture verification.
 
 ## Commands
 

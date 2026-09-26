@@ -14,6 +14,8 @@ from mathmodel_ai.db.models import (
     BenchmarkHumanInterventionRecordModel,
     BenchmarkMetricRecordModel,
     BenchmarkRunRecordModel,
+    FinalJuryReportRecord,
+    PaperVersionRecord,
     Project,
 )
 from mathmodel_ai.db.session import session_scope
@@ -377,6 +379,22 @@ class BenchmarkRepository:
             if reviewed_binding
             else cls.REQUIRED_LIVE_AGENT_NAMES
         )
+        bound_paper_runs = set(
+            session.scalars(
+                select(PaperVersionRecord.paper_agent_run_id).where(
+                    PaperVersionRecord.project_id == project_id,
+                    PaperVersionRecord.paper_agent_run_id.is_not(None),
+                )
+            )
+        )
+        bound_jury_runs = set(
+            session.scalars(
+                select(FinalJuryReportRecord.agent_run_id).where(
+                    FinalJuryReportRecord.project_id == project_id,
+                    FinalJuryReportRecord.agent_run_id.is_not(None),
+                )
+            )
+        )
         accepted = {
             row.agent_name: row
             for row in rows
@@ -385,6 +403,8 @@ class BenchmarkRepository:
             and not row.is_mock
             and row.provider is not None
             and row.provider != "mock"
+            and (row.agent_name != "paper_agent" or row.id in bound_paper_runs)
+            and (row.agent_name != "final_jury_agent" or row.id in bound_jury_runs)
         }
         coverage = len(accepted) / len(required_names)
         return coverage, [f"agent-run:{accepted[name].id}" for name in sorted(accepted)]

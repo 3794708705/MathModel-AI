@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import html
 import re
 from dataclasses import dataclass
@@ -100,7 +101,7 @@ class CrossrefLiteratureSource:
         params = {"query.bibliographic": need.query, "rows": "5"}
         if self._mailto:
             params["mailto"] = self._mailto
-        response = await self._client.get(f"{self._base_url}/works", params=params)
+        response = await self._get(f"{self._base_url}/works", params=params)
         response.raise_for_status()
         payload = response.json()
         items = payload.get("message", {}).get("items", [])
@@ -117,12 +118,27 @@ class CrossrefLiteratureSource:
     async def resolve(self, identifier: str, project_id: UUID) -> ReferenceRecord | None:
         normalized = identifier.removeprefix("https://doi.org/").removeprefix("http://doi.org/")
         params = {"mailto": self._mailto} if self._mailto else None
-        response = await self._client.get(f"{self._base_url}/works/{normalized}", params=params)
+        response = await self._get(f"{self._base_url}/works/{normalized}", params=params)
         if response.status_code == 404:
             return None
-        response.raise_for_status()
         item = response.json().get("message")
         return self._record(item, project_id) if isinstance(item, dict) else None
+
+    async def _get(self, url: str, *, params: dict[str, str] | None) -> httpx.Response:
+        """Respect bounded Crossref rate-limit backoff without inventing references."""
+        for attempt in range(4):
+            response = await self._client.get(url, params=params)
+            if response.status_code != 429 or attempt == 3:
+                if response.status_code != 404:
+                    response.raise_for_status()
+                return response
+            retry_after = response.headers.get("Retry-After", "")
+            try:
+                delay = float(retry_after)
+            except ValueError:
+                delay = 2.0 * (2**attempt)
+            await asyncio.sleep(min(max(delay, 1.0), 30.0))
+        raise AssertionError("unreachable")
 
     async def aclose(self) -> None:
         if self._owns_client:

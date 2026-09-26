@@ -167,6 +167,7 @@ class BenchmarkReportRenderer:
     def render_markdown(self, report: BenchmarkReport) -> str:
         assert_public_report(report)
         result_by_attempt = {item.attempt_id: item for item in report.results}
+        metric_by_attempt = {(item.attempt_id, item.name): item for item in report.metrics}
         lines = [
             "# MathModel AI Phase 8 Benchmark Report",
             "",
@@ -182,7 +183,8 @@ class BenchmarkReportRenderer:
             f"- Reasoning tier: `{report.run.config.reasoning_tier}`",
             f"- Configuration version: `{report.run.config.config_version}`",
             f"- Random seed: `{report.run.config.random_seed}`",
-            f"- Live Provider: `{report.acceptance.live_provider_status.value}`",
+            "- Live Provider readiness (critical-agent coverage): "
+            f"`{report.acceptance.live_provider_status.value}`",
             f"- Live Literature: `{report.acceptance.live_literature_status.value}`",
             "",
             "## Cases",
@@ -192,11 +194,17 @@ class BenchmarkReportRenderer:
         ]
         for attempt in report.attempts:
             result = result_by_attempt[attempt.attempt_id]
+            cost_metric = metric_by_attempt.get((attempt.attempt_id, "estimated_cost"))
+            cost_display = (
+                "UNKNOWN"
+                if cost_metric is not None and cost_metric.evidence_ref.startswith("NOT_EVALUATED:")
+                else f"{result.estimated_cost:.6f}"
+            )
             lines.append(
                 f"| {attempt.benchmark_id} | {attempt.attempt_number} | "
                 f"{result.status.value} | {result.score:.2f} | "
                 f"{result.human_intervention_count} | {result.wall_time_seconds:.3f} | "
-                f"{result.estimated_cost:.6f} |"
+                f"{cost_display} |"
             )
         lines.extend(["", "## Per-case Evidence", ""])
         for attempt in report.attempts:
@@ -206,7 +214,7 @@ class BenchmarkReportRenderer:
                     f"### {attempt.benchmark_id} / attempt {attempt.attempt_number}",
                     "",
                     f"- Solve input digest: `{attempt.solve_input_digest}`",
-                    f"- Provider live: `{attempt.provider_is_live}`",
+                    f"- Provider connectivity/live activity: `{attempt.provider_is_live}`",
                     f"- Literature live: `{attempt.literature_is_live}`",
                     f"- Verified result: `{result.verified_result_id or 'NONE'}`",
                     f"- Paper: `{result.paper_id or 'NONE'}` / `{result.paper_version or 'NONE'}`",
@@ -220,7 +228,17 @@ class BenchmarkReportRenderer:
                 f"- {item.dimension}: {item.score:.2f}/{item.maximum:.2f}"
                 for item in result.dimensions
             )
-            lines.extend(["", "Hard failures:", ""])
+            lines.extend(
+                [
+                    "",
+                    "Diagnostic metric labels `NOT_EVALUATED` and `UPSTREAM_BLOCKED` "
+                    "are not observed failures; their numeric zero is only a fail-closed "
+                    "readiness-scoring placeholder.",
+                    "",
+                    "Hard failures:",
+                    "",
+                ]
+            )
             lines.extend(f"- {item}" for item in result.hard_failures)
             if not result.hard_failures:
                 lines.append("- None")

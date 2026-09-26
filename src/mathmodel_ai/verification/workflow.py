@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -21,6 +22,7 @@ from mathmodel_ai.mathematical.workflow import MathematicalWorkflow, SolveStageO
 from mathmodel_ai.reasoning.repository import ReasoningRepository
 from mathmodel_ai.reasoning.state_machine import ensure_transition
 from mathmodel_ai.routing.schemas import EscalationLevel, TaskProfile, TaskType
+from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.independent_verification import ReviewedValidationEvidence
 from mathmodel_ai.schemas.mathematical import MathematicalModelRef
 from mathmodel_ai.schemas.problem_state import (
@@ -48,10 +50,13 @@ from mathmodel_ai.schemas.verification import (
     SensitivityConfig,
     SensitivityReport,
     SensitivityReportRef,
+    ValidationCheckStatus,
     ValidationReport,
     ValidationReportRef,
+    ValidationStatus,
 )
 from mathmodel_ai.solvers.base import SolverExecution
+from mathmodel_ai.verification.causal_holdout import AuditedCausalEvidence
 from mathmodel_ai.verification.experiment_integrity import ExperimentIntegrityVerifier
 from mathmodel_ai.verification.experiments import ExperimentOutcome
 from mathmodel_ai.verification.quality_gates import (
@@ -173,6 +178,7 @@ class VerificationWorkflow:
         *,
         result_id: UUID | None = None,
         reviewed_evidence: ReviewedValidationEvidence | None = None,
+        causal_auditor: Callable[[], AuditedCausalEvidence] | None = None,
     ) -> ValidationStageOutcome:
         state = self._reasoning_repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.VALIDATE)
@@ -190,6 +196,7 @@ class VerificationWorkflow:
             solver_run=context.solver_run,
             evidence=context.evidence,
             reviewed_evidence=reviewed_evidence,
+            causal_evidence=causal_auditor() if causal_auditor is not None else None,
         )
         gate = validation_quality_gate(report)
         next_state = self._validation_state(state, report, gate)
@@ -201,6 +208,7 @@ class VerificationWorkflow:
         project_id: UUID,
         *,
         config: SensitivityConfig | None = None,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> SensitivityStageOutcome:
         state = self._reasoning_repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.SENSITIVITY)
@@ -211,8 +219,9 @@ class VerificationWorkflow:
             result=context.result,
             validation=validation,
             config=config or SensitivityConfig(),
+            reviewed_evidence=reviewed_evidence,
         )
-        gate = sensitivity_quality_gate(report)
+        gate = sensitivity_quality_gate(report, reviewed_evidence)
         next_state = self._sensitivity_state(
             state,
             report,
@@ -228,6 +237,7 @@ class VerificationWorkflow:
         project_id: UUID,
         *,
         config: RobustnessConfig | None = None,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> RobustnessStageOutcome:
         state = self._reasoning_repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.ROBUSTNESS)
@@ -240,8 +250,9 @@ class VerificationWorkflow:
             validation=validation,
             sensitivity=sensitivity,
             config=config or RobustnessConfig(),
+            reviewed_evidence=reviewed_evidence,
         )
-        gate = robustness_quality_gate(report)
+        gate = robustness_quality_gate(report, reviewed_evidence)
         next_state = self._robustness_state(
             state,
             report,
@@ -258,6 +269,7 @@ class VerificationWorkflow:
         *,
         user_guidance: list[str] | None = None,
         reviewed_evidence: ReviewedValidationEvidence | None = None,
+        causal_auditor: Callable[[], AuditedCausalEvidence] | None = None,
     ) -> RedTeamStageOutcome:
         state = self._reasoning_repository.load_current(project_id)
         ensure_transition(state.current_stage, WorkflowStage.RED_TEAM)
@@ -302,6 +314,7 @@ class VerificationWorkflow:
             solver_run=context.solver_run,
             evidence=context.evidence,
             reviewed_evidence=reviewed_evidence,
+            causal_evidence=causal_auditor() if causal_auditor is not None else None,
         )
         sensitivity_errors = self._repository.audit_experiment_report(
             project_id=project_id,
@@ -325,6 +338,7 @@ class VerificationWorkflow:
             validation_integrity_errors=validation_errors,
             sensitivity_integrity_errors=sensitivity_errors,
             robustness_integrity_errors=robustness_errors,
+            reviewed_evidence=reviewed_evidence,
         )
         next_state = self._red_team_state(
             state,
@@ -461,17 +475,27 @@ class VerificationWorkflow:
         robustness_config: RobustnessConfig | None = None,
         user_guidance: list[str] | None = None,
         reviewed_evidence: ReviewedValidationEvidence | None = None,
+        causal_auditor: Callable[[], AuditedCausalEvidence] | None = None,
     ) -> VerificationRunOutcome:
-        validation = self.validate(project_id, reviewed_evidence=reviewed_evidence)
+        validation = self.validate(
+            project_id, reviewed_evidence=reviewed_evidence, causal_auditor=causal_auditor
+        )
         self._require_pass(validation.gate)
-        sensitivity = self.sensitivity(project_id, config=sensitivity_config)
+        if causal_auditor is not None and reviewed_evidence is None:
+            self._require_complete_causal_policy(validation.report, causal_auditor())
+        sensitivity = self.sensitivity(
+            project_id, config=sensitivity_config, reviewed_evidence=reviewed_evidence
+        )
         self._require_pass(sensitivity.gate)
-        robustness = self.robustness(project_id, config=robustness_config)
+        robustness = self.robustness(
+            project_id, config=robustness_config, reviewed_evidence=reviewed_evidence
+        )
         self._require_pass(robustness.gate)
         red_team = await self.red_team(
             project_id,
             user_guidance=user_guidance,
             reviewed_evidence=reviewed_evidence,
+            causal_auditor=causal_auditor,
         )
         return VerificationRunOutcome(
             validation=validation,
@@ -480,6 +504,30 @@ class VerificationWorkflow:
             red_team=red_team,
         )
 
+    @staticmethod
+    def _require_complete_causal_policy(
+        report: ValidationReport, evidence: AuditedCausalEvidence
+    ) -> None:
+        """Permit a model-independent host policy only with every science check."""
+        required = {f"causal_science:{check.value}" for check in CausalScienceCheck}
+        if report.status is not ValidationStatus.PASS:
+            raise QualityGateError("CAUSAL_HOLDOUT_REVIEWED_REQUIREMENT_POLICY_MISSING")
+        checks = {item.requirement: item for item in report.requirement_checks}
+        if (
+            evidence.formal_result_id != report.result_id
+            or evidence.science_policy_sha256 is None
+            or len(evidence.source_sha256) != 64
+            or {f"causal_science:{check.value}" for check in evidence.required_scientific_checks}
+            != required
+            or not required <= checks.keys()
+            or any(checks[name].status is not ValidationCheckStatus.PASS for name in required)
+            or not any(
+                ref == f"causal_science_policy_sha256:{evidence.science_policy_sha256}"
+                for ref in report.evidence_refs
+            )
+        ):
+            raise QualityGateError("CAUSAL_HOLDOUT_REVIEWED_REQUIREMENT_POLICY_MISSING")
+
     async def repair_until_clear(
         self,
         project_id: UUID,
@@ -487,6 +535,11 @@ class VerificationWorkflow:
         sensitivity_config: SensitivityConfig | None = None,
         robustness_config: RobustnessConfig | None = None,
         user_guidance: list[str] | None = None,
+        repair_solver: Callable[
+            [RepairStageOutcome],
+            Awaitable[tuple[SolveStageOutcome, Callable[[], AuditedCausalEvidence] | None]],
+        ]
+        | None = None,
     ) -> RepairLoopOutcome:
         initial = self._repository.get_red_team(project_id)
         iterations: list[RepairLoopIteration] = []
@@ -516,7 +569,11 @@ class VerificationWorkflow:
                     resolved=False,
                     exhausted=False,
                 )
-            solve = await self._mathematical_workflow.solve(project_id)
+            causal_auditor: Callable[[], AuditedCausalEvidence] | None = None
+            if repair_solver is None:
+                solve = await self._mathematical_workflow.solve(project_id)
+            else:
+                solve, causal_auditor = await repair_solver(repair)
             if solve.gate.status is not QualityGateStatus.PASS:
                 iterations.append(
                     RepairLoopIteration(repair=repair, solve=solve, verification=None)
@@ -528,11 +585,14 @@ class VerificationWorkflow:
                     resolved=False,
                     exhausted=False,
                 )
+            if repair_solver is not None and causal_auditor is None:
+                raise QualityGateError("causal repair solve needs a fresh holdout auditor")
             verification = await self.run(
                 project_id,
                 sensitivity_config=sensitivity_config,
                 robustness_config=robustness_config,
                 user_guidance=user_guidance,
+                causal_auditor=causal_auditor,
             )
             final_report = verification.red_team.report
             iterations.append(

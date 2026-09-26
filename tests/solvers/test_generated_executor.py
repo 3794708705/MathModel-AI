@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
 
@@ -11,6 +12,13 @@ from mathmodel_ai.files.storage import FileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.sandbox.executor import SandboxExecutor
 from mathmodel_ai.schemas.execution import ExecutionOrigin, ExecutionStatus
+from mathmodel_ai.schemas.files import FileKind, RegisteredFile
+from mathmodel_ai.schemas.mathematical import (
+    EquationDefinition,
+    ObjectiveSense,
+    VariableRole,
+)
+from mathmodel_ai.schemas.model_selection import ModelFamily
 from mathmodel_ai.schemas.program import (
     GeneratedProgram,
     GeneratedProgramStatus,
@@ -19,7 +27,17 @@ from mathmodel_ai.schemas.program import (
 )
 from mathmodel_ai.schemas.solver import SolverOptions
 from mathmodel_ai.solvers.generated import GeneratedProgramExecutor
-from tests.mathematical.helpers import lp_model
+from mathmodel_ai.verification.validation import IndependentValidator
+from tests.mathematical.helpers import (
+    EVIDENCE,
+    add,
+    constant,
+    lp_model,
+    mathematical_model,
+    multiply,
+    symbol,
+    variable,
+)
 
 
 def _program(*, content: str, dependencies: list[str]) -> GeneratedProgram:
@@ -73,6 +91,35 @@ def test_generated_executor_rejects_unapproved_and_uninstalled_dependencies() ->
     )
     with pytest.raises(DependencyUnavailableError, match="scipy"):
         executor.execute(scipy_program, scipy_model, SolverOptions())
+
+
+def test_generated_executor_recognizes_declared_standard_library_modules() -> None:
+    sandbox = Mock(spec=SandboxExecutor)
+    sandbox.execute.return_value = SimpleNamespace(
+        record=SimpleNamespace(
+            status=ExecutionStatus.FAILED,
+            code_artifact_id=uuid4(),
+            runtime_seconds=0.1,
+            error="fixture execution failed",
+            run_id=uuid4(),
+        ),
+        artifact_records=[],
+    )
+    program = _program(
+        content="import collections, csv, hashlib, json, math, os, random",
+        dependencies=["collections", "csv", "hashlib", "json", "math", "os", "random"],
+    )
+    model = lp_model(
+        project_id=program.project_id,
+        problem_id=program.problem_id,
+        model_id=program.model_id,
+    )
+
+    result = _executor(sandbox).execute(program, model, SolverOptions())
+
+    assert result.result.status.value == "EXECUTION_ERROR"
+    sandbox.probe_python_module.assert_not_called()
+    sandbox.execute.assert_called_once()
 
 
 def test_generated_executor_rejects_dynamic_install_and_noncanonical_model_digest() -> None:
@@ -132,6 +179,43 @@ def test_generated_executor_preserves_result_schema_diagnostics_for_retry() -> N
     assert "variable_values.scenario" in error
 
 
+def test_generated_executor_mounts_registered_input_files() -> None:
+    sandbox = Mock(spec=SandboxExecutor)
+    sandbox.execute.return_value = SimpleNamespace(
+        record=SimpleNamespace(
+            status=ExecutionStatus.FAILED,
+            code_artifact_id=uuid4(),
+            runtime_seconds=0.1,
+            error="fixture execution failed",
+            run_id=uuid4(),
+        ),
+        artifact_records=[],
+    )
+    executor = _executor(sandbox)
+    program = _program(content="print('solve')", dependencies=[])
+    model = lp_model(
+        project_id=program.project_id,
+        problem_id=program.problem_id,
+        model_id=program.model_id,
+    )
+    data_file = RegisteredFile(
+        project_id=program.project_id,
+        problem_id=program.problem_id,
+        original_name="observations.csv",
+        safe_name="observations.csv",
+        extension=".csv",
+        kind=FileKind.CSV,
+        detected_mime_type="text/csv",
+        size_bytes=4,
+        sha256="a" * 64,
+        storage_key="fixture.csv",
+    )
+
+    executor.execute(program, model, SolverOptions(), input_files=[data_file])
+
+    assert sandbox.execute.call_args.kwargs["input_files"] == [data_file]
+
+
 @pytest.mark.parametrize("nested", [{"x": 1.0}, [1.0, 2.0]])
 def test_generated_result_metrics_reject_nested_scenario_outputs(nested: object) -> None:
     store = Mock(spec=FileStore)
@@ -158,3 +242,45 @@ def test_generated_result_metrics_reject_nested_scenario_outputs(nested: object)
     payload, error = executor._result_payload(ExecutionStatus.SUCCEEDED, artifacts)
     assert payload is not None
     assert error is None
+
+
+def test_generated_objective_independently_resolves_derived_scalar() -> None:
+    model = mathematical_model(
+        family=ModelFamily.NONLINEAR_PROGRAMMING,
+        variables=[variable("x")],
+        objective_expression=symbol("score"),
+        constraints=[],
+        sense=ObjectiveSense.MAXIMIZE,
+    )
+    model = model.model_copy(
+        update={
+            "derived_variables": [
+                variable("score").model_copy(update={"role": VariableRole.DERIVED})
+            ],
+            "equations": [
+                EquationDefinition(
+                    equation_id="EQ-score",
+                    latex="score=2x+1",
+                    normalized_expression="score = 2*x + 1",
+                    lhs=symbol("score"),
+                    rhs=add(multiply(constant(2), symbol("x")), constant(1)),
+                    meaning="Derived score",
+                    source_refs=[EVIDENCE],
+                    derivation="Explicit model equation",
+                    symbol_refs=["score", "x"],
+                )
+            ],
+        }
+    )
+    matches = GeneratedProgramExecutor._objective_matches
+
+    assert matches(model, {"x": 0.5}, 2.0, tolerance=1e-7)
+    assert matches(model, {"x": 0.5, "score": 2.0}, 2.0, tolerance=1e-7)
+    assert not matches(model, {"x": 0.5, "score": 9.0}, 2.0, tolerance=1e-7)
+    assert not matches(model, {"x": 0.5}, 9.0, tolerance=1e-7)
+    assert not matches(model.model_copy(update={"equations": []}), {"x": 0.5}, 2.0, tolerance=1e-7)
+    independent_values = IndependentValidator._numeric_environment(model, {"x": 0.5})
+    assert independent_values["score"] == 2.0
+    assert (
+        IndependentValidator._numeric_environment(model, {"x": 0.5, "score": 9.0})["score"] == 2.0
+    )

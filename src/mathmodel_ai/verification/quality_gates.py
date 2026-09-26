@@ -4,7 +4,9 @@ import statistics
 from collections import defaultdict
 
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
+from mathmodel_ai.schemas.independent_verification import ReviewedValidationEvidence
 from mathmodel_ai.schemas.quality import QualityGateResult, QualityGateStatus
+from mathmodel_ai.schemas.solver import SolverName
 from mathmodel_ai.schemas.verification import (
     ExperimentReportStatus,
     ExperimentRun,
@@ -17,6 +19,7 @@ from mathmodel_ai.schemas.verification import (
     ValidationReport,
     ValidationStatus,
 )
+from mathmodel_ai.verification.reviewed_response import reviewed_response_summary
 
 
 def validation_quality_gate(report: ValidationReport) -> QualityGateResult:
@@ -45,7 +48,49 @@ def validation_quality_gate(report: ValidationReport) -> QualityGateResult:
     )
 
 
-def sensitivity_quality_gate(report: SensitivityReport) -> QualityGateResult:
+def sensitivity_quality_gate(
+    report: SensitivityReport,
+    reviewed_evidence: ReviewedValidationEvidence | None = None,
+) -> QualityGateResult:
+    if report.reviewed_report_id is not None:
+        reviewed_valid = _reviewed_report_matches(report, reviewed_evidence, parameter_only=True)
+        checks = {
+            "independent_report_bound": reviewed_valid,
+            "parameter_perturbations_present": bool(report.reviewed_replay_ids),
+            "all_required_numeric_responses_verified": bool(report.reviewed_metric_values),
+            "no_objective_fabricated": report.baseline_objective is None and not report.experiments,
+            "report_pass": report.status is ExperimentReportStatus.PASS,
+        }
+        errors = [f"SENSITIVITY_GATE_FAIL:{name}" for name, passed in checks.items() if not passed]
+        errors.extend(report.errors)
+        return QualityGateResult(
+            gate="SENSITIVITY",
+            status=QualityGateStatus.PASS if not errors else QualityGateStatus.RETRY,
+            checks=checks,
+            errors=list(dict.fromkeys(errors)),
+            warnings=report.warnings,
+        )
+    if report.baseline_responses:
+        checks = {
+            "experiments_present": bool(report.experiments),
+            "all_experiments_executed": bool(report.experiments)
+            and all(item.execution_record_id is not None for item in report.experiments),
+            "all_experiments_pass": report.status is ExperimentReportStatus.PASS,
+            "no_failed_runs": report.failed_runs == 0,
+            "response_summary_recomputed": _response_summary_matches(
+                report.baseline_responses, report.response_ranges, report.experiments
+            ),
+            "no_objective_fabricated": report.baseline_objective is None,
+        }
+        errors = [f"SENSITIVITY_GATE_FAIL:{name}" for name, passed in checks.items() if not passed]
+        errors.extend(report.errors)
+        return QualityGateResult(
+            gate="SENSITIVITY",
+            status=QualityGateStatus.PASS if not errors else QualityGateStatus.RETRY,
+            checks=checks,
+            errors=list(dict.fromkeys(errors)),
+            warnings=report.warnings,
+        )
     checks = {
         "experiments_present": bool(report.experiments),
         "all_experiments_executed": bool(report.experiments)
@@ -72,7 +117,51 @@ def sensitivity_quality_gate(report: SensitivityReport) -> QualityGateResult:
     )
 
 
-def robustness_quality_gate(report: RobustnessReport) -> QualityGateResult:
+def robustness_quality_gate(
+    report: RobustnessReport,
+    reviewed_evidence: ReviewedValidationEvidence | None = None,
+) -> QualityGateResult:
+    if report.reviewed_report_id is not None:
+        reviewed_valid = _reviewed_report_matches(report, reviewed_evidence, parameter_only=False)
+        checks = {
+            "independent_report_bound": reviewed_valid,
+            "all_required_scenarios_covered": bool(report.reviewed_replay_ids),
+            "all_required_numeric_responses_verified": bool(report.reviewed_metric_values),
+            "no_objective_fabricated": report.baseline_objective is None and not report.experiments,
+            "report_pass": report.status is ExperimentReportStatus.PASS,
+            "method_explicit": report.method is report.config.method,
+        }
+        errors = [f"ROBUSTNESS_GATE_FAIL:{name}" for name, passed in checks.items() if not passed]
+        errors.extend(report.errors)
+        return QualityGateResult(
+            gate="ROBUSTNESS",
+            status=QualityGateStatus.PASS if not errors else QualityGateStatus.RETRY,
+            checks=checks,
+            errors=list(dict.fromkeys(errors)),
+            warnings=report.warnings,
+        )
+    if report.baseline_responses:
+        checks = {
+            "method_explicit": report.method is report.config.method,
+            "experiments_present": bool(report.experiments),
+            "all_experiments_executed": bool(report.experiments)
+            and all(item.execution_record_id is not None for item in report.experiments),
+            "all_experiments_pass": report.status is ExperimentReportStatus.PASS,
+            "full_feasibility_rate": report.summary.feasibility_rate == 1.0,
+            "response_summary_recomputed": _response_summary_matches(
+                report.baseline_responses, report.response_ranges, report.experiments
+            ),
+            "no_objective_fabricated": report.baseline_objective is None,
+        }
+        errors = [f"ROBUSTNESS_GATE_FAIL:{name}" for name, passed in checks.items() if not passed]
+        errors.extend(report.errors)
+        return QualityGateResult(
+            gate="ROBUSTNESS",
+            status=QualityGateStatus.PASS if not errors else QualityGateStatus.RETRY,
+            checks=checks,
+            errors=list(dict.fromkeys(errors)),
+            warnings=report.warnings,
+        )
     checks = {
         "method_explicit": report.method is report.config.method,
         "experiments_present": bool(report.experiments),
@@ -151,6 +240,7 @@ def verified_result_quality_gate(
     validation_integrity_errors: list[str],
     sensitivity_integrity_errors: list[str],
     robustness_integrity_errors: list[str],
+    reviewed_evidence: ReviewedValidationEvidence | None = None,
 ) -> QualityGateResult:
     unresolved_critical = sum(
         item.severity is RedTeamSeverity.CRITICAL and not item.resolved
@@ -177,6 +267,43 @@ def verified_result_quality_gate(
         robustness.result_id,
         red_team.result_id,
     }
+    reviewed = (
+        sensitivity.reviewed_report_id is not None or robustness.reviewed_report_id is not None
+    )
+    reviewed_sensitivity = reviewed and _reviewed_report_matches(
+        sensitivity, reviewed_evidence, parameter_only=True
+    )
+    reviewed_robustness = reviewed and _reviewed_report_matches(
+        robustness, reviewed_evidence, parameter_only=False
+    )
+    response_mode = bool(
+        sensitivity.baseline_responses
+        and sensitivity.baseline_responses == robustness.baseline_responses
+        and sensitivity.baseline_objective is None
+        and robustness.baseline_objective is None
+        and not reviewed
+    )
+    response_sensitivity_valid = response_mode and _response_summary_matches(
+        sensitivity.baseline_responses, sensitivity.response_ranges, sensitivity.experiments
+    )
+    response_robustness_valid = response_mode and _response_summary_matches(
+        robustness.baseline_responses, robustness.response_ranges, robustness.experiments
+    )
+    nonobjective_validation = not any(
+        item.category.value == "OBJECTIVE" for item in validation.metric_recalculations
+    )
+    if response_mode:
+        baseline_consistent = nonobjective_validation
+    elif reviewed:
+        baseline_consistent = bool(
+            reviewed_sensitivity
+            and reviewed_robustness
+            and sensitivity.baseline_objective is None
+            and robustness.baseline_objective is None
+            and nonobjective_validation
+        )
+    else:
+        baseline_consistent = _baseline_objective_matches(validation, sensitivity, robustness)
     sensitivity_experiments_pass = bool(sensitivity.experiments) and all(
         item.status is ExperimentStatus.PASS for item in sensitivity.experiments
     )
@@ -198,28 +325,48 @@ def verified_result_quality_gate(
             item.status.value == "PASS" for item in validation.requirement_checks
         ),
         "validation_report_integrity": not validation_integrity_errors,
-        "baseline_objective_matches_validation": _baseline_objective_matches(
-            validation,
-            sensitivity,
-            robustness,
-        ),
+        "baseline_objective_matches_validation": baseline_consistent,
         "sensitivity_pass": sensitivity.status is ExperimentReportStatus.PASS,
-        "sensitivity_experiments_pass": sensitivity_experiments_pass,
-        "sensitivity_design_matches_config": _sensitivity_design_matches(sensitivity),
-        "sensitivity_deltas_recomputed": _objective_deltas_match(
+        "sensitivity_experiments_pass": reviewed_sensitivity
+        if reviewed
+        else sensitivity_experiments_pass,
+        "sensitivity_design_matches_config": reviewed_sensitivity
+        if reviewed
+        else _sensitivity_design_matches(sensitivity),
+        "sensitivity_deltas_recomputed": response_sensitivity_valid
+        if response_mode
+        else reviewed_sensitivity
+        if reviewed
+        else _objective_deltas_match(
             sensitivity.baseline_objective,
             sensitivity.experiments,
         ),
-        "sensitivity_summary_recomputed": _sensitivity_summary_matches(sensitivity),
+        "sensitivity_summary_recomputed": response_sensitivity_valid
+        if response_mode
+        else reviewed_sensitivity
+        if reviewed
+        else _sensitivity_summary_matches(sensitivity),
         "sensitivity_execution_integrity": not sensitivity_integrity_errors,
         "robustness_pass": robustness.status is ExperimentReportStatus.PASS,
-        "robustness_experiments_pass": robustness_experiments_pass,
-        "robustness_design_matches_config": _robustness_design_matches(robustness),
-        "robustness_deltas_recomputed": _objective_deltas_match(
+        "robustness_experiments_pass": reviewed_robustness
+        if reviewed
+        else robustness_experiments_pass,
+        "robustness_design_matches_config": reviewed_robustness
+        if reviewed
+        else _robustness_design_matches(robustness),
+        "robustness_deltas_recomputed": response_robustness_valid
+        if response_mode
+        else reviewed_robustness
+        if reviewed
+        else _objective_deltas_match(
             robustness.baseline_objective,
             robustness.experiments,
         ),
-        "robustness_summary_recomputed": _robustness_summary_matches(robustness),
+        "robustness_summary_recomputed": response_robustness_valid
+        if response_mode
+        else reviewed_robustness
+        if reviewed
+        else _robustness_summary_matches(robustness),
         "robustness_execution_integrity": not robustness_integrity_errors,
         "red_team_non_mock": not red_team.review_is_mock,
         "red_team_pass": red_team.status is ValidationStatus.PASS,
@@ -281,6 +428,26 @@ def _sensitivity_design_matches(report: SensitivityReport) -> bool:
         if observed_symbols != set(report.config.parameter_symbols):
             return False
     return True
+
+
+def _reviewed_report_matches(
+    report: SensitivityReport | RobustnessReport,
+    evidence: ReviewedValidationEvidence | None,
+    *,
+    parameter_only: bool,
+) -> bool:
+    if evidence is None or report.reviewed_report_id != evidence.report.report_id:
+        return False
+    try:
+        replay_ids, values = reviewed_response_summary(
+            evidence,
+            model_digest=report.model_digest,
+            result_id=report.result_id,
+            parameter_only=parameter_only,
+        )
+    except ValueError:
+        return False
+    return report.reviewed_replay_ids == replay_ids and report.reviewed_metric_values == values
 
 
 def _robustness_design_matches(report: RobustnessReport) -> bool:
@@ -347,6 +514,8 @@ def _baseline_objective_matches(
     if not objective_metrics:
         return False
     expected = sensitivity.baseline_objective
+    if expected is None or robustness.baseline_objective is None:
+        return False
     if not math.isclose(expected, robustness.baseline_objective, rel_tol=1e-9, abs_tol=1e-9):
         return False
     return all(
@@ -356,7 +525,9 @@ def _baseline_objective_matches(
     )
 
 
-def _objective_deltas_match(baseline: float, records: list[ExperimentRun]) -> bool:
+def _objective_deltas_match(baseline: float | None, records: list[ExperimentRun]) -> bool:
+    if baseline is None:
+        return False
     for record in records:
         if record.objective_value is None or record.objective_change is None:
             return False
@@ -380,6 +551,33 @@ def _objective_deltas_match(baseline: float, records: list[ExperimentRun]) -> bo
         ):
             return False
     return True
+
+
+def _response_summary_matches(
+    baseline: dict[str, float],
+    ranges: dict[str, tuple[float, float]],
+    records: list[ExperimentRun],
+) -> bool:
+    if not baseline or not records:
+        return False
+    if any(
+        item.solver is not SolverName.SCALAR_RESPONSE
+        or item.objective_value is not None
+        or item.objective_change is not None
+        or item.objective_change_fraction is not None
+        or item.fixed_decision_values != records[0].fixed_decision_values
+        or set(item.key_outputs) != set(baseline) | set(item.fixed_decision_values)
+        for item in records
+    ):
+        return False
+    expected = {
+        symbol: (
+            min(item.key_outputs[symbol] for item in records),
+            max(item.key_outputs[symbol] for item in records),
+        )
+        for symbol in baseline
+    }
+    return ranges == expected
 
 
 def _sensitivity_summary_matches(report: SensitivityReport) -> bool:

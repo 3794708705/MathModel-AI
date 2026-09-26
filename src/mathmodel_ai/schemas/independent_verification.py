@@ -24,6 +24,8 @@ class MetricKey(StrEnum):
     RMSE = "rmse"
     R2 = "r2"
     MAX_ERROR = "max_error"
+    BRIER = "brier"
+    LOG_LOSS = "log_loss"
     MEAN = "mean"
     MINIMUM = "minimum"
     MAXIMUM = "maximum"
@@ -107,6 +109,42 @@ class RawMetricOutput(FrozenContract):
 
 class ObservationData(FrozenContract):
     observations: list[Number] = Field(min_length=1, max_length=100000)
+    source_csv_sha256: Digest | None = None
+    source_column: str | None = Field(default=None, min_length=1, max_length=255)
+    positive_value: str | None = Field(default=None, min_length=1, max_length=255)
+    negative_value: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @model_validator(mode="after")
+    def binary_csv_provenance_is_complete(self) -> "ObservationData":
+        fields = (
+            self.source_csv_sha256,
+            self.source_column,
+            self.positive_value,
+            self.negative_value,
+        )
+        if any(item is not None for item in fields):
+            if any(item is None for item in fields):
+                raise ValueError("binary CSV observation provenance must be complete")
+            if self.positive_value == self.negative_value:
+                raise ValueError("binary CSV observation labels must differ")
+            if any(value not in (0.0, 1.0) for value in self.observations):
+                raise ValueError("binary CSV observations must contain only zero or one")
+        return self
+
+
+class CsvObservationSpec(FrozenContract):
+    """Reviewed binary target derived directly from an exact registered CSV."""
+
+    source_csv_sha256: Digest
+    source_column: str = Field(min_length=1, max_length=255)
+    positive_value: str = Field(min_length=1, max_length=255)
+    negative_value: str = Field(min_length=1, max_length=255)
+
+    @model_validator(mode="after")
+    def distinct_codes(self) -> "CsvObservationSpec":
+        if self.positive_value == self.negative_value:
+            raise ValueError("binary CSV observation labels must differ")
+        return self
 
 
 class DynamicReplaySpec(FrozenContract):
@@ -170,6 +208,9 @@ class VerificationPlan(FrozenContract):
     source_sha256: Digest
     observation_file_id: UUID | None = None
     observation_sha256: Digest | None = None
+    csv_observation: CsvObservationSpec | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     metrics: list[MetricSpec] = Field(min_length=1, max_length=100)
     scenarios: list[ScenarioSpec] = Field(min_length=1, max_length=30)
     scientific_scope: str = Field(min_length=10, max_length=2000)
@@ -183,6 +224,11 @@ class VerificationPlan(FrozenContract):
             raise ValueError("at least one required replay scenario is necessary")
         if (self.observation_file_id is None) != (self.observation_sha256 is None):
             raise ValueError("observations require both original file identity and digest")
+        if self.csv_observation is not None and (
+            self.observation_sha256 != self.csv_observation.source_csv_sha256
+            or self.observation_file_id is None
+        ):
+            raise ValueError("CSV observation must bind its exact registered source file")
         return self
 
 
@@ -237,6 +283,9 @@ class VerificationRequirements(FrozenContract):
     red_team_report_digest: Digest | None = None
     model_jury_report_digest: Digest | None = None
     observation_sha256: Digest | None = None
+    csv_observation: CsvObservationSpec | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     metrics: list[MetricSpec] = Field(min_length=1, max_length=100)
     scenarios: list[ScenarioSpec] = Field(min_length=1, max_length=30)
     validation_requirement_bindings: list[ValidationRequirementBinding] = Field(
@@ -247,6 +296,8 @@ class VerificationRequirements(FrozenContract):
 
     @model_validator(mode="after")
     def mandatory_requirements(self) -> "VerificationRequirements":
+        if self.csv_observation is not None and self.observation_sha256 is not None:
+            raise ValueError("choose one reviewed observation source")
         _unique_metrics(self.metrics)
         if len({s.scenario_id for s in self.scenarios}) != len(self.scenarios):
             raise ValueError("duplicate scenario requirement")
@@ -302,6 +353,19 @@ class VerificationRequirements(FrozenContract):
             if set(scenario.input_changes) != changed:
                 raise ValueError("scenario input_changes must exactly name changed inputs")
         return self
+
+    def matches_observation(self, plan: VerificationPlan) -> bool:
+        """Require the same reviewed target source at every evidence handoff."""
+        expected_digest = (
+            self.csv_observation.source_csv_sha256
+            if self.csv_observation is not None
+            else self.observation_sha256
+        )
+        return (
+            plan.csv_observation == self.csv_observation
+            and plan.observation_sha256 == expected_digest
+            and (plan.observation_file_id is None) == (expected_digest is None)
+        )
 
 
 class MetricBatch(FrozenContract):

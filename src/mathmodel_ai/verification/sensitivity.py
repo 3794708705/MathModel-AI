@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from mathmodel_ai.schemas.independent_verification import ReviewedValidationEvidence
 from mathmodel_ai.schemas.mathematical import MathematicalModel
 from mathmodel_ai.schemas.results import ResultRecord
 from mathmodel_ai.schemas.verification import (
@@ -13,6 +14,11 @@ from mathmodel_ai.schemas.verification import (
     ValidationStatus,
 )
 from mathmodel_ai.verification.experiments import ExperimentEngine, ExperimentOutcome
+from mathmodel_ai.verification.reviewed_response import reviewed_response_summary
+from mathmodel_ai.verification.scalar_response import (
+    formal_baseline_responses,
+    response_ranges,
+)
 
 
 class SensitivityAnalyzer:
@@ -26,13 +32,39 @@ class SensitivityAnalyzer:
         result: ResultRecord,
         validation: ValidationReport,
         config: SensitivityConfig,
+        reviewed_evidence: ReviewedValidationEvidence | None = None,
     ) -> tuple[SensitivityReport, list[ExperimentOutcome]]:
         if validation.status is not ValidationStatus.PASS:
             return self._blocked(model, result, validation, config, "validation did not pass"), []
         if result.objective is None:
-            return self._blocked(
-                model, result, validation, config, "baseline objective is absent"
-            ), []
+            if reviewed_evidence is not None:
+                try:
+                    replay_ids, values = reviewed_response_summary(
+                        reviewed_evidence,
+                        model_digest=result.model_digest,
+                        result_id=result.result_id,
+                        parameter_only=True,
+                    )
+                except ValueError as exc:
+                    return self._blocked(model, result, validation, config, str(exc)), []
+                return SensitivityReport(
+                    project_id=model.project_id,
+                    problem_id=model.problem_id,
+                    model_id=model.model_id,
+                    model_version=model.version,
+                    model_digest=result.model_digest,
+                    result_id=result.result_id,
+                    validation_id=validation.validation_id,
+                    baseline_objective=None,
+                    reviewed_report_id=reviewed_evidence.report.report_id,
+                    reviewed_replay_ids=replay_ids,
+                    reviewed_metric_values=values,
+                    config=config,
+                    successful_runs=0,
+                    failed_runs=0,
+                    status=ExperimentReportStatus.PASS,
+                ), []
+            return self._analyze_responses(model, result, validation, config)
         try:
             parameters = self._engine.select_scalar_parameters(
                 model,
@@ -123,6 +155,71 @@ class SensitivityAnalyzer:
             outcomes,
         )
 
+    def _analyze_responses(
+        self,
+        model: MathematicalModel,
+        result: ResultRecord,
+        validation: ValidationReport,
+        config: SensitivityConfig,
+    ) -> tuple[SensitivityReport, list[ExperimentOutcome]]:
+        try:
+            fixed, baseline = formal_baseline_responses(model, result)
+            parameters = self._engine.select_scalar_parameters(
+                model, config.parameter_symbols, config.max_parameters
+            )
+            if not parameters:
+                raise ValueError("no sourced scalar parameters are eligible for perturbation")
+        except ValueError as exc:
+            return self._blocked(model, result, validation, config, str(exc)), []
+        scenarios = [
+            (parameter, value, direction * fraction)
+            for parameter, value in parameters
+            for fraction in config.perturbation_fractions
+            for direction in (-1.0, 1.0)
+        ][: config.max_runs]
+        outcomes = [
+            self._engine.execute_response(
+                model=model,
+                perturbations=[self._engine.perturbation(parameter, value, fraction)],
+                options=config.solver_options,
+                experiment_type="SENSITIVITY:SCALAR_RESPONSE",
+                fixed_decision_values=fixed,
+            )
+            for parameter, value, fraction in scenarios
+        ]
+        records = [item.record for item in outcomes]
+        passed = [item for item in records if item.status is ExperimentStatus.PASS]
+        failed = [item for item in records if item.status is ExperimentStatus.FAIL]
+        status = (
+            ExperimentReportStatus.PASS
+            if records and not failed
+            else ExperimentReportStatus.PARTIAL
+            if passed
+            else ExperimentReportStatus.FAIL
+        )
+        return SensitivityReport(
+            project_id=model.project_id,
+            problem_id=model.problem_id,
+            model_id=model.model_id,
+            model_version=model.version,
+            model_digest=result.model_digest,
+            result_id=result.result_id,
+            validation_id=validation.validation_id,
+            baseline_responses=baseline,
+            response_ranges=response_ranges(baseline, [item.key_outputs for item in passed]),
+            config=config,
+            experiments=records,
+            successful_runs=len(passed),
+            failed_runs=len(failed),
+            status=status,
+            errors=[item.error for item in failed if item.error],
+            warnings=(
+                ["sensitivity scenarios were truncated by max_runs"]
+                if len(parameters) * len(config.perturbation_fractions) * 2 > config.max_runs
+                else []
+            ),
+        ), outcomes
+
     @staticmethod
     def _blocked(
         model: MathematicalModel,
@@ -139,7 +236,7 @@ class SensitivityAnalyzer:
             model_digest=result.model_digest,
             result_id=result.result_id,
             validation_id=validation.validation_id,
-            baseline_objective=result.objective or 0.0,
+            baseline_objective=result.objective,
             config=config,
             successful_runs=0,
             failed_runs=0,

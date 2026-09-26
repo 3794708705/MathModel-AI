@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pymupdf
@@ -13,20 +14,98 @@ from mathmodel_ai.mathematical.registry import EquationRegistry
 from mathmodel_ai.paper.bundle import PaperBundleBuilder
 from mathmodel_ai.paper.compiler import PaperCompilation
 from mathmodel_ai.paper.hashing import sha256_bytes
-from mathmodel_ai.paper.integrity import ArtifactIntegrityValidator
+from mathmodel_ai.paper.integrity import (
+    ArtifactIntegrityValidator,
+    DocumentCompletenessValidator,
+    _normalize_pdf_claim_text,
+)
 from mathmodel_ai.paper.registry import CitationRegistry, FigureRegistry, TableRegistry
 from mathmodel_ai.paper.rendering import LaTeXRenderer, RenderedPaper
 from mathmodel_ai.schemas.paper import (
+    CompetitionProfile,
     PaperArtifact,
     PaperArtifactKind,
     PaperCompileRecord,
     PaperCompileStatus,
     PaperManifest,
     PaperQualityStatus,
+    PaperSectionType,
     PaperVersion,
 )
 from tests.mathematical.helpers import lp_model
 from tests.paper.helpers import numeric_claim, paper_ir, result_evidence
+
+
+def test_pdf_claim_match_tolerates_line_hyphenation_but_not_changed_numbers() -> None:
+    source = "ecosystem stability below 1e-10 for fixed-ratio comparison."
+    extracted = "ecosys-\ntem stability below 1e-10 for fixed-\nratio comparison."
+    assert _normalize_pdf_claim_text(source) == _normalize_pdf_claim_text(extracted)
+    assert _normalize_pdf_claim_text(source) != _normalize_pdf_claim_text(
+        extracted.replace("1e-10", "1e-9")
+    )
+    possessive = "the model's conclusions below 1e-10"
+    pdf_possessive = "the model\ufffd\ufffds conclusions below 1e-10"
+    assert _normalize_pdf_claim_text(possessive) == _normalize_pdf_claim_text(pdf_possessive)
+    assert _normalize_pdf_claim_text(possessive) != _normalize_pdf_claim_text(
+        pdf_possessive.replace("1e-10", "1e-9")
+    )
+    claim_with_quotes = 'P: "Dimensionless coefficients at 0.05."'
+    pdf_with_ligature = "P: \u201dDimensionless coe\ufb03cients at 0.05.\u201d"
+    assert _normalize_pdf_claim_text(claim_with_quotes) == _normalize_pdf_claim_text(
+        pdf_with_ligature
+    )
+    assert _normalize_pdf_claim_text(claim_with_quotes) != _normalize_pdf_claim_text(
+        pdf_with_ligature.replace("0.05", "0.06")
+    )
+    dated_negative = "mid-1950s with a dominant real part -0.00614188069398347"
+    wrapped = "mid-\n1950s with a dominant real part -\n0.00614188069398347"
+    assert _normalize_pdf_claim_text(dated_negative) == _normalize_pdf_claim_text(wrapped)
+    assert _normalize_pdf_claim_text(dated_negative) != _normalize_pdf_claim_text(
+        wrapped.replace("0.00614188069398347", "0.00614188069398348")
+    )
+
+
+def test_pdf_claim_fallback_uses_independent_extraction_without_losing_number_check(
+    monkeypatch,
+) -> None:
+    evidence = result_evidence()
+    claim = numeric_claim(evidence, text="The verified objective is 30.")
+    paper = paper_ir(evidence, claim)
+    document = pymupdf.open()
+    document.new_page().insert_text((72, 72), claim.text)
+    pdf = document.tobytes()
+    document.close()
+    monkeypatch.setattr(
+        "mathmodel_ai.paper.integrity.PdfReader",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            pages=[SimpleNamespace(extract_text=lambda: "Theverifiedobjectiveis30.")]
+        ),
+    )
+    assert ArtifactIntegrityValidator._pdf_content(paper, pdf, 1) == []
+    changed = claim.model_copy(update={"text": "The verified objective is 31."})
+    wrong_paper = paper.model_copy(update={"claims": [changed]})
+    assert [item.code for item in ArtifactIntegrityValidator._pdf_content(wrong_paper, pdf, 1)] == [
+        "DOCUMENT_INTEGRITY_ERROR"
+    ]
+
+
+def test_separate_abstract_and_bibliography_satisfy_required_sections() -> None:
+    evidence = result_evidence()
+    claim = numeric_claim(evidence)
+    paper = paper_ir(
+        evidence,
+        claim,
+        profile=CompetitionProfile(
+            required_sections=[PaperSectionType.ABSTRACT, PaperSectionType.REFERENCES]
+        ),
+    ).model_copy(update={"bibliography": ["REF-verified"]})
+    issues = DocumentCompletenessValidator().validate(paper)
+    assert not any(issue.code == "MISSING_REQUIRED_SECTION" for issue in issues)
+    empty_references = paper.model_copy(update={"bibliography": []})
+    assert any(
+        issue.code == "MISSING_REQUIRED_SECTION" and issue.object_ref == "REFERENCES"
+        for issue in DocumentCompletenessValidator().validate(empty_references)
+    )
 
 
 @dataclass(frozen=True)

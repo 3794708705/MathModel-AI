@@ -22,7 +22,8 @@ from mathmodel_ai.schemas.paper import (
 )
 
 _TEXT_NUMBER = re.compile(
-    r"(?<![A-Za-z0-9_])-?\d+(?:\.\d+)?\s*(%|kg|kilograms?|g|grams?|t|tonnes?|m|cm|km|s|min|h)?",
+    r"(?<![A-Za-z0-9_])-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\s*"
+    r"(%|kg|kilograms?|g|grams?|t|tonnes?|m|cm|km|s|min|h)?",
     re.IGNORECASE,
 )
 _UNIT_ALIASES = {
@@ -74,7 +75,16 @@ class PaperNumericFormattingPolicy:
 
     max_decimal_places: int = 2
 
-    def matches(self, displayed: float, expected: float, decimal_places: int) -> bool:
+    def matches(
+        self,
+        displayed: float,
+        expected: float,
+        decimal_places: int,
+        scientific_exponent: int | None = None,
+    ) -> bool:
+        if scientific_exponent is not None:
+            precision = 0.5 * 10 ** (scientific_exponent - decimal_places)
+            return math.isclose(displayed, expected, rel_tol=0.0, abs_tol=precision)
         if decimal_places > self.max_decimal_places:
             return math.isclose(displayed, expected, rel_tol=0.0, abs_tol=10**-decimal_places / 2)
         return math.isclose(
@@ -89,30 +99,54 @@ class PaperNumericFormattingPolicy:
         tokens = []
         for match in _TEXT_NUMBER.finditer(claim.text):
             raw_number = match.group(0).strip()
-            number_text = re.match(r"-?\d+(?:\.\d+)?", raw_number)
+            number_text = re.match(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", raw_number)
             if number_text is None:
                 continue
             number = float(number_text.group(0))
-            decimals = len(number_text.group(0).partition(".")[2])
-            tokens.append((number, decimals, match.group(1)))
+            literal = number_text.group(0)
+            mantissa, exponent_marker, exponent_text = literal.lower().partition("e")
+            decimals = len(mantissa.partition(".")[2])
+            exponent = int(exponent_text) if exponent_marker else None
+            tokens.append((number, decimals, exponent, match.group(1)))
         if isinstance(value, NumericClaimValue):
-            for number, decimals, unit in tokens:
+            for number, decimals, exponent, unit in tokens:
                 try:
                     expected = convert_unit(value.value, value.unit, unit or value.unit)
                 except ValueError:
                     continue
-                if self.matches(number, expected, decimals):
+                if self.matches(number, expected, decimals, exponent):
                     return True
             return False
         if isinstance(value, ComparisonClaimValue):
             percentage_matches = any(
-                unit == "%" and self.matches(abs(number), abs(value.percentage_change), decimals)
-                for number, decimals, unit in tokens
+                unit == "%"
+                and self.matches(abs(number), abs(value.percentage_change), decimals, exponent)
+                for number, decimals, exponent, unit in tokens
             )
             text = claim.text.casefold()
-            increasing = any(term in text for term in ("increase", "increased", "rose", "higher"))
+            increasing = any(
+                term in text
+                for term in (
+                    "increase",
+                    "increased",
+                    "rose",
+                    "higher",
+                    "exceeds",
+                    "above",
+                    "greater than",
+                )
+            )
             decreasing = any(
-                term in text for term in ("decrease", "decreased", "reduced", "reduction", "lower")
+                term in text
+                for term in (
+                    "decrease",
+                    "decreased",
+                    "reduced",
+                    "reduction",
+                    "lower",
+                    "below",
+                    "less than",
+                )
             )
             direction_matches = (
                 (value.direction.value == "INCREASE" and increasing and not decreasing)

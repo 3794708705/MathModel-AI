@@ -1,11 +1,18 @@
+import asyncio
 from copy import deepcopy
+from dataclasses import replace
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
 
+from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
+from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.files import ArtifactKind, ArtifactRecord
 from mathmodel_ai.schemas.independent_verification import (
+    CsvObservationSpec,
     IndependentStatus,
     IndependentVerificationReport,
     MetricSpec,
@@ -18,8 +25,21 @@ from mathmodel_ai.schemas.independent_verification import (
     VerifiedMetric,
 )
 from mathmodel_ai.schemas.mathematical import ExpressionKind, MathExpression
+from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.results import EvidenceChainReport
 from mathmodel_ai.schemas.verification import ValidationCheckStatus, ValidationStatus
+from mathmodel_ai.verification.causal_holdout import (
+    SWING_PROTOCOL,
+    AuditedCausalEvidence,
+    CausalHoldoutResult,
+    ConditionalRandomnessAssessment,
+    ConditionalRandomnessClaim,
+    ImminentSwingAssessment,
+    ImminentSwingClaim,
+    MatchFlowAssessment,
+    MatchFlowClaim,
+    assess_binary_calibration,
+)
 from mathmodel_ai.verification.evaluator import (
     IndependentEvaluationError,
     IndependentExpressionEvaluator,
@@ -27,6 +47,7 @@ from mathmodel_ai.verification.evaluator import (
 from mathmodel_ai.verification.metric_recompute import content_digest
 from mathmodel_ai.verification.quality_gates import validation_quality_gate
 from mathmodel_ai.verification.validation import IndependentValidator
+from mathmodel_ai.verification.workflow import VerificationWorkflow
 from tests.mathematical.helpers import constant, symbol
 from tests.verification.helpers import result_bundle
 
@@ -204,6 +225,24 @@ def test_reviewed_evidence_bridge_checks_exact_plan_report_and_requirements() ->
     assert f"independent_report:{reviewed.report.report_id}" in report.evidence_refs
     assert validation_quality_gate(report).status.value == "PASS"
 
+    source = CsvObservationSpec(
+        source_csv_sha256="d" * 64,
+        source_column="outcome",
+        positive_value="1",
+        negative_value="0",
+    )
+    changed_policy = reviewed.requirements.model_copy(update={"csv_observation": source})
+    mismatched = reviewed.model_copy(update={"requirements": changed_policy})
+    rejected = IndependentValidator().validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        reviewed_evidence=mismatched,
+    )
+    assert rejected.status is ValidationStatus.FAIL
+    assert "VALIDATION_FAIL:REVIEWED_PLAN_POLICY_MISMATCH" in rejected.errors
+
 
 @pytest.mark.parametrize(
     "tamper",
@@ -327,6 +366,348 @@ def test_independent_validator_marks_unknown_requirement_not_evaluable() -> None
     assert report.status is ValidationStatus.NOT_EVALUABLE
     assert report.requirement_checks[-1].status is ValidationCheckStatus.UNCHECKED
     assert validation_quality_gate(report).status.value == "RETRY"
+
+
+def test_audited_holdout_is_bound_but_does_not_satisfy_unrelated_requirements() -> None:
+    model, result, solver_run, _, _, evidence = result_bundle()
+    model = model.model_copy(
+        update={
+            "validation_requirements": [
+                "Recalculate held-out match Brier score.",
+                "Check calibration and match flow against official data.",
+            ]
+        }
+    )
+    digest = mathematical_model_digest(model)
+    result = result.model_copy(update={"model_digest": digest})
+    solver_run = solver_run.model_copy(update={"model_digest": digest})
+    causal = AuditedCausalEvidence(
+        formal_result_id=result.result_id,
+        holdout_execution_id=uuid4(),
+        source_sha256="a" * 64,
+        trace_sha256="b" * 64,
+        result=CausalHoldoutResult(
+            heldout_groups=("match-2",),
+            training_groups=("match-1",),
+            predictions=(0.6,),
+            observations=(1.0,),
+            baseline_predictions=(0.5,),
+            brier=0.16,
+            baseline_brier=0.25,
+        ),
+    )
+    validator = IndependentValidator()
+    report = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=causal,
+    )
+    assert report.status is ValidationStatus.NOT_EVALUABLE
+    assert [item.metric_id for item in report.metric_recalculations][-2:] == [
+        "causal_holdout:brier",
+        "causal_holdout:baseline_brier",
+    ]
+    assert all(item.status is ValidationCheckStatus.UNCHECKED for item in report.requirement_checks)
+    assert validation_quality_gate(report).status.value == "RETRY"
+    assert (
+        validator.audit_report(
+            report=report,
+            model=model,
+            result=result,
+            solver_run=solver_run,
+            evidence=evidence,
+            causal_evidence=causal,
+        )
+        == []
+    )
+    assert "VALIDATION_REPORT_MISMATCH:metric_recalculations" in validator.audit_report(
+        report=report,
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+    )
+    wrong = AuditedCausalEvidence(
+        formal_result_id=uuid4(),
+        holdout_execution_id=causal.holdout_execution_id,
+        source_sha256=causal.source_sha256,
+        trace_sha256=causal.trace_sha256,
+        result=causal.result,
+    )
+    rejected = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=wrong,
+    )
+    assert rejected.status is ValidationStatus.FAIL
+    assert "VALIDATION_FAIL:CAUSAL_HOLDOUT_FORMAL_RESULT_MISMATCH" in rejected.errors
+
+
+def test_causal_workflow_stops_after_formal_report_without_reviewed_policy() -> None:
+    workflow = object.__new__(VerificationWorkflow)
+    workflow.validate = Mock(  # type: ignore[method-assign]
+        return_value=Mock(gate=Mock(status=QualityGateStatus.PASS))
+    )
+    with pytest.raises(
+        QualityGateError, match="CAUSAL_HOLDOUT_REVIEWED_REQUIREMENT_POLICY_MISSING"
+    ):
+        asyncio.run(workflow.run(uuid4(), causal_auditor=Mock()))
+    workflow.validate.assert_called_once()  # type: ignore[attr-defined]
+
+
+def test_complete_host_causal_policy_can_continue_without_fixed_model_sidecar() -> None:
+    result_id = uuid4()
+    policy_digest = "c" * 64
+    evidence = AuditedCausalEvidence(
+        formal_result_id=result_id,
+        holdout_execution_id=uuid4(),
+        source_sha256="a" * 64,
+        trace_sha256="b" * 64,
+        result=CausalHoldoutResult(
+            heldout_groups=("B",),
+            training_groups=("A",),
+            predictions=(0.6,),
+            observations=(1.0,),
+            baseline_predictions=(0.5,),
+            brier=0.16,
+            baseline_brier=0.25,
+        ),
+        science_policy_sha256=policy_digest,
+        required_scientific_checks=tuple(CausalScienceCheck),
+    )
+    report = SimpleNamespace(
+        status=ValidationStatus.PASS,
+        result_id=result_id,
+        evidence_refs=[f"causal_science_policy_sha256:{policy_digest}"],
+        requirement_checks=[
+            SimpleNamespace(
+                requirement=f"causal_science:{check.value}",
+                status=ValidationCheckStatus.PASS,
+            )
+            for check in CausalScienceCheck
+        ],
+    )
+    workflow = object.__new__(VerificationWorkflow)
+    workflow.validate = Mock(  # type: ignore[method-assign]
+        return_value=SimpleNamespace(gate=Mock(status=QualityGateStatus.PASS), report=report)
+    )
+    workflow.sensitivity = Mock(  # type: ignore[method-assign]
+        return_value=Mock(gate=Mock(status=QualityGateStatus.PASS))
+    )
+    workflow.robustness = Mock(  # type: ignore[method-assign]
+        return_value=Mock(gate=Mock(status=QualityGateStatus.PASS))
+    )
+    workflow.red_team = AsyncMock(return_value=Mock())  # type: ignore[method-assign]
+    auditor = Mock(return_value=evidence)
+    asyncio.run(workflow.run(uuid4(), causal_auditor=auditor))
+    workflow.red_team.assert_awaited_once()  # type: ignore[attr-defined]
+    report.requirement_checks[-1].status = ValidationCheckStatus.UNCHECKED
+    with pytest.raises(
+        QualityGateError, match="CAUSAL_HOLDOUT_REVIEWED_REQUIREMENT_POLICY_MISSING"
+    ):
+        asyncio.run(workflow.run(uuid4(), causal_auditor=auditor))
+
+
+def test_host_causal_obligations_survive_model_omission_and_keep_gate_closed() -> None:
+    model, result, solver_run, _, _, evidence = result_bundle()
+    model = model.model_copy(
+        update={"validation_requirements": ["causal_science:heldout_prediction"]}
+    )
+    digest = mathematical_model_digest(model)
+    result = result.model_copy(update={"model_digest": digest})
+    solver_run = solver_run.model_copy(update={"model_digest": digest})
+    causal = AuditedCausalEvidence(
+        formal_result_id=result.result_id,
+        holdout_execution_id=uuid4(),
+        source_sha256="a" * 64,
+        trace_sha256="b" * 64,
+        science_policy_sha256="c" * 64,
+        required_scientific_checks=(
+            CausalScienceCheck.HELDOUT_PREDICTION,
+            CausalScienceCheck.CALIBRATION_ASSESSMENT,
+            CausalScienceCheck.MATCH_FLOW,
+            CausalScienceCheck.RANDOMNESS_TEST,
+            CausalScienceCheck.SWING_PREDICTION,
+        ),
+        result=CausalHoldoutResult(
+            heldout_groups=("match-2",),
+            training_groups=("match-1",),
+            predictions=(0.6,),
+            observations=(1.0,),
+            baseline_predictions=(0.5,),
+            brier=0.16,
+            baseline_brier=0.25,
+        ),
+    )
+    causal = replace(
+        causal,
+        calibration=assess_binary_calibration(causal.result),
+        randomness=ConditionalRandomnessAssessment(
+            point_count=6,
+            transition_count=4,
+            observed_statistic=0.125,
+            null_mean=0.0,
+            two_sided_p=0.2,
+            replicates=499,
+            seed_sha256="d" * 64,
+        ),
+    )
+    validator = IndependentValidator()
+    report = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=causal,
+    )
+    checks = {item.requirement: item.status for item in report.requirement_checks}
+    assert len(report.requirement_checks) == 5
+    assert checks["causal_science:heldout_prediction"] is ValidationCheckStatus.PASS
+    assert checks["causal_science:calibration_assessment"] is ValidationCheckStatus.PASS
+    assert any(ref.startswith("causal_calibration_sha256:") for ref in report.evidence_refs)
+    assert any(ref.startswith("causal_training_randomness_sha256:") for ref in report.evidence_refs)
+    assert any(
+        item.metric_id == "causal_training:conditional_randomness_p"
+        and item.recomputed_value == 0.2
+        and item.status is ValidationCheckStatus.PASS
+        for item in report.metric_recalculations
+    )
+    assert any(
+        item.metric_id == "causal_holdout:calibration_ece"
+        and item.status is ValidationCheckStatus.PASS
+        for item in report.metric_recalculations
+    )
+    assert all(
+        status is ValidationCheckStatus.UNCHECKED
+        for name, status in checks.items()
+        if name
+        not in {"causal_science:heldout_prediction", "causal_science:calibration_assessment"}
+    )
+    assert report.status is ValidationStatus.NOT_EVALUABLE
+    assert validation_quality_gate(report).status.value == "RETRY"
+    assert checks["causal_science:randomness_test"] is ValidationCheckStatus.UNCHECKED
+    claimed = replace(
+        causal,
+        training_sha256="e" * 64,
+        randomness_claim=ConditionalRandomnessClaim(
+            observed_statistic=0.125,
+            two_sided_p=0.2,
+            replicates=499,
+            result_artifact_sha256="f" * 64,
+        ),
+    )
+    claimed_report = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=claimed,
+    )
+    assert {item.requirement: item.status for item in claimed_report.requirement_checks}[
+        "causal_science:randomness_test"
+    ] is ValidationCheckStatus.PASS
+    flow_claimed = replace(
+        claimed,
+        match_flow=MatchFlowAssessment(source_sha256="e" * 64, window=8, values=(0.0, 0.5, -0.25)),
+        match_flow_claim=MatchFlowClaim(values=(0.0, 0.5, -0.25), result_artifact_sha256="f" * 64),
+    )
+    flow_report = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=flow_claimed,
+    )
+    assert {item.requirement: item.status for item in flow_report.requirement_checks}[
+        "causal_science:match_flow"
+    ] is ValidationCheckStatus.PASS
+    swing_claimed = replace(
+        flow_claimed,
+        swing=ImminentSwingAssessment(
+            eligible_points=5, observed_swings=1, brier=0.12, baseline_brier=0.15
+        ),
+        swing_claim=ImminentSwingClaim(protocol=SWING_PROTOCOL, result_artifact_sha256="f" * 64),
+    )
+    swing_report = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=swing_claimed,
+    )
+    assert {item.requirement: item.status for item in swing_report.requirement_checks}[
+        "causal_science:swing_prediction"
+    ] is ValidationCheckStatus.PASS
+    assert any(
+        item.metric_id == "causal_holdout:swing_brier" and item.recomputed_value == 0.12
+        for item in swing_report.metric_recalculations
+    )
+    assert flow_claimed.match_flow_claim is not None
+    wrong_flow = replace(
+        flow_claimed,
+        match_flow_claim=replace(flow_claimed.match_flow_claim, values=(0.0, 0.5, 0.0)),
+    )
+    wrong_flow_report = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=wrong_flow,
+    )
+    assert {item.requirement: item.status for item in wrong_flow_report.requirement_checks}[
+        "causal_science:match_flow"
+    ] is ValidationCheckStatus.FAIL
+    assert claimed.randomness_claim is not None
+    wrong_claim = replace(
+        claimed,
+        randomness_claim=replace(claimed.randomness_claim, two_sided_p=0.01),
+    )
+    rejected_claim = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=wrong_claim,
+    )
+    assert {item.requirement: item.status for item in rejected_claim.requirement_checks}[
+        "causal_science:randomness_test"
+    ] is ValidationCheckStatus.FAIL
+    assert (
+        validator.audit_report(
+            report=report,
+            model=model,
+            result=result,
+            solver_run=solver_run,
+            evidence=evidence,
+            causal_evidence=causal,
+        )
+        == []
+    )
+    missing_policy = replace(causal, science_policy_sha256=None)
+    rejected = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=missing_policy,
+    )
+    assert rejected.status is ValidationStatus.FAIL
+    assert all(item.status is ValidationCheckStatus.FAIL for item in rejected.requirement_checks)
+    assert causal.calibration is not None
+    corrupted = replace(causal, calibration=replace(causal.calibration, ece=0.0))
+    mismatched = validator.validate(
+        model=model,
+        result=result,
+        solver_run=solver_run,
+        evidence=evidence,
+        causal_evidence=corrupted,
+    )
+    assert "VALIDATION_FAIL:CAUSAL_CALIBRATION_RECOMPUTATION_MISMATCH" in mismatched.errors
+    assert mismatched.status is ValidationStatus.FAIL
 
 
 @pytest.mark.parametrize(

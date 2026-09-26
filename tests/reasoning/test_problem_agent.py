@@ -56,11 +56,30 @@ async def test_problem_agent_preserves_ambiguity_and_proposed_assumption() -> No
     assumption = result.output.assumptions_required[0]
     assert assumption.type is EvidenceType.ASSUMPTION
     assert assumption.status is EvidenceStatus.PROPOSED
-    assert result.prompt_version == "2.0.0"
+    assert result.prompt_version == "2.1.0"
     assert result.is_mock is True
     gate = understand_quality_gate(result.output)
     assert gate.status is QualityGateStatus.PASS
     assert gate.warnings
+
+
+def test_problem_agent_retry_receives_exact_schema_feedback() -> None:
+    agent = ProblemAgent(router=None, providers=None, prompts=PromptRegistry())
+    original = ProblemAgentInput(
+        title="Match flow", raw_problem="Analyze point-by-point tennis match flow."
+    )
+    repaired = agent.prepare_attempt_input(
+        original, None, ("subproblem Q2 dependencies contain unknown ids ['Q9']",)
+    )
+    assert "unknown ids ['Q9']" in repaired.repair_feedback[0]
+    assert original.repair_feedback == []
+
+
+def test_problem_analysis_reports_unknown_dependency_identity() -> None:
+    payload = analysis_fixture().model_dump()
+    payload["subproblems"][1]["input_dependencies"].append("Q9")
+    with pytest.raises(ValidationError, match=r"subproblem Q2 dependencies.*Q9"):
+        type(analysis_fixture()).model_validate(payload)
 
 
 def test_problem_analysis_covers_prediction_optimization_and_evaluation_chain() -> None:

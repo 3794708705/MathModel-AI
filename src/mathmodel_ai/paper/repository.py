@@ -35,6 +35,7 @@ from mathmodel_ai.schemas.paper import (
     PaperCompileRecord,
     PaperQualityReport,
     PaperVersion,
+    ReferenceMetadataStatus,
     ReferenceRecord,
     TableRecord,
 )
@@ -63,6 +64,34 @@ class PaperRepository:
                     raise ResourceNotFoundError(f"project {project_id} was not found")
                 return uuid4(), 1
             return row.paper_id, row.version + 1
+
+    def canonicalize_evidence(
+        self, project_id: UUID, evidence: tuple[EvidenceRecord, ...]
+    ) -> tuple[EvidenceRecord, ...]:
+        """Reuse immutable evidence records when only construction time differs."""
+        identifiers = [item.evidence_id for item in evidence]
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("duplicate paper evidence identifier")
+        with session_scope(self._session_factory) as session:
+            rows = session.scalars(
+                select(EvidenceRecordModel).where(EvidenceRecordModel.id.in_(identifiers))
+            )
+            existing = {row.id: row for row in rows}
+        canonical: list[EvidenceRecord] = []
+        for item in evidence:
+            row = existing.get(item.evidence_id)
+            if row is None:
+                canonical.append(item)
+                continue
+            if row.project_id != project_id:
+                raise ValueError("immutable evidence belongs to a different project")
+            stored = EvidenceRecord.model_validate(row.record_json)
+            if stored.model_dump(mode="json", exclude={"created_at"}) != item.model_dump(
+                mode="json", exclude={"created_at"}
+            ):
+                raise ValueError("immutable evidence identifier has conflicting content")
+            canonical.append(stored)
+        return tuple(canonical)
 
     def persist(
         self,
@@ -332,6 +361,50 @@ class PaperRepository:
                 )
             )
             return [ReferenceRecord.model_validate(row.reference_json) for row in rows]
+
+    def latest_literature(
+        self, project_id: UUID, *, source: str
+    ) -> tuple[LiteraturePlan, list[ReferenceRecord]] | None:
+        with session_scope(self._session_factory) as session:
+            row = session.scalar(
+                select(LiteratureSearchRecord)
+                .where(
+                    LiteratureSearchRecord.project_id == project_id,
+                    LiteratureSearchRecord.source == source,
+                    LiteratureSearchRecord.status == "VERIFIED",
+                )
+                .order_by(LiteratureSearchRecord.created_at.desc())
+                .limit(1)
+            )
+            if row is None:
+                return None
+            plan = LiteraturePlan.model_validate(row.plan_json)
+        references = self.list_references(project_id)
+        if not references or any(
+            item.project_id != project_id
+            or item.metadata_status is not ReferenceMetadataStatus.VERIFIED
+            for item in references
+        ):
+            return None
+        return plan, references
+
+    def canonicalize_references(
+        self, project_id: UUID, references: list[ReferenceRecord]
+    ) -> list[ReferenceRecord]:
+        """Reuse verified immutable metadata across paper-only attempts."""
+        previous = {item.reference_id: item for item in self.list_references(project_id)}
+        canonical = []
+        for reference in references:
+            existing = previous.get(reference.reference_id)
+            if existing is None:
+                canonical.append(reference)
+                continue
+            if existing.project_id != project_id or existing.model_dump(
+                mode="json", exclude={"retrieved_at"}
+            ) != reference.model_dump(mode="json", exclude={"retrieved_at"}):
+                raise ValueError("retrieved literature metadata conflicts with immutable reference")
+            canonical.append(existing)
+        return canonical
 
     def get_quality(
         self,

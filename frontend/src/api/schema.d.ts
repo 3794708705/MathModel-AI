@@ -1614,7 +1614,7 @@ export interface components {
          * ArtifactKind
          * @enum {string}
          */
-        ArtifactKind: "original_file" | "extracted_text" | "dataset_preview" | "data_profile" | "pdf_page_image" | "sandbox_output" | "generated_code";
+        ArtifactKind: "original_file" | "extracted_text" | "dataset_preview" | "data_profile" | "pdf_page_image" | "sandbox_output" | "generated_code" | "verification_trace";
         /** ArtifactRecord */
         ArtifactRecord: {
             /**
@@ -2463,6 +2463,20 @@ export interface components {
              */
             right_dataset_id: string;
         };
+        /**
+         * CsvObservationSpec
+         * @description Reviewed binary target derived directly from an exact registered CSV.
+         */
+        CsvObservationSpec: {
+            /** Negative Value */
+            negative_value: string;
+            /** Positive Value */
+            positive_value: string;
+            /** Source Column */
+            source_column: string;
+            /** Source Csv Sha256 */
+            source_csv_sha256: string;
+        };
         /** DataAnalyzeRequest */
         DataAnalyzeRequest: {
             /** Media File Ids */
@@ -3139,6 +3153,10 @@ export interface components {
             experiment_type: string;
             /** Feasible */
             feasible?: boolean | null;
+            /** Fixed Decision Values */
+            fixed_decision_values?: {
+                [key: string]: number;
+            };
             /** Key Outputs */
             key_outputs?: {
                 [key: string]: number;
@@ -3860,7 +3878,7 @@ export interface components {
          * MetricKey
          * @enum {string}
          */
-        MetricKey: "mae" | "rmse" | "r2" | "max_error" | "mean" | "minimum" | "maximum" | "final_value" | "objective" | "constraint_max_violation" | "feasible" | "mip_gap" | "algebraic_scalar";
+        MetricKey: "mae" | "rmse" | "r2" | "max_error" | "brier" | "log_loss" | "mean" | "minimum" | "maximum" | "final_value" | "objective" | "constraint_max_violation" | "feasible" | "mip_gap" | "algebraic_scalar";
         /** MetricRecalculation */
         MetricRecalculation: {
             /** Absolute Error */
@@ -4788,6 +4806,8 @@ export interface components {
         /** PaperRunRequest */
         PaperRunRequest: {
             competition_profile?: components["schemas"]["mathmodel_ai__schemas__paper__CompetitionProfile"];
+            /** Expected Science Hash */
+            expected_science_hash?: string | null;
         };
         /** PaperRunResponse */
         PaperRunResponse: {
@@ -6191,7 +6211,11 @@ export interface components {
         /** RobustnessReport */
         RobustnessReport: {
             /** Baseline Objective */
-            baseline_objective: number;
+            baseline_objective?: number | null;
+            /** Baseline Responses */
+            baseline_responses?: {
+                [key: string]: number;
+            };
             config: components["schemas"]["RobustnessConfig"];
             /**
              * Created At
@@ -6222,11 +6246,28 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Response Ranges */
+            response_ranges?: {
+                [key: string]: [
+                    number,
+                    number
+                ];
+            };
             /**
              * Result Id
              * Format: uuid
              */
             result_id: string;
+            /** Reviewed Metric Values */
+            reviewed_metric_values?: {
+                [key: string]: number;
+            };
+            /** Reviewed Replay Ids */
+            reviewed_replay_ids?: {
+                [key: string]: string;
+            };
+            /** Reviewed Report Id */
+            reviewed_report_id?: string | null;
             /**
              * Robustness Id
              * Format: uuid
@@ -6564,7 +6605,11 @@ export interface components {
         /** SensitivityReport */
         SensitivityReport: {
             /** Baseline Objective */
-            baseline_objective: number;
+            baseline_objective?: number | null;
+            /** Baseline Responses */
+            baseline_responses?: {
+                [key: string]: number;
+            };
             config: components["schemas"]["SensitivityConfig"];
             /**
              * Created At
@@ -6606,11 +6651,28 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Response Ranges */
+            response_ranges?: {
+                [key: string]: [
+                    number,
+                    number
+                ];
+            };
             /**
              * Result Id
              * Format: uuid
              */
             result_id: string;
+            /** Reviewed Metric Values */
+            reviewed_metric_values?: {
+                [key: string]: number;
+            };
+            /** Reviewed Replay Ids */
+            reviewed_replay_ids?: {
+                [key: string]: string;
+            };
+            /** Reviewed Report Id */
+            reviewed_report_id?: string | null;
             /**
              * Sensitivity Id
              * Format: uuid
@@ -6699,7 +6761,7 @@ export interface components {
          * SolverFamily
          * @enum {string}
          */
-        SolverFamily: "SCIPY_HIGHS" | "SCIPY_MILP" | "SCIPY_MINIMIZE" | "GUROBI" | "ORTOOLS_CP_SAT";
+        SolverFamily: "SCIPY_HIGHS" | "SCIPY_MILP" | "SCIPY_MINIMIZE" | "GUROBI" | "ORTOOLS_CP_SAT" | "SCALAR_RESPONSE";
         /** SolverHardRejection */
         SolverHardRejection: {
             family: components["schemas"]["SolverFamily"];
@@ -6710,7 +6772,7 @@ export interface components {
          * SolverName
          * @enum {string}
          */
-        SolverName: "SCIPY" | "GUROBI" | "ORTOOLS";
+        SolverName: "SCIPY" | "GUROBI" | "ORTOOLS" | "SCALAR_RESPONSE";
         /** SolverOptions */
         SolverOptions: {
             /**
@@ -7805,6 +7867,7 @@ export interface components {
              * Format: uuid
              */
             attempt_id: string;
+            csv_observation?: components["schemas"]["CsvObservationSpec"] | null;
             /** Metrics */
             metrics: components["schemas"]["MetricSpec"][];
             /** Observation File Id */
@@ -8686,7 +8749,9 @@ export interface operations {
     };
     probe_model_api_v1_models__model_id__probe_post: {
         parameters: {
-            query?: never;
+            query?: {
+                long_context?: boolean;
+            };
             header?: never;
             path: {
                 model_id: string;

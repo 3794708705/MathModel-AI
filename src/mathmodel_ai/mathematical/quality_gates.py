@@ -1,15 +1,30 @@
 from __future__ import annotations
 
+import math
+import re
+
 from mathmodel_ai.mathematical.evidence import EvidenceIntegrityVerifier
+from mathmodel_ai.mathematical.expressions import (
+    ExpressionError,
+    evaluate_expression,
+    referenced_symbols,
+    scalar_parameter_values,
+)
+from mathmodel_ai.mathematical.normalization import deterministic_bound_scalar
 from mathmodel_ai.mathematical.registry import EquationRegistry, SymbolRegistry
 from mathmodel_ai.mathematical.units import UnitChecker
 from mathmodel_ai.schemas.execution import ExecutionRecord, ExecutionStatus
 from mathmodel_ai.schemas.mathematical import (
+    ConstraintRelation,
+    ExpressionKind,
     InterpretationResolutionStatus,
     MathematicalModel,
+    MathExpression,
+    ParameterSourceType,
     UnitCheckStatus,
 )
 from mathmodel_ai.schemas.model_selection import ModelFamily
+from mathmodel_ai.schemas.problem_analysis import DataAvailability, EvidenceSource, EvidenceStatus
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.program import GeneratedProgram
 from mathmodel_ai.schemas.quality import QualityGateResult, QualityGateStatus
@@ -86,6 +101,32 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         item in {capability.value for capability in SolverCapability}
         for item in model.solver_requirements.required_capabilities
     )
+    unavailable_scalar_inputs = _unavailable_scalar_verifier_inputs(model)
+    unsupported_data_literals = _unsupported_data_literals(model, state)
+    unsupported_bound_scalars = _unsupported_bound_scalars(model, state)
+    objective_decision_coupling = _objective_depends_on_decision(model)
+    self_referential_data_targets = _self_referential_data_residuals(model)
+    fixed_constraint_violations = _decision_independent_constraint_violations(model)
+    unmaterializable_indexed_constraints = _unmaterializable_indexed_constraints(model)
+    scalar_objective_family_valid = not (
+        model.objective is not None
+        and not model.state_variables
+        and not any(item.index_sets for item in model.decision_variables)
+        and model.model_family
+        not in {
+            ModelFamily.LINEAR_PROGRAMMING,
+            ModelFamily.MIXED_INTEGER_LINEAR_PROGRAMMING,
+            ModelFamily.INTEGER_PROGRAMMING,
+            ModelFamily.NONLINEAR_PROGRAMMING,
+        }
+    )
+    data_bindings_reach_core = _data_bindings_reach_core(model)
+    data_required = any(
+        requirement.availability is DataAvailability.PROVIDED
+        for subproblem in state.subproblems
+        if subproblem.subproblem_id in model.target_subproblems
+        for requirement in subproblem.data_requirements
+    )
     checks = {
         "selected_model_exists": state.selected_model is not None,
         "selected_model_matches": (
@@ -95,12 +136,23 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         "target_subproblems_known": set(model.target_subproblems) <= known_subproblems,
         "decision_variables_present": bool(model.decision_variables),
         "optimization_objective_present": not optimization or model.objective is not None,
+        "objective_depends_on_decision": objective_decision_coupling,
+        "data_targets_not_reused_as_own_predictors": not self_referential_data_targets,
+        "scalar_objective_family_valid": scalar_objective_family_valid,
+        "decision_independent_constraints_feasible": not fixed_constraint_violations,
+        "indexed_hard_constraints_materializable": not unmaterializable_indexed_constraints,
         "symbol_registry_valid": symbols.report.valid,
         "parameter_sources_present": all(
             bool(item.source_ref) for item in [*model.parameters, *model.constants]
         ),
         "data_bindings_resolve": data_bindings_valid and parameter_bindings_valid,
+        "required_data_is_bound": not data_required or bool(model.data_bindings),
+        "data_bindings_reach_core": data_bindings_reach_core,
         "equation_registry_valid": equations.report.valid,
+        "state_relations_sufficient": _state_relations_sufficient(model),
+        "scalar_verifier_inputs_available": not unavailable_scalar_inputs,
+        "data_literals_have_numeric_evidence": not unsupported_data_literals,
+        "bound_data_scalars_match_profile": not unsupported_bound_scalars,
         "required_equations_present": required_equations <= equation_ids,
         "no_explicit_unit_failure": unit_report.status is not UnitCheckStatus.FAIL,
         "critical_ambiguities_resolved": not unresolved_critical,
@@ -108,6 +160,34 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         "solver_requirements_valid": solver_requirements_valid,
     }
     errors = [f"MODEL_GATE_FAIL:{name}" for name, passed in checks.items() if not passed]
+    if not scalar_objective_family_valid:
+        errors.append(
+            "MODEL_GATE_FAIL:SCALAR_OPTIMIZATION_UNSUPPORTED_FAMILY:" + model.model_family.value
+        )
+    errors.extend(
+        f"MODEL_GATE_FAIL:UNAVAILABLE_SCALAR_INPUT:{symbol}"
+        for symbol in sorted(unavailable_scalar_inputs)
+    )
+    errors.extend(
+        f"MODEL_GATE_FAIL:UNSUPPORTED_DATA_LITERAL:{symbol}"
+        for symbol in sorted(unsupported_data_literals)
+    )
+    errors.extend(
+        f"MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:{symbol}"
+        for symbol in sorted(unsupported_bound_scalars)
+    )
+    errors.extend(
+        f"MODEL_GATE_FAIL:SELF_REFERENTIAL_DATA_TARGET:{symbol}"
+        for symbol in sorted(self_referential_data_targets)
+    )
+    errors.extend(
+        f"MODEL_GATE_FAIL:DECISION_INDEPENDENT_CONSTRAINT_INFEASIBLE:{constraint_id}"
+        for constraint_id in fixed_constraint_violations
+    )
+    errors.extend(
+        f"MODEL_GATE_FAIL:INDEXED_HARD_CONSTRAINT_NOT_SCALAR:{constraint_id}:{symbol}"
+        for constraint_id, symbol in unmaterializable_indexed_constraints
+    )
     errors.extend(
         f"MODEL_GATE_FAIL:{item.code.value}:{item.reference}"
         for item in [*symbols.report.issues, *equations.report.issues]
@@ -133,6 +213,339 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         errors=list(dict.fromkeys(errors)),
         warnings=list(dict.fromkeys(warnings)),
     )
+
+
+def _state_relations_sufficient(model: MathematicalModel) -> bool:
+    """Reject state symbols with fewer defining relations than unknown states."""
+    states = {item.symbol for item in model.state_variables}
+    if not states:
+        return True
+    objective_equation = model.objective.equation_ref if model.objective else None
+    constraint_equations = {item.equation_ref for item in model.constraints}
+    equality_equations = {
+        item.equation_ref for item in model.constraints if item.relation is ConstraintRelation.EQ
+    }
+    relations = {
+        equation.equation_id
+        for equation in model.equations
+        if equation.equation_id != objective_equation
+        and (
+            equation.equation_id not in constraint_equations
+            or equation.equation_id in equality_equations
+        )
+        and referenced_symbols(equation.lhs) & states
+    }
+    relations.update(
+        item.equation_ref
+        for item in [*model.initial_conditions, *model.boundary_conditions]
+        if item.relation is ConstraintRelation.EQ and referenced_symbols(item.expression) & states
+    )
+    return len(relations) >= len(states)
+
+
+def _unmaterializable_indexed_constraints(
+    model: MathematicalModel,
+) -> list[tuple[str, str]]:
+    """A bare indexed symbol cannot be checked as one scalar constraint value."""
+    indexed = {
+        item.symbol
+        for item in [
+            *model.decision_variables,
+            *model.state_variables,
+            *model.derived_variables,
+        ]
+        if item.index_sets
+    }
+    return [
+        (constraint.constraint_id, symbol)
+        for constraint in [
+            *model.constraints,
+            *model.initial_conditions,
+            *model.boundary_conditions,
+        ]
+        if constraint.is_hard
+        for symbol in sorted(
+            indexed
+            & (referenced_symbols(constraint.expression) | referenced_symbols(constraint.rhs))
+        )
+    ]
+
+
+def _objective_depends_on_decision(model: MathematicalModel) -> bool:
+    """Reject an objective proven constant with respect to every decision variable."""
+    if model.objective is None:
+        return True
+    decisions = {item.symbol for item in model.decision_variables}
+    parameters = {item.symbol for item in [*model.parameters, *model.constants]}
+    definitions: dict[str, set[str]] = {}
+    for equation in model.equations:
+        if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol is not None:
+            definitions.setdefault(equation.lhs.symbol, set()).update(
+                referenced_symbols(equation.rhs)
+            )
+    frontier = list(referenced_symbols(model.objective.expression))
+    seen: set[str] = set()
+    while frontier:
+        symbol = frontier.pop()
+        if symbol in decisions:
+            return True
+        if symbol in seen:
+            continue
+        seen.add(symbol)
+        if symbol in definitions:
+            frontier.extend(definitions[symbol] - seen)
+        elif symbol not in parameters:
+            # An implicit or externally defined symbol may depend on a decision;
+            # this check rejects only objectives proven decision-independent.
+            return True
+    return False
+
+
+def _self_referential_data_residuals(model: MathematicalModel) -> set[str]:
+    """Prove only literal squared residuals that reuse a DATA target as a predictor."""
+    if model.objective is None:
+        return set()
+    targets = {
+        item.symbol
+        for item in [*model.parameters, *model.constants]
+        if item.source_type is ParameterSourceType.DATA and item.data_binding is not None
+    }
+    if not targets:
+        return set()
+    definitions: dict[str, list[MathExpression]] = {}
+    for equation in model.equations:
+        if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol is not None:
+            definitions.setdefault(equation.lhs.symbol, []).append(equation.rhs)
+    expressions = [model.objective.expression]
+    visited: set[str] = set()
+    leaks: set[str] = set()
+    while expressions:
+        expression = expressions.pop()
+        for symbol in referenced_symbols(expression) - visited:
+            visited.add(symbol)
+            if len(definitions.get(symbol, [])) == 1:
+                expressions.extend(definitions[symbol])
+        nodes = [expression]
+        while nodes:
+            node = nodes.pop()
+            nodes.extend(node.operands)
+            if (
+                node.kind is not ExpressionKind.POWER
+                or len(node.operands) != 2
+                or node.operands[1].kind is not ExpressionKind.CONSTANT
+                or node.operands[1].value != 2
+                or node.operands[0].kind is not ExpressionKind.SUBTRACT
+            ):
+                continue
+            left, right = node.operands[0].operands
+            for target, predictor in ((left, right), (right, left)):
+                if (
+                    target.kind is ExpressionKind.SYMBOL
+                    and target.symbol in targets
+                    and target.symbol in referenced_symbols(predictor)
+                ):
+                    leaks.add(target.symbol)
+    return leaks
+
+
+def _decision_independent_constraint_violations(model: MathematicalModel) -> list[str]:
+    """Reject hard constraints contradicted by known scalar equations alone.
+
+    This is deliberately a partial proof: unknown, cyclic, indexed, or
+    decision-dependent relations are left to the solver and independent verifier.
+    """
+    values = scalar_parameter_values([*model.parameters, *model.constants])
+    variable_symbols = {item.symbol for item in [*model.decision_variables, *model.state_variables]}
+    definitions: dict[str, list[MathExpression]] = {}
+    for equation in model.equations:
+        if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol is not None:
+            definitions.setdefault(equation.lhs.symbol, []).append(equation.rhs)
+
+    # Only unique scalar definitions can be substituted unambiguously.
+    pending = {
+        symbol: expressions[0]
+        for symbol, expressions in definitions.items()
+        if len(expressions) == 1 and symbol not in values and symbol not in variable_symbols
+    }
+    for _ in range(len(pending)):
+        progress = False
+        for symbol, expression in list(pending.items()):
+            if not referenced_symbols(expression) <= values.keys():
+                continue
+            try:
+                value = evaluate_expression(expression, values)
+            except (ExpressionError, OverflowError, ValueError):
+                continue
+            if math.isfinite(value):
+                values[symbol] = value
+                del pending[symbol]
+                progress = True
+        if not progress:
+            break
+
+    violated: list[str] = []
+    for constraint in model.constraints:
+        if not constraint.is_hard or constraint.index_scope:
+            continue
+        if (
+            not (referenced_symbols(constraint.expression) | referenced_symbols(constraint.rhs))
+            <= values.keys()
+        ):
+            continue
+        try:
+            left = evaluate_expression(constraint.expression, values)
+            right = evaluate_expression(constraint.rhs, values)
+        except (ExpressionError, OverflowError, ValueError):
+            continue
+        if not (math.isfinite(left) and math.isfinite(right)):
+            continue
+        if constraint.relation is ConstraintRelation.LE:
+            violation = left - right
+        elif constraint.relation is ConstraintRelation.GE:
+            violation = right - left
+        else:
+            violation = abs(left - right)
+        if violation > 1e-7:
+            violated.append(constraint.constraint_id)
+    return violated
+
+
+def _data_bindings_reach_core(model: MathematicalModel) -> bool:
+    """A declared dataset must enter an evaluated model relation, not just a citation."""
+    declared = {item.binding_id: item for item in model.data_bindings}
+    if len(declared) != len(model.data_bindings):
+        return False
+    bound_parameters = [
+        item for item in [*model.parameters, *model.constants] if item.data_binding is not None
+    ]
+    if any(
+        declared.get(item.data_binding.binding_id) != item.data_binding
+        for item in bound_parameters
+        if item.data_binding is not None
+    ):
+        return False
+    if not declared:
+        return not bound_parameters
+
+    definitions: dict[str, set[str]] = {}
+    for equation in model.equations:
+        if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol is not None:
+            definitions.setdefault(equation.lhs.symbol, set()).update(
+                referenced_symbols(equation.rhs)
+            )
+    frontier: set[str] = set()
+    if model.objective is not None:
+        frontier.update(referenced_symbols(model.objective.expression))
+    for constraint in [
+        *model.constraints,
+        *model.initial_conditions,
+        *model.boundary_conditions,
+    ]:
+        frontier.update(referenced_symbols(constraint.expression))
+        frontier.update(referenced_symbols(constraint.rhs))
+    if model.objective is None:
+        frontier.update(item.symbol for item in model.state_variables)
+    reached: set[str] = set()
+    while frontier:
+        symbol = frontier.pop()
+        if symbol in reached:
+            continue
+        reached.add(symbol)
+        frontier.update(definitions.get(symbol, set()) - reached)
+    used_bindings = {
+        item.data_binding.binding_id
+        for item in bound_parameters
+        if item.data_binding is not None and item.symbol in reached
+    }
+    return set(declared) <= used_bindings
+
+
+def _unavailable_scalar_verifier_inputs(model: MathematicalModel) -> set[str]:
+    """The scalar result contract cannot verify unmaterialized data-bound inputs."""
+    available = {
+        *(item.symbol for item in model.decision_variables),
+        *(item.symbol for item in model.state_variables),
+        *(item.symbol for item in model.derived_variables),
+        *scalar_parameter_values([*model.parameters, *model.constants]),
+    }
+    expressions = [
+        expression
+        for constraint in [
+            *model.constraints,
+            *model.initial_conditions,
+            *model.boundary_conditions,
+        ]
+        for expression in (constraint.expression, constraint.rhs)
+    ]
+    if model.objective is not None:
+        expressions.append(model.objective.expression)
+    referenced = set().union(*(referenced_symbols(expression) for expression in expressions))
+    return referenced - available
+
+
+_NUMERIC_LITERAL = re.compile(r"(?<![\w.])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?\s*%?(?!\w)")
+
+
+def _unsupported_data_literals(model: MathematicalModel, state: ProblemState) -> set[str]:
+    """Do not accept a model-generated DATA scalar with only a dataset-name citation."""
+    evidence = {item.evidence_id: item for item in state.evidence_items}
+    if state.problem_analysis is not None:
+        evidence.update({item.evidence_id: item for item in state.problem_analysis.all_evidence()})
+    unsupported: set[str] = set()
+    for parameter in [*model.parameters, *model.constants]:
+        if (
+            parameter.source_type is not ParameterSourceType.DATA
+            or parameter.data_binding is not None
+            or isinstance(parameter.value, bool)
+            or not isinstance(parameter.value, (int, float))
+        ):
+            continue
+        cited = evidence.get(parameter.source_ref)
+        if cited is None or cited.status is not EvidenceStatus.ACCEPTED:
+            unsupported.add(parameter.symbol)
+            continue
+        if not _text_states_numeric_value(cited.content, float(parameter.value)):
+            unsupported.add(parameter.symbol)
+        elif cited.source is EvidenceSource.PROBLEM_TEXT and not _text_states_numeric_value(
+            state.raw_problem, float(parameter.value)
+        ):
+            unsupported.add(parameter.symbol)
+    return unsupported
+
+
+def _unsupported_bound_scalars(model: MathematicalModel, state: ProblemState) -> set[str]:
+    """Check only closed, deterministic profile aggregates; other transforms fail closed."""
+    unsupported: set[str] = set()
+    for parameter in [*model.parameters, *model.constants]:
+        binding = parameter.data_binding
+        if binding is None:
+            continue
+        value = parameter.value
+        expected = deterministic_bound_scalar(binding, state)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or parameter.source_type
+            not in {ParameterSourceType.DATA, ParameterSourceType.ESTIMATED}
+            or expected is None
+            or not math.isclose(float(value), expected, rel_tol=1e-8, abs_tol=1e-10)
+        ):
+            unsupported.add(parameter.symbol)
+    return unsupported
+
+
+def _text_states_numeric_value(text: str, value: float) -> bool:
+    for match in _NUMERIC_LITERAL.finditer(text):
+        literal = match.group().strip()
+        percent = literal.endswith("%")
+        try:
+            stated = float(literal.rstrip("%")) / (100 if percent else 1)
+        except ValueError:
+            continue
+        if math.isclose(value, stated, rel_tol=1e-9, abs_tol=1e-12):
+            return True
+    return False
 
 
 def solve_quality_gate(
