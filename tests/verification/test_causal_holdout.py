@@ -163,6 +163,8 @@ def test_match_flow_is_pre_outcome_grouped_and_source_bound() -> None:
     assert flow.window == spec.history_window
     assert flow.values[0] == 0.0
     assert flow.values[1] == pytest.approx(0.5)
+    # A's third point changes server but retains the same match-level history.
+    assert flow.values[2] == pytest.approx((0.5 - 2 / 3) / 2)
     assert flow.values[3] == 0.0  # A new match cannot inherit A's point history.
     altered = source.replace(b"A,1,1,1", b"A,1,2,1")
     with pytest.raises(ValueError, match="CAUSAL_CSV_SIZE_OR_HASH_MISMATCH"):

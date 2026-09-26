@@ -235,6 +235,10 @@ def test_official_c_cache_is_split_without_new_benchmark_run() -> None:
         in PipelineBenchmarkExecutor._causal_user_guidance(bundle)[0]
     )
     assert "groupby, set sort=False" in PipelineBenchmarkExecutor._causal_user_guidance(bundle)[0]
+    assert (
+        "do not key or reset that history by condition/server"
+        in PipelineBenchmarkExecutor._causal_user_guidance(bundle)[0]
+    )
     assert len(bundle.causal_split.heldout_groups) == 6
     assert len(bundle.causal_split.training_groups) == 25
     assert bundle.causal_split.training_rows + bundle.causal_split.heldout_rows == 7284
