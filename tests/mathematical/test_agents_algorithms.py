@@ -8,6 +8,7 @@ from mathmodel_ai.agents import AgentRunStatus, CodeAgent, MathModeler
 from mathmodel_ai.agents.code import (
     reject_discarded_csv_rows,
     reject_header_only_csv_usage,
+    reject_reused_strata_in_seeded_protocol,
     reject_sorted_groupby_in_seeded_protocol,
 )
 from mathmodel_ai.agents.math_modeler import reject_unverifiable_causal_requirements
@@ -410,6 +411,45 @@ def test_seeded_permutation_code_rejects_default_sorted_groupby() -> None:
         }
     )
     reject_sorted_groupby_in_seeded_protocol(unsorted)
+
+
+def test_seeded_permutation_code_rejects_reused_in_place_strata() -> None:
+    program = GeneratedProgramDraft(
+        entrypoint="main.py",
+        files=[
+            GeneratedSourceFile(
+                path="main.py",
+                content=(
+                    "strata = {(1, 1): [0, 1]}\n"
+                    "for _ in range(499):\n"
+                    "    for key in strata:\n"
+                    "        rng.shuffle(strata[key])\n"
+                ),
+            )
+        ],
+        solver_target="SCIPY",
+        explanation="Fixture repeated seeded null draws.",
+    )
+    with pytest.raises(ValueError, match="reuses in-place shuffled strata"):
+        reject_reused_strata_in_seeded_protocol(program)
+
+    fresh = program.model_copy(
+        update={
+            "files": [
+                GeneratedSourceFile(
+                    path="main.py",
+                    content=(
+                        "original = {(1, 1): [0, 1]}\n"
+                        "for _ in range(499):\n"
+                        "    strata = {key: values[:] for key, values in original.items()}\n"
+                        "    for key in strata:\n"
+                        "        rng.shuffle(strata[key])\n"
+                    ),
+                )
+            ]
+        }
+    )
+    reject_reused_strata_in_seeded_protocol(fresh)
 
 
 def test_causal_modeler_rejects_unverifiable_stage_requirements() -> None:

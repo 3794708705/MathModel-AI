@@ -163,6 +163,51 @@ def reject_sorted_groupby_in_seeded_protocol(program: GeneratedProgramDraft) -> 
                 )
 
 
+def reject_reused_strata_in_seeded_protocol(program: GeneratedProgramDraft) -> None:
+    """Catch in-place shuffles of persistent strata across repeated null draws."""
+    entrypoint = next(item for item in program.files if item.path == program.entrypoint)
+    tree = ast.parse(entrypoint.content, filename=entrypoint.path)
+    for loop in ast.walk(tree):
+        if not (
+            isinstance(loop, ast.For)
+            and isinstance(loop.target, ast.Name)
+            and loop.target.id == "_"
+            and isinstance(loop.iter, ast.Call)
+            and isinstance(loop.iter.func, ast.Name)
+            and loop.iter.func.id == "range"
+        ):
+            continue
+        for node in ast.walk(ast.Module(body=loop.body, type_ignores=[])):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "shuffle"
+                and len(node.args) == 1
+                and isinstance(node.args[0], ast.Subscript)
+                and isinstance(node.args[0].value, ast.Name)
+            ):
+                continue
+            container = node.args[0].value.id
+            refreshed = any(
+                isinstance(item, (ast.Assign, ast.AnnAssign))
+                and any(
+                    (isinstance(target, ast.Name) and target.id == container)
+                    or (
+                        isinstance(target, ast.Subscript)
+                        and isinstance(target.value, ast.Name)
+                        and target.value.id == container
+                    )
+                    for target in (item.targets if isinstance(item, ast.Assign) else [item.target])
+                )
+                for item in ast.walk(ast.Module(body=loop.body, type_ignores=[]))
+            )
+            if not refreshed:
+                raise ValueError(
+                    "CODE_GENERATION_BLOCKED: seeded conditional permutation "
+                    "reuses in-place shuffled strata across null draws"
+                )
+
+
 class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
     name = "code_agent"
     role = "auditable translation of a fixed mathematical model into executable code"
@@ -235,6 +280,7 @@ class CodeAgent(BaseAgent[CodeAgentInput, GeneratedProgram]):
         reject_hardcoded_results(response.parsed)
         if any("causal_science:randomness_test" in item for item in input_data.user_guidance):
             reject_sorted_groupby_in_seeded_protocol(response.parsed)
+            reject_reused_strata_in_seeded_protocol(response.parsed)
         if input_data.mathematical_model.data_bindings and any(
             item.get("path", "").lower().endswith(".csv") for item in input_data.input_manifest
         ):
