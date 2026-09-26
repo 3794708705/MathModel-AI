@@ -15,6 +15,7 @@ from mathmodel_ai.reasoning.prompts import PromptRegistry
 from mathmodel_ai.routing.router import ModelRouter
 from mathmodel_ai.routing.schemas import RouteDecision
 from mathmodel_ai.schemas.mathematical import (
+    ExpressionKind,
     MathematicalModel,
     MathematicalModelDraft,
     MathematicalModelStatus,
@@ -53,6 +54,24 @@ def reject_unverifiable_causal_requirements(model: MathematicalModel, guidance: 
             "MODEL_GATE_FAIL:UNVERIFIABLE_VALIDATION_REQUIREMENT: "
             + " | ".join(item[:180] for item in unknown)
         )
+    # Automatic causal runs have no pre-reviewed perturbation replay. An
+    # objective-free, stateless model therefore enters the formal scalar
+    # response experiment path, which must recompute every declared response.
+    if model.objective is None and not model.state_variables:
+        if not model.derived_variables or any(
+            item.index_sets for item in [*model.decision_variables, *model.derived_variables]
+        ):
+            raise QualityGateError("MODEL_GATE_FAIL:CAUSAL_SCALAR_RESPONSE_UNSUPPORTED_STRUCTURE")
+        definitions = {item.symbol: 0 for item in model.derived_variables}
+        for equation in model.equations:
+            if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol in definitions:
+                assert equation.lhs.symbol is not None
+                definitions[equation.lhs.symbol] += 1
+        incomplete = sorted(symbol for symbol, count in definitions.items() if count != 1)
+        if incomplete:
+            raise QualityGateError(
+                "MODEL_GATE_FAIL:CAUSAL_SCALAR_RESPONSE_INCOMPLETE:" + ",".join(incomplete)
+            )
 
 
 class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):

@@ -28,11 +28,12 @@ from mathmodel_ai.schemas.mathematical import (
     MathematicalModelDraft,
     MathModelerInput,
     VariableDomain,
+    VariableRole,
 )
 from mathmodel_ai.schemas.model_selection import ModelFamily
 from mathmodel_ai.schemas.program import CodeAgentInput, GeneratedProgramDraft, GeneratedSourceFile
 from mathmodel_ai.schemas.solver import AlgorithmFamily, SolverFamily
-from tests.mathematical.helpers import lp_model, milp_model, nlp_model, selected_state
+from tests.mathematical.helpers import lp_model, milp_model, nlp_model, selected_state, symbol
 
 
 class RecordingMockProvider(MockProvider):
@@ -211,7 +212,7 @@ async def test_math_modeler_binds_identity_and_audits_xhigh_mock_route() -> None
     assert run.output.model_id == assigned_model_id
     assert run.output.project_id == state.project_id
     assert run.output.source_selected_model_id == "CAND-lp"
-    assert run.prompt_version == "4.6.8"
+    assert run.prompt_version == "4.6.9"
     assert mock.last_request is not None
     assert mock.last_request.max_output_tokens == 65_536
     assert run.routes[0].level is EscalationLevel.FLAGSHIP_XHIGH
@@ -480,6 +481,35 @@ def test_causal_modeler_rejects_unverifiable_stage_requirements() -> None:
     reject_unverifiable_causal_requirements(invalid, [])
 
 
+def test_causal_modeler_rejects_incomplete_formal_response_before_solving() -> None:
+    base = lp_model()
+    response = base.decision_variables[1].model_copy(update={"role": VariableRole.DERIVED})
+    model = base.model_copy(
+        update={
+            "objective": None,
+            "state_variables": [],
+            "decision_variables": [base.decision_variables[0]],
+            "derived_variables": [response],
+            "equations": [],
+            "validation_requirements": [],
+        }
+    )
+    guidance = ["CAUSAL_HOLDOUT_PROTOCOL: require causal_science:heldout_prediction"]
+
+    with pytest.raises(QualityGateError, match="CAUSAL_SCALAR_RESPONSE_INCOMPLETE:y"):
+        reject_unverifiable_causal_requirements(model, guidance)
+    reject_unverifiable_causal_requirements(model, [])
+
+    defined = model.model_copy(
+        update={
+            "equations": [
+                base.equations[0].model_copy(update={"lhs": symbol("y"), "rhs": symbol("x")})
+            ]
+        }
+    )
+    reject_unverifiable_causal_requirements(defined, guidance)
+
+
 def test_code_agent_rejects_csv_row_loop_that_ignores_values() -> None:
     ignored = GeneratedProgramDraft(
         entrypoint="solve.py",
@@ -591,7 +621,7 @@ def test_generated_program_rejects_solver_target_larger_than_database_contract()
 
 def test_versioned_prompt_resources_exist() -> None:
     prompts = PromptRegistry()
-    assert prompts.get("math_modeler").version == "4.6.8"
+    assert prompts.get("math_modeler").version == "4.6.9"
     assert "future-stage experiments" in prompts.get("math_modeler").system
     assert prompts.get("code_agent").version == "4.7.3"
     assert (
