@@ -58,7 +58,7 @@ def numeric_environment(model: MathematicalModel, raw: RawMetricOutput) -> dict[
         parameters[item.symbol] = float(item.value)
     if set(parameters) & set(raw.variables):
         raise ValueError("output variables cannot override model parameters")
-    return {**parameters, **raw.variables}
+    return IndependentValidator._numeric_environment(model, raw.variables)
 
 
 def constraint_violation(model: MathematicalModel, raw: RawMetricOutput) -> float:

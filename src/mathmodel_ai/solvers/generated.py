@@ -11,11 +11,15 @@ from pydantic import ValidationError
 from mathmodel_ai.core.errors import DependencyUnavailableError, SandboxError
 from mathmodel_ai.files.storage import FileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
-from mathmodel_ai.mathematical.expressions import evaluate_expression, scalar_parameter_values
+from mathmodel_ai.mathematical.expressions import (
+    ExpressionError,
+    evaluate_expression,
+    scalar_parameter_values,
+)
 from mathmodel_ai.sandbox.executor import SandboxExecutor
 from mathmodel_ai.schemas.execution import ExecutionStatus
 from mathmodel_ai.schemas.files import RegisteredFile
-from mathmodel_ai.schemas.mathematical import MathematicalModel
+from mathmodel_ai.schemas.mathematical import ExpressionKind, MathematicalModel
 from mathmodel_ai.schemas.program import (
     GeneratedProgram,
     GeneratedProgramStatus,
@@ -204,13 +208,48 @@ class GeneratedProgramExecutor:
             return objective is None
         if objective is None:
             return False
+        derived = {item.symbol for item in model.derived_variables if not item.index_sets}
         values = {
             **scalar_parameter_values([*model.parameters, *model.constants]),
-            **variables,
+            **{symbol: value for symbol, value in variables.items() if symbol not in derived},
         }
+        definitions = {
+            symbol: [
+                equation.rhs
+                for equation in model.equations
+                if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol == symbol
+            ]
+            for symbol in derived
+        }
+        pending = {
+            symbol: expressions[0]
+            for symbol, expressions in definitions.items()
+            if len(expressions) == 1
+        }
+        for _ in range(len(pending)):
+            progressed = False
+            for symbol, expression in list(pending.items()):
+                try:
+                    resolved = evaluate_expression(expression, values)
+                except ExpressionError as exc:
+                    if "no numeric value for symbol" in str(exc):
+                        continue
+                    return False
+                if not math.isfinite(resolved):
+                    return False
+                reported = variables.get(symbol)
+                if reported is not None and not math.isclose(
+                    reported, resolved, rel_tol=tolerance, abs_tol=tolerance
+                ):
+                    return False
+                values[symbol] = resolved
+                del pending[symbol]
+                progressed = True
+            if not progressed:
+                break
         try:
             expected = evaluate_expression(model.objective.expression, values)
-        except ValueError:
+        except (ExpressionError, ValueError):
             return False
         return math.isclose(objective, expected, rel_tol=tolerance, abs_tol=tolerance)
 

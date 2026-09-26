@@ -4,6 +4,7 @@ import math
 from dataclasses import asdict
 
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
+from mathmodel_ai.mathematical.expressions import referenced_symbols
 from mathmodel_ai.paper.hashing import sha256_json
 from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.execution import ExecutionStatus
@@ -1176,7 +1177,35 @@ class IndependentValidator:
             scalar = IndependentValidator._scalar_parameter(parameter)
             if scalar is not None:
                 values[parameter.symbol] = scalar
-        values.update(variable_values)
+        derived = {item.symbol for item in model.derived_variables if not item.index_sets}
+        values.update({key: value for key, value in variable_values.items() if key not in derived})
+        definitions = {
+            symbol: [
+                equation.rhs
+                for equation in model.equations
+                if equation.lhs.kind.value == "SYMBOL" and equation.lhs.symbol == symbol
+            ]
+            for symbol in derived
+        }
+        pending = {
+            symbol: expressions[0]
+            for symbol, expressions in definitions.items()
+            if len(expressions) == 1
+        }
+        evaluator = IndependentExpressionEvaluator()
+        for _ in range(len(pending)):
+            progressed = False
+            for symbol, expression in list(pending.items()):
+                if not referenced_symbols(expression) <= set(values):
+                    continue
+                try:
+                    values[symbol] = evaluator.evaluate(expression, values)
+                except IndependentEvaluationError:
+                    continue
+                del pending[symbol]
+                progressed = True
+            if not progressed:
+                break
         return values
 
     @staticmethod
