@@ -137,9 +137,7 @@ def test_nonobjective_response_experiments_are_real_and_recomputed(tmp_path: Pat
     assert sensitivity_quality_gate(sensitivity).status.value == "PASS"
     execution = outcomes[0].execution
     assert execution is not None
-    forged = outcomes[0].record.model_copy(
-        update={"fixed_decision_values": {"x": 0.5}}
-    )
+    forged = outcomes[0].record.model_copy(update={"fixed_decision_values": {"x": 0.5}})
     audit = ExperimentIntegrityVerifier(validator).audit(
         base_model=model, record=forged, execution=execution
     )
