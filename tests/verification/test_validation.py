@@ -24,7 +24,7 @@ from mathmodel_ai.schemas.independent_verification import (
     VerificationRequirements,
     VerifiedMetric,
 )
-from mathmodel_ai.schemas.mathematical import ExpressionKind, MathExpression
+from mathmodel_ai.schemas.mathematical import ExpressionKind, MathExpression, VariableRole
 from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.results import EvidenceChainReport
 from mathmodel_ai.schemas.verification import ValidationCheckStatus, ValidationStatus
@@ -206,6 +206,45 @@ def test_independent_validator_recomputes_full_result_and_passes_gate() -> None:
     assert all(item.status is ValidationCheckStatus.PASS for item in report.constraint_checks)
     assert report.metric_recalculations[0].recomputed_value == pytest.approx(30)
     assert gate.status.value == "PASS"
+
+
+def test_bounded_derived_probability_is_checked_in_validation_and_scenarios() -> None:
+    model, result, solver_run, _, _, evidence = result_bundle()
+    probability = model.decision_variables[0].model_copy(
+        update={
+            "variable_id": "VAR-probability",
+            "symbol": "p_pos",
+            "role": VariableRole.DERIVED,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+        }
+    )
+    equation = model.equations[0].model_copy(
+        update={"equation_id": "EQ-probability", "lhs": symbol("p_pos"), "rhs": symbol("x")}
+    )
+    model = model.model_copy(
+        update={
+            "derived_variables": [probability],
+            "equations": [*model.equations, equation],
+        }
+    )
+    validator = IndependentValidator()
+
+    feasible, _, failed = validator.candidate_is_feasible(model, {"x": 10.0, "y": 0.0})
+    assert not feasible
+    assert "VAR-probability" in failed
+
+    digest = mathematical_model_digest(model)
+    report = validator.validate(
+        model=model,
+        result=result.model_copy(update={"model_digest": digest}),
+        solver_run=solver_run.model_copy(update={"model_digest": digest}),
+        evidence=evidence,
+    )
+    probability_check = next(item for item in report.variable_checks if item.symbol == "p_pos")
+    assert probability_check.value == pytest.approx(10.0)
+    assert probability_check.status is ValidationCheckStatus.FAIL
+    assert report.status is ValidationStatus.FAIL
 
 
 def test_reviewed_evidence_bridge_checks_exact_plan_report_and_requirements() -> None:

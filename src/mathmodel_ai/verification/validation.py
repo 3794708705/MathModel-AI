@@ -58,7 +58,7 @@ _REQUIREMENT_CONTRACTS = {
 
 
 class IndependentValidator:
-    version = "independent-validator-5.1.0"
+    version = "independent-validator-5.2.0"
 
     def __init__(
         self,
@@ -95,7 +95,7 @@ class IndependentValidator:
         variable_checks = [
             self.check_variable(item, solver_run.result.variable_values)
             for item in model.decision_variables
-        ]
+        ] + [self.check_variable(item, values) for item in self._bounded_scalar_derived(model)]
         constraint_checks = [
             self.check_constraint(item, values)
             for item in [
@@ -356,7 +356,7 @@ class IndependentValidator:
         values = self._numeric_environment(model, variable_values)
         variable_checks = [
             self.check_variable(item, variable_values) for item in model.decision_variables
-        ]
+        ] + [self.check_variable(item, values) for item in self._bounded_scalar_derived(model)]
         constraint_checks = [
             self.check_constraint(item, values)
             for item in [
@@ -430,6 +430,19 @@ class IndependentValidator:
                 else f"{variable.variable_id} independently violates domain or bounds"
             ),
         )
+
+    @staticmethod
+    def _bounded_scalar_derived(model: MathematicalModel) -> list[VariableDefinition]:
+        return [
+            item
+            for item in model.derived_variables
+            if not item.index_sets
+            and (
+                item.lower_bound is not None
+                or item.upper_bound is not None
+                or item.domain is not VariableDomain.CONTINUOUS
+            )
+        ]
 
     def check_constraint(
         self,

@@ -80,6 +80,10 @@ audit binds the fixed point, exact scenario payload, output values, code hash,
 execution ID, and non-Mock status. Missing/cyclic equations, mismatched formal
 baseline outputs, or uncheckable responses fail closed. This tests the formal
 scalar response model; it does not establish holdout predictive superiority.
+Independent validation and experiment feasibility also recompute any bounded
+non-indexed derived variable from its defining equation and enforce its declared
+domain. A probability response with bounds [0,1] therefore cannot pass a
+perturbed scenario merely because the decision variables remain feasible.
 
 ## Robustness experiments
 
