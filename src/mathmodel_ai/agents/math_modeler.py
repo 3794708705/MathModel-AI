@@ -85,7 +85,7 @@ class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):
     ) -> MathModelerInput:
         if not previous_errors:
             return input_data
-        feedback = previous_errors[-1][:4096]
+        feedback = " | ".join(dict.fromkeys(error[:1200] for error in previous_errors[-3:]))
         return input_data.model_copy(
             update={
                 "user_guidance": [
