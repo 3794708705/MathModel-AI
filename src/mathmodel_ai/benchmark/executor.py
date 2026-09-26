@@ -12,7 +12,7 @@ from mathmodel_ai.benchmark.repository import BenchmarkRepository
 from mathmodel_ai.benchmark.workflow import CaseExecutionOutcome
 from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.data.workflow import DataExecutionWorkflow
-from mathmodel_ai.mathematical.workflow import MathematicalWorkflow
+from mathmodel_ai.mathematical.workflow import MathematicalWorkflow, SolveStageOutcome
 from mathmodel_ai.paper.workflow import PaperWorkflow
 from mathmodel_ai.providers.security import safe_error
 from mathmodel_ai.reasoning.repository import ReasoningRepository
@@ -60,7 +60,7 @@ from mathmodel_ai.schemas.verification import ExperimentReportStatus, Validation
 from mathmodel_ai.submission.workflow import FinalSubmissionWorkflow
 from mathmodel_ai.verification.causal_holdout import AuditedCausalEvidence
 from mathmodel_ai.verification.requirements import VerificationRequirementRegistry
-from mathmodel_ai.verification.workflow import VerificationWorkflow
+from mathmodel_ai.verification.workflow import RepairStageOutcome, VerificationWorkflow
 
 ZERO = "0" * 64
 
@@ -291,6 +291,9 @@ class PipelineBenchmarkExecutor:
                 error=exc,
             )
         repair_iterations = 0
+        latest_solve = mathematical.solve_stage
+        latest_model_gate = mathematical.model_stage.gate
+        latest_formal_result_id = mathematical.solve_stage.result.result_id
         experiment_runs = (
             (independent_report.required_scenarios if independent_report is not None else 0)
             + len(verification.sensitivity.report.experiments)
@@ -299,8 +302,52 @@ class PipelineBenchmarkExecutor:
         if verification.red_team.report.critical_count:
             try:
                 if causal_auditor is not None:
-                    raise QualityGateError("CAUSAL_HOLDOUT_REPAIR_REEVALUATION_REQUIRED")
-                repair = await self._verification.repair_until_clear(state.project_id)
+                    if reviewed is not None or self._causal_evaluator is None:
+                        raise QualityGateError("CAUSAL_HOLDOUT_REPAIR_REEVALUATION_REQUIRED")
+
+                    async def solve_causal_repair(
+                        repaired: RepairStageOutcome,
+                    ) -> tuple[SolveStageOutcome, Callable[[], AuditedCausalEvidence] | None]:
+                        nonlocal latest_solve, latest_model_gate, latest_formal_result_id
+                        solve = await self._mathematical.solve(
+                            state.project_id,
+                            execution_strategy=ExecutionStrategy.GENERATED,
+                            user_guidance=causal_guidance,
+                        )
+                        latest_solve = solve
+                        latest_model_gate = repaired.model_gate
+                        latest_formal_result_id = solve.result.result_id
+                        if solve.gate.status is not QualityGateStatus.PASS:
+                            return solve, None
+                        assert self._causal_evaluator is not None
+                        causal = self._causal_evaluator.evaluate_solve(
+                            bundle=bundle,
+                            model=repaired.output.revised_model,
+                            solve=solve,
+                            state=self._reasoning_repository.load_current(state.project_id),
+                        )
+                        holdout_execution_id = causal.execution.run_id
+                        formal_result_id = solve.result.result_id
+
+                        def audit_repaired_holdout() -> AuditedCausalEvidence:
+                            assert self._causal_evaluator is not None
+                            return self._causal_evaluator.audit_validation_evidence(
+                                bundle=bundle,
+                                project_id=state.project_id,
+                                formal_result_id=formal_result_id,
+                                holdout_execution_id=holdout_execution_id,
+                            )
+
+                        audit_repaired_holdout()
+                        return solve, audit_repaired_holdout
+
+                    repair = await self._verification.repair_until_clear(
+                        state.project_id,
+                        user_guidance=causal_guidance,
+                        repair_solver=solve_causal_repair,
+                    )
+                else:
+                    repair = await self._verification.repair_until_clear(state.project_id)
             except Exception as exc:
                 return self._failed_pipeline(
                     attempt_id,
@@ -314,6 +361,7 @@ class PipelineBenchmarkExecutor:
             repair_iterations = len(repair.iterations)
             for iteration in repair.iterations:
                 if iteration.verification is not None:
+                    verification = iteration.verification
                     experiment_runs += len(
                         iteration.verification.sensitivity.report.experiments
                     ) + len(iteration.verification.robustness.report.experiments)
@@ -338,7 +386,7 @@ class PipelineBenchmarkExecutor:
                 "full verification did not produce verified_result_id",
             )
         if causal_auditor is not None and (
-            verified_state.verified_result_id != mathematical.solve_stage.result.result_id
+            verified_state.verified_result_id != latest_formal_result_id
         ):
             return self._failed_before_paper(
                 attempt_id,
@@ -406,8 +454,8 @@ class PipelineBenchmarkExecutor:
         metrics = self._metrics(
             attempt_id=attempt_id,
             request=request,
-            model_passed=mathematical.model_stage.gate.status is QualityGateStatus.PASS,
-            solver_passed=mathematical.solve_stage.gate.status is QualityGateStatus.PASS,
+            model_passed=latest_model_gate.status is QualityGateStatus.PASS,
+            solver_passed=latest_solve.gate.status is QualityGateStatus.PASS,
             validation_passed=(verification.validation.report.status is ValidationStatus.PASS),
             sensitivity_passed=(
                 verification.sensitivity.report.status is ExperimentReportStatus.PASS

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -535,6 +535,11 @@ class VerificationWorkflow:
         sensitivity_config: SensitivityConfig | None = None,
         robustness_config: RobustnessConfig | None = None,
         user_guidance: list[str] | None = None,
+        repair_solver: Callable[
+            [RepairStageOutcome],
+            Awaitable[tuple[SolveStageOutcome, Callable[[], AuditedCausalEvidence] | None]],
+        ]
+        | None = None,
     ) -> RepairLoopOutcome:
         initial = self._repository.get_red_team(project_id)
         iterations: list[RepairLoopIteration] = []
@@ -564,7 +569,11 @@ class VerificationWorkflow:
                     resolved=False,
                     exhausted=False,
                 )
-            solve = await self._mathematical_workflow.solve(project_id)
+            causal_auditor: Callable[[], AuditedCausalEvidence] | None = None
+            if repair_solver is None:
+                solve = await self._mathematical_workflow.solve(project_id)
+            else:
+                solve, causal_auditor = await repair_solver(repair)
             if solve.gate.status is not QualityGateStatus.PASS:
                 iterations.append(
                     RepairLoopIteration(repair=repair, solve=solve, verification=None)
@@ -576,11 +585,14 @@ class VerificationWorkflow:
                     resolved=False,
                     exhausted=False,
                 )
+            if repair_solver is not None and causal_auditor is None:
+                raise QualityGateError("causal repair solve needs a fresh holdout auditor")
             verification = await self.run(
                 project_id,
                 sensitivity_config=sensitivity_config,
                 robustness_config=robustness_config,
                 user_guidance=user_guidance,
+                causal_auditor=causal_auditor,
             )
             final_report = verification.red_team.report
             iterations.append(

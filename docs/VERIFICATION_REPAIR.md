@@ -139,6 +139,12 @@ Repair output cannot contain or modify a Result. The repaired model re-enters th
 Phase 4 solver, then VALIDATE, SENSITIVITY, ROBUSTNESS, and RED_TEAM. The maximum
 automatic cycle count is configurable from one to three and defaults to three.
 Exhaustion records a `MODEL_REPAIR` gate and sets state to `HUMAN_REVIEW`.
+For a benchmark with a causal holdout, each accepted repaired model must use a
+new GENERATED solve and a new isolated predictor execution from that exact
+program. Its fresh execution and formal result IDs are re-audited before
+VALIDATE, SENSITIVITY, ROBUSTNESS, and RED_TEAM repeat. An unsuccessful solve,
+missing predictor, stale trace, or rejected repair stops the chain; no previous
+holdout evidence or verified result is transferred to the new revision.
 
 ## Persistence and API
 

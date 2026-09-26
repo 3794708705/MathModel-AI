@@ -12,7 +12,7 @@ from mathmodel_ai.data.repository import DataRepository
 from mathmodel_ai.files.storage import FileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.mathematical.repository import MathematicalRepository
-from mathmodel_ai.mathematical.workflow import MathematicalRunOutcome
+from mathmodel_ai.mathematical.workflow import MathematicalRunOutcome, SolveStageOutcome
 from mathmodel_ai.paper.hashing import sha256_json
 from mathmodel_ai.sandbox.causal_holdout import (
     IsolatedCausalHoldout,
@@ -21,6 +21,7 @@ from mathmodel_ai.sandbox.causal_holdout import (
 )
 from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.execution import ExecutionOrigin, ExecutionStatus, SandboxLimits
+from mathmodel_ai.schemas.mathematical import MathematicalModel
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.program import GeneratedProgramStatus
 from mathmodel_ai.schemas.solver import GeneratedResultPayload
@@ -67,6 +68,22 @@ class CausalBenchmarkEvaluator:
         mathematical: MathematicalRunOutcome,
         state: ProblemState,
     ) -> IsolatedCausalHoldout:
+        return self.evaluate_solve(
+            bundle=bundle,
+            model=mathematical.model_stage.model,
+            solve=mathematical.solve_stage,
+            state=state,
+        )
+
+    def evaluate_solve(
+        self,
+        *,
+        bundle: BlindSolveBundle,
+        model: MathematicalModel,
+        solve: SolveStageOutcome,
+        state: ProblemState,
+    ) -> IsolatedCausalHoldout:
+        """Re-evaluate an exact repaired solve without a synthetic model-stage record."""
         policy = bundle.causal_policy
         split = bundle.causal_split
         if policy is None or split is None:
@@ -94,8 +111,6 @@ class CausalBenchmarkEvaluator:
         ]
         if len(matched_inputs) != 1:
             raise QualityGateError("CAUSAL_HOLDOUT_TRAINING_INPUT_NOT_BOUND")
-        solve = mathematical.solve_stage
-        model = mathematical.model_stage.model
         program = solve.execution.program
         formal_execution = solve.execution.execution.record
         formal_result = solve.result

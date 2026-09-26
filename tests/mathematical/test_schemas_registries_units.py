@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.mathematical.normalization import materialize_data_bound_scalars
 from mathmodel_ai.mathematical.quality_gates import (
+    _self_referential_data_residuals,
     _state_relations_sufficient,
     model_quality_gate,
     solve_quality_gate,
@@ -79,6 +80,8 @@ from tests.mathematical.helpers import (
     add,
     constant,
     lp_model,
+    multiply,
+    power,
     selected_state,
     subtract,
     symbol,
@@ -715,6 +718,79 @@ def test_model_gate_recomputes_supported_bound_scalar_from_data_profile() -> Non
         }
     )
     assert materialize_data_bound_scalars(assumed, state) == assumed
+
+
+def test_model_gate_rejects_data_target_inside_its_own_squared_predictor() -> None:
+    state = selected_state()
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    assert base.objective is not None
+    binding = DataBinding(
+        binding_id="BIND-target", dataset_id=uuid4(), column="outcome", transform="mean"
+    )
+    target = ParameterDefinition(
+        parameter_id="PAR-target",
+        symbol="target",
+        description="Observed target rate",
+        value=0.5,
+        data_binding=binding,
+        source_type=ParameterSourceType.DATA,
+        source_ref="EVID-fact-1",
+        confidence=1,
+    )
+    leaked_loss = power(
+        subtract(
+            add(multiply(symbol("x"), symbol("target")), symbol("y")),
+            symbol("target"),
+        ),
+        2,
+    )
+    model = base.model_copy(
+        update={
+            "parameters": [target],
+            "objective": base.objective.model_copy(update={"expression": leaked_loss}),
+        }
+    )
+    assert _self_referential_data_residuals(model) == {"target"}
+    assert (
+        "MODEL_GATE_FAIL:SELF_REFERENTIAL_DATA_TARGET:target"
+        in model_quality_gate(model, state).errors
+    )
+    indirect = model.model_copy(
+        update={
+            "derived_variables": [
+                variable("loss").model_copy(update={"role": VariableRole.DERIVED})
+            ],
+            "objective": base.objective.model_copy(update={"expression": symbol("loss")}),
+            "equations": [
+                base.equations[0].model_copy(update={"lhs": symbol("loss"), "rhs": leaked_loss})
+            ],
+        }
+    )
+    assert _self_referential_data_residuals(indirect) == {"target"}
+    clean_loss = power(
+        subtract(add(multiply(symbol("x"), symbol("y")), constant(0.1)), symbol("target")),
+        2,
+    )
+    clean = model.model_copy(
+        update={"objective": base.objective.model_copy(update={"expression": clean_loss})}
+    )
+    assert _self_referential_data_residuals(clean) == set()
+    assert (
+        _self_referential_data_residuals(
+            model.model_copy(
+                update={
+                    "parameters": [
+                        target.model_copy(update={"source_type": ParameterSourceType.ASSUMPTION})
+                    ]
+                }
+            )
+        )
+        == set()
+    )
 
 
 def test_model_gate_rejects_objective_constant_through_derived_equation() -> None:

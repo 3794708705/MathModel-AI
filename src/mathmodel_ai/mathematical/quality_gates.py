@@ -105,6 +105,7 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
     unsupported_data_literals = _unsupported_data_literals(model, state)
     unsupported_bound_scalars = _unsupported_bound_scalars(model, state)
     objective_decision_coupling = _objective_depends_on_decision(model)
+    self_referential_data_targets = _self_referential_data_residuals(model)
     fixed_constraint_violations = _decision_independent_constraint_violations(model)
     unmaterializable_indexed_constraints = _unmaterializable_indexed_constraints(model)
     scalar_objective_family_valid = not (
@@ -136,6 +137,7 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         "decision_variables_present": bool(model.decision_variables),
         "optimization_objective_present": not optimization or model.objective is not None,
         "objective_depends_on_decision": objective_decision_coupling,
+        "data_targets_not_reused_as_own_predictors": not self_referential_data_targets,
         "scalar_objective_family_valid": scalar_objective_family_valid,
         "decision_independent_constraints_feasible": not fixed_constraint_violations,
         "indexed_hard_constraints_materializable": not unmaterializable_indexed_constraints,
@@ -173,6 +175,10 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
     errors.extend(
         f"MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:{symbol}"
         for symbol in sorted(unsupported_bound_scalars)
+    )
+    errors.extend(
+        f"MODEL_GATE_FAIL:SELF_REFERENTIAL_DATA_TARGET:{symbol}"
+        for symbol in sorted(self_referential_data_targets)
     )
     errors.extend(
         f"MODEL_GATE_FAIL:DECISION_INDEPENDENT_CONSTRAINT_INFEASIBLE:{constraint_id}"
@@ -293,6 +299,53 @@ def _objective_depends_on_decision(model: MathematicalModel) -> bool:
             # this check rejects only objectives proven decision-independent.
             return True
     return False
+
+
+def _self_referential_data_residuals(model: MathematicalModel) -> set[str]:
+    """Prove only literal squared residuals that reuse a DATA target as a predictor."""
+    if model.objective is None:
+        return set()
+    targets = {
+        item.symbol
+        for item in [*model.parameters, *model.constants]
+        if item.source_type is ParameterSourceType.DATA and item.data_binding is not None
+    }
+    if not targets:
+        return set()
+    definitions: dict[str, list[MathExpression]] = {}
+    for equation in model.equations:
+        if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol is not None:
+            definitions.setdefault(equation.lhs.symbol, []).append(equation.rhs)
+    expressions = [model.objective.expression]
+    visited: set[str] = set()
+    leaks: set[str] = set()
+    while expressions:
+        expression = expressions.pop()
+        for symbol in referenced_symbols(expression) - visited:
+            visited.add(symbol)
+            if len(definitions.get(symbol, [])) == 1:
+                expressions.extend(definitions[symbol])
+        nodes = [expression]
+        while nodes:
+            node = nodes.pop()
+            nodes.extend(node.operands)
+            if (
+                node.kind is not ExpressionKind.POWER
+                or len(node.operands) != 2
+                or node.operands[1].kind is not ExpressionKind.CONSTANT
+                or node.operands[1].value != 2
+                or node.operands[0].kind is not ExpressionKind.SUBTRACT
+            ):
+                continue
+            left, right = node.operands[0].operands
+            for target, predictor in ((left, right), (right, left)):
+                if (
+                    target.kind is ExpressionKind.SYMBOL
+                    and target.symbol in targets
+                    and target.symbol in referenced_symbols(predictor)
+                ):
+                    leaks.add(target.symbol)
+    return leaks
 
 
 def _decision_independent_constraint_violations(model: MathematicalModel) -> list[str]:

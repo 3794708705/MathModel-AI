@@ -96,6 +96,10 @@ SOLVE is blocked unless deterministic checks confirm:
   without a compatible deterministic solver;
 - any decision-independent scalar hard constraint provable from sourced
   parameters and defining equations is feasible before code generation;
+- a literal squared calibration residual does not reuse the same DATA target
+  symbol in its predictor branch (including a uniquely defined derived
+  objective); this is only a narrow structural leakage proof, not a substitute
+  for full causal or holdout review;
 - symbol, parameter-source, and equation registries are valid;
 - objective/constraint equation references exist;
 - no explicit dimensional failure exists;

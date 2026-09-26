@@ -293,6 +293,19 @@ def test_causal_evaluator_rejects_wrong_training_and_model_identity(tmp_path: Pa
     mathematical.solve_stage.execution.program.model_digest = "0" * 64
     with pytest.raises(QualityGateError, match="CAUSAL_HOLDOUT_GENERATED_PROGRAM_NOT_BOUND"):
         evaluator.evaluate(bundle=bundle, mathematical=mathematical, state=state)  # type: ignore[arg-type]
+    mathematical.solve_stage.execution.program.model_digest = mathematical_model_digest(
+        mathematical.model_stage.model
+    )
+    revised = mathematical.model_stage.model.model_copy(
+        update={"version": mathematical.model_stage.model.version + 1}
+    )
+    with pytest.raises(QualityGateError, match="CAUSAL_HOLDOUT_FORMAL_RESULT_NOT_BOUND"):
+        evaluator.evaluate_solve(
+            bundle=bundle,
+            model=revised,
+            solve=mathematical.solve_stage,
+            state=state,
+        )  # type: ignore[arg-type]
     repository.persist_auxiliary_execution.assert_not_called()
 
 
@@ -326,7 +339,12 @@ def test_generated_predictor_evaluates_in_isolation_and_persists_evidence(
             }
         ),
     )
-    result = evaluator.evaluate(bundle=bundle, mathematical=mathematical, state=state)  # type: ignore[arg-type]
+    result = evaluator.evaluate_solve(
+        bundle=bundle,
+        model=mathematical.model_stage.model,
+        solve=mathematical.solve_stage,
+        state=state,
+    )  # type: ignore[arg-type]
     assert result.execution.status is ExecutionStatus.SUCCEEDED
     assert result.execution.execution_origin is ExecutionOrigin.GENERATED_PROGRAM
     assert result.execution.environment["formal_result_id"] == str(
