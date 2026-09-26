@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import sys
 from collections.abc import Sequence
 from typing import Any
 
@@ -175,12 +176,18 @@ class GeneratedProgramExecutor:
             raise SandboxError("generated program references a different mathematical model")
         if program.model_digest != mathematical_model_digest(model):
             raise SandboxError("generated program model_digest is not canonical for its model")
-        unavailable = [item for item in program.dependencies if item not in _APPROVED_DEPENDENCIES]
+        unavailable = [
+            item
+            for item in program.dependencies
+            if item not in sys.stdlib_module_names and item not in _APPROVED_DEPENDENCIES
+        ]
         if unavailable:
             raise DependencyUnavailableError(
                 "DEPENDENCY_UNAVAILABLE: " + ", ".join(sorted(unavailable))
             )
         for dependency in program.dependencies:
+            if dependency in sys.stdlib_module_names:
+                continue
             module = _APPROVED_DEPENDENCIES[dependency]
             if not self._sandbox.probe_python_module(module):
                 raise DependencyUnavailableError(f"DEPENDENCY_UNAVAILABLE: {dependency}")

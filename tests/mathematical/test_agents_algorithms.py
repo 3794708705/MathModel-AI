@@ -553,7 +553,7 @@ def test_versioned_prompt_resources_exist() -> None:
     prompts = PromptRegistry()
     assert prompts.get("math_modeler").version == "4.6.6"
     assert "future-stage experiments" in prompts.get("math_modeler").system
-    assert prompts.get("code_agent").version == "4.7.2"
+    assert prompts.get("code_agent").version == "4.7.3"
     assert (
         "must report every MathematicalModel decision variable" in prompts.get("code_agent").system
     )

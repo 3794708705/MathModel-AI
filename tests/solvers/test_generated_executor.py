@@ -93,6 +93,35 @@ def test_generated_executor_rejects_unapproved_and_uninstalled_dependencies() ->
         executor.execute(scipy_program, scipy_model, SolverOptions())
 
 
+def test_generated_executor_recognizes_declared_standard_library_modules() -> None:
+    sandbox = Mock(spec=SandboxExecutor)
+    sandbox.execute.return_value = SimpleNamespace(
+        record=SimpleNamespace(
+            status=ExecutionStatus.FAILED,
+            code_artifact_id=uuid4(),
+            runtime_seconds=0.1,
+            error="fixture execution failed",
+            run_id=uuid4(),
+        ),
+        artifact_records=[],
+    )
+    program = _program(
+        content="import collections, csv, hashlib, json, math, os, random",
+        dependencies=["collections", "csv", "hashlib", "json", "math", "os", "random"],
+    )
+    model = lp_model(
+        project_id=program.project_id,
+        problem_id=program.problem_id,
+        model_id=program.model_id,
+    )
+
+    result = _executor(sandbox).execute(program, model, SolverOptions())
+
+    assert result.result.status.value == "EXECUTION_ERROR"
+    sandbox.probe_python_module.assert_not_called()
+    sandbox.execute.assert_called_once()
+
+
 def test_generated_executor_rejects_dynamic_install_and_noncanonical_model_digest() -> None:
     sandbox = Mock(spec=SandboxExecutor)
     sandbox.probe_python_module.return_value = True
