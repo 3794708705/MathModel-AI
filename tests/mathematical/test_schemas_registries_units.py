@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
+from mathmodel_ai.mathematical.normalization import materialize_data_bound_scalars
 from mathmodel_ai.mathematical.quality_gates import (
     _state_relations_sufficient,
     model_quality_gate,
@@ -638,6 +639,18 @@ def test_model_gate_recomputes_supported_bound_scalar_from_data_profile() -> Non
     assert (
         "MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:rate" in model_quality_gate(invented, state).errors
     )
+    assert materialize_data_bound_scalars(invented, state) == invented
+    omitted = model.model_copy(
+        update={"parameters": [parameter.model_copy(update={"value": None})]}
+    )
+    materialized = materialize_data_bound_scalars(omitted, state)
+    assert materialized.parameters[0].value == 0.4
+    assert omitted.parameters[0].value is None
+    assert materialized.objective == omitted.objective
+    assert materialized.data_bindings == omitted.data_bindings
+    assert any("materialized" in item for item in materialized.limitations)
+    assert model_quality_gate(materialized, state).checks["bound_data_scalars_match_profile"]
+    assert materialize_data_bound_scalars(materialized, state) == materialized
     stale_state = state.model_copy(
         update={"data_profiles": [profile.model_copy(update={"source_file_id": uuid4()})]}
     )
@@ -645,6 +658,7 @@ def test_model_gate_recomputes_supported_bound_scalar_from_data_profile() -> Non
         "MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:rate"
         in model_quality_gate(model, stale_state).errors
     )
+    assert materialize_data_bound_scalars(omitted, stale_state) == omitted
     count_binding = binding.model_copy(update={"transform": "count_nonmissing"})
     count_model = model.model_copy(
         update={
@@ -678,7 +692,10 @@ def test_model_gate_recomputes_supported_bound_scalar_from_data_profile() -> Non
             "data_bindings": [binding.model_copy(update={"transform": "custom"})],
             "parameters": [
                 parameter.model_copy(
-                    update={"data_binding": binding.model_copy(update={"transform": "custom"})}
+                    update={
+                        "value": None,
+                        "data_binding": binding.model_copy(update={"transform": "custom"}),
+                    }
                 )
             ],
         }
@@ -687,6 +704,17 @@ def test_model_gate_recomputes_supported_bound_scalar_from_data_profile() -> Non
         "MODEL_GATE_FAIL:UNVERIFIED_BOUND_SCALAR:rate"
         in model_quality_gate(unsupported, state).errors
     )
+    assert materialize_data_bound_scalars(unsupported, state) == unsupported
+    assumed = omitted.model_copy(
+        update={
+            "parameters": [
+                omitted.parameters[0].model_copy(
+                    update={"source_type": ParameterSourceType.ASSUMPTION}
+                )
+            ]
+        }
+    )
+    assert materialize_data_bound_scalars(assumed, state) == assumed
 
 
 def test_model_gate_rejects_objective_constant_through_derived_equation() -> None:

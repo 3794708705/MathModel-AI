@@ -3,7 +3,10 @@ import re
 
 from mathmodel_ai.agents.base import AgentExecution, BaseAgent
 from mathmodel_ai.core.errors import QualityGateError
-from mathmodel_ai.mathematical.normalization import canonicalize_scalar_optimization_family
+from mathmodel_ai.mathematical.normalization import (
+    canonicalize_scalar_optimization_family,
+    materialize_data_bound_scalars,
+)
 from mathmodel_ai.mathematical.quality_gates import model_quality_gate
 from mathmodel_ai.providers.base import BaseModelProvider
 from mathmodel_ai.providers.factory import ProviderRegistry
@@ -154,6 +157,7 @@ class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):
             status=MathematicalModelStatus.READY,
         )
         model = canonicalize_scalar_optimization_family(model)
+        model = materialize_data_bound_scalars(model, state)
         reject_unverifiable_causal_requirements(model, input_data.user_guidance)
         return AgentExecution(
             output=model,

@@ -70,6 +70,13 @@ and `READY` status. The minimum route is `FLAGSHIP_XHIGH`, and its `AgentRun`
 records the current prompt version, provider/model/reasoning, usage, latency, state
 versions, retries, and Mock status.
 
+When a DATA parameter declares an exact, supported binding to a deterministic
+registered profile but leaves its scalar value empty, trusted construction fills
+the value from that profile before the MODEL gate and records the materialization
+in limitations. A provided but incorrect numeric value is never silently fixed:
+the original bound-scalar gate rejects it. Unknown transforms, stale source-file
+identity, and ambiguous profiles likewise remain unmaterialized and rejected.
+
 Every accepted revision also receives a canonical SHA-256 `model_digest` over
 its executable mathematical representation. Database identity, revision number,
 timestamps, prose, and audit-only metadata do not affect it; objective,

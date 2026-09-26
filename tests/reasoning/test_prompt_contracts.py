@@ -31,7 +31,7 @@ def test_model_jury_preserves_hard_failures_without_disqualifying_uncertainty() 
 def test_math_modeler_requires_traceable_executable_parameter_values() -> None:
     prompt = PromptRegistry().get("math_modeler")
 
-    assert prompt.version == "4.6.5"
+    assert prompt.version == "4.6.6"
     assert "scalar optimization" in prompt.system
     assert "future-stage experiments" in prompt.system
     assert "every parameter and constant requires a finite" in prompt.system

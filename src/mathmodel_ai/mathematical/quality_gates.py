@@ -10,6 +10,7 @@ from mathmodel_ai.mathematical.expressions import (
     referenced_symbols,
     scalar_parameter_values,
 )
+from mathmodel_ai.mathematical.normalization import deterministic_bound_scalar
 from mathmodel_ai.mathematical.registry import EquationRegistry, SymbolRegistry
 from mathmodel_ai.mathematical.units import UnitChecker
 from mathmodel_ai.schemas.execution import ExecutionRecord, ExecutionStatus
@@ -461,48 +462,21 @@ def _unsupported_data_literals(model: MathematicalModel, state: ProblemState) ->
 
 def _unsupported_bound_scalars(model: MathematicalModel, state: ProblemState) -> set[str]:
     """Check only closed, deterministic profile aggregates; other transforms fail closed."""
-    datasets = {item.dataset_id: item for item in state.datasets}
-    profiles = {item.dataset_id: item for item in state.data_profiles}
     unsupported: set[str] = set()
     for parameter in [*model.parameters, *model.constants]:
         binding = parameter.data_binding
         if binding is None:
             continue
         value = parameter.value
-        dataset = datasets.get(binding.dataset_id)
-        profile = profiles.get(binding.dataset_id)
+        expected = deterministic_bound_scalar(binding, state)
         if (
             isinstance(value, bool)
             or not isinstance(value, (int, float))
             or not math.isfinite(value)
             or parameter.source_type
             not in {ParameterSourceType.DATA, ParameterSourceType.ESTIMATED}
-            or dataset is None
-            or profile is None
-            or not profile.deterministic
-            or profile.source_file_id != dataset.source_file_id
-            or profile.row_count != dataset.row_count
-            or binding.selector is not None
-        ):
-            unsupported.add(parameter.symbol)
-            continue
-        column = next((item for item in profile.columns if item.name == binding.column), None)
-        if column is None:
-            unsupported.add(parameter.symbol)
-            continue
-        expected: float | None = None
-        if binding.transform == "mean" and column.numeric_statistics is not None:
-            expected = column.numeric_statistics.mean
-        elif binding.transform == "count_nonmissing":
-            expected = float(profile.row_count - column.missing_count)
-        elif binding.transform and binding.transform.startswith("rate_eq:"):
-            target = binding.transform.removeprefix("rate_eq:")
-            matches = [item.count for item in column.top_values if item.value == target]
-            denominator = profile.row_count - column.missing_count
-            if matches and denominator:
-                expected = matches[0] / denominator
-        if expected is None or not math.isclose(
-            float(value), expected, rel_tol=1e-8, abs_tol=1e-10
+            or expected is None
+            or not math.isclose(float(value), expected, rel_tol=1e-8, abs_tol=1e-10)
         ):
             unsupported.add(parameter.symbol)
     return unsupported
