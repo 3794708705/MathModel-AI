@@ -279,7 +279,10 @@ For fixed-coefficient perturbations, a deterministic predictor can now be
 rendered from the typed logit and run through the same networkless, pointwise
 sealed-holdout container. The independent scenario audit reconstructs the
 official group split and training loss, rereads execution artifacts, and
-rejects altered coefficients or a different formal-result binding. This
+rejects altered coefficients or a different formal-result binding. Scenario
+coefficients are now derived from the formal result's decision values and
+declared perturbation fractions; model parameters remain fixed. A zero-valued
+coefficient cannot be changed by a relative fraction and is rejected. This
 component does not yet persist a Phase 5 sensitivity/robustness report or
 authorize those gates to pass; fitting and re-optimization are not claimed.
 A second training-only reference reconstructs a pre-outcome rolling mean of condition-adjusted

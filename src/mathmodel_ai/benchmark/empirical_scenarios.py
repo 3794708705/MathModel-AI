@@ -8,19 +8,23 @@ a claim that the coefficients were re-estimated on held-out observations.
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass
 from uuid import UUID
 
 from mathmodel_ai.benchmark.causal_inputs import split_causal_csv
 from mathmodel_ai.files.storage import FileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
+from mathmodel_ai.mathematical.expressions import referenced_symbols, scalar_parameter_values
 from mathmodel_ai.sandbox.causal_holdout import (
     IsolatedCausalHoldout,
     verify_recorded_causal_holdout,
 )
 from mathmodel_ai.sandbox.empirical_predictor import empirical_predictor_source
 from mathmodel_ai.schemas.execution import ExecutionOrigin
-from mathmodel_ai.schemas.mathematical import MathematicalModel
+from mathmodel_ai.schemas.mathematical import EMPIRICAL_ROW_SYMBOLS, MathematicalModel
+from mathmodel_ai.schemas.results import ResultRecord
+from mathmodel_ai.schemas.solver import SolverStatus
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec
 from mathmodel_ai.verification.causal_holdout import CausalHoldoutResult
 from mathmodel_ai.verification.empirical_binary import (
@@ -40,16 +44,68 @@ class AuditedEmpiricalScenario:
     holdout: CausalHoldoutResult
 
 
+def empirical_scenario_coefficients(
+    model: MathematicalModel,
+    formal_result: ResultRecord,
+    fractions: dict[str, float],
+) -> dict[str, float]:
+    """Derive a fixed perturbation only from the exact formal result vector."""
+    risk = model.empirical_binary_risk
+    if risk is None:
+        raise ValueError("EMPIRICAL_SCENARIO_MODEL_RISK_MISSING")
+    if (
+        formal_result.project_id != model.project_id
+        or formal_result.problem_id != model.problem_id
+        or formal_result.model_id != model.model_id
+        or formal_result.model_version != model.version
+        or formal_result.model_digest != mathematical_model_digest(model)
+        or formal_result.status not in {SolverStatus.OPTIMAL, SolverStatus.FEASIBLE}
+    ):
+        raise ValueError("EMPIRICAL_SCENARIO_FORMAL_RESULT_NOT_BOUND")
+    symbols = referenced_symbols(risk.logit) - EMPIRICAL_ROW_SYMBOLS
+    decisions = {item.symbol for item in model.decision_variables if not item.index_sets}
+    parameters = scalar_parameter_values([*model.parameters, *model.constants])
+    if (
+        not fractions
+        or not fractions.keys() <= (symbols & decisions)
+        or any(not math.isfinite(value) or abs(value) > 1 for value in fractions.values())
+    ):
+        raise ValueError("EMPIRICAL_SCENARIO_PERTURBATION_INVALID")
+    if symbols - decisions - parameters.keys():
+        raise ValueError("EMPIRICAL_SCENARIO_MODEL_COEFFICIENT_UNDECLARED")
+    if any(
+        symbol not in formal_result.key_outputs
+        or not math.isfinite(formal_result.key_outputs[symbol])
+        for symbol in symbols & decisions
+    ):
+        raise ValueError("EMPIRICAL_SCENARIO_FORMAL_COEFFICIENT_MISSING")
+    coefficients = {
+        symbol: (
+            formal_result.key_outputs[symbol] * (1 + fractions.get(symbol, 0.0))
+            if symbol in decisions
+            else parameters[symbol]
+        )
+        for symbol in symbols
+    }
+    if any(
+        not math.isfinite(value)
+        or (symbol in fractions and value == formal_result.key_outputs[symbol])
+        for symbol, value in coefficients.items()
+    ):
+        raise ValueError("EMPIRICAL_SCENARIO_PERTURBATION_INEFFECTIVE")
+    return coefficients
+
+
 def audit_isolated_empirical_scenario(
     *,
     model: MathematicalModel,
-    formal_result_id: UUID,
+    formal_result: ResultRecord,
     official_csv: bytes,
     official_spec: CausalBinarySpec,
     training_csv: bytes,
     fraction: float,
     salt: str,
-    coefficients: dict[str, float],
+    fractions: dict[str, float],
     run: IsolatedCausalHoldout,
     store: FileStore,
 ) -> AuditedEmpiricalScenario:
@@ -57,6 +113,7 @@ def audit_isolated_empirical_scenario(
     risk = model.empirical_binary_risk
     if risk is None:
         raise ValueError("EMPIRICAL_SCENARIO_MODEL_RISK_MISSING")
+    coefficients = empirical_scenario_coefficients(model, formal_result, fractions)
     split = split_causal_csv(official_csv, official_spec, fraction=fraction, salt=salt)
     if training_csv != split.training_csv or risk.training_sha256 != split.training_sha256:
         raise ValueError("EMPIRICAL_SCENARIO_TRAINING_SPLIT_MISMATCH")
@@ -68,7 +125,7 @@ def audit_isolated_empirical_scenario(
         or record.problem_id != model.problem_id
         or record.model_digest != digest
         or record.generated_program_id is not None
-        or record.environment.get("formal_result_id") != str(formal_result_id)
+        or record.environment.get("formal_result_id") != str(formal_result.result_id)
     ):
         raise ValueError("EMPIRICAL_SCENARIO_FORMAL_RESULT_NOT_BOUND")
     expected_code = empirical_predictor_source(risk, coefficients)
@@ -102,7 +159,7 @@ def audit_isolated_empirical_scenario(
         raise ValueError("EMPIRICAL_SCENARIO_TRAINING_RECOMPUTATION_MISMATCH")
     return AuditedEmpiricalScenario(
         execution_id=record.run_id,
-        formal_result_id=formal_result_id,
+        formal_result_id=formal_result.result_id,
         model_digest=digest,
         predictor_sha256=predictor_sha256,
         training=training,

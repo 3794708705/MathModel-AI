@@ -8,7 +8,10 @@ from uuid import UUID, uuid4
 import pytest
 
 from mathmodel_ai.benchmark.causal_inputs import split_causal_csv
-from mathmodel_ai.benchmark.empirical_scenarios import audit_isolated_empirical_scenario
+from mathmodel_ai.benchmark.empirical_scenarios import (
+    audit_isolated_empirical_scenario,
+    empirical_scenario_coefficients,
+)
 from mathmodel_ai.files.storage import LocalFileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.sandbox.causal_holdout import (
@@ -22,14 +25,17 @@ from mathmodel_ai.schemas.mathematical import (
     EmpiricalBinaryRiskDefinition,
     ExpressionKind,
     MathExpression,
+    VariableDomain,
 )
+from mathmodel_ai.schemas.results import ResultRecord
+from mathmodel_ai.schemas.solver import SolverName, SolverStatus
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec
 from mathmodel_ai.verification.causal_holdout import assess_binary_calibration
 from mathmodel_ai.verification.empirical_binary import (
     audit_empirical_binary_claim,
     evaluate_empirical_binary_risk,
 )
-from tests.mathematical.helpers import lp_model
+from tests.mathematical.helpers import lp_model, variable
 
 IMAGE = "mathmodel-ai-sandbox:phase3"
 
@@ -232,16 +238,46 @@ def test_empirical_fixed_coefficient_scenario_isolated_and_independently_replaye
             ],
         ),
     )
-    coefficients = {"beta": 2.0, "intercept": -0.5}
+    model = lp_model().model_copy(
+        update={
+            "objective": None,
+            "empirical_binary_risk": risk,
+            "decision_variables": [
+                variable("beta", domain=VariableDomain.CONTINUOUS, lower=None),
+                variable("intercept", domain=VariableDomain.CONTINUOUS, lower=None),
+            ],
+        }
+    )
+    solver_run_id = uuid4()
+    formal_execution_id = uuid4()
+    formal_result = ResultRecord(
+        project_id=model.project_id,
+        problem_id=model.problem_id,
+        model_id=model.model_id,
+        model_version=model.version,
+        model_digest=mathematical_model_digest(model),
+        solver_run_id=solver_run_id,
+        execution_record_id=formal_execution_id,
+        solver=SolverName.SCIPY,
+        objective=0.4,
+        key_outputs={"beta": 1.0, "intercept": -0.5},
+        status=SolverStatus.OPTIMAL,
+        evidence_refs=[
+            f"model:{model.model_id}:v{model.version}",
+            f"solver_run:{solver_run_id}",
+            f"execution:{formal_execution_id}",
+        ],
+    )
+    fractions = {"beta": 1.0}
+    coefficients = empirical_scenario_coefficients(model, formal_result, fractions)
+    assert coefficients == {"beta": 2.0, "intercept": -0.5}
     code = empirical_predictor_source(risk, coefficients)
-    model = lp_model().model_copy(update={"objective": None, "empirical_binary_risk": risk})
-    formal_result_id = uuid4()
     execution, store = _run(
         tmp_path,
         code,
         execution_origin=ExecutionOrigin.DETERMINISTIC_SOLVER_ADAPTER,
         model_digest=mathematical_model_digest(model),
-        formal_result_id=formal_result_id,
+        formal_result_id=formal_result.result_id,
         project_id=model.project_id,
         problem_id=model.problem_id,
     )
@@ -267,42 +303,79 @@ def test_empirical_fixed_coefficient_scenario_isolated_and_independently_replaye
     assert execution.artifacts[0].sha256 == hashlib.sha256(code.encode()).hexdigest()
     scenario = audit_isolated_empirical_scenario(
         model=model,
-        formal_result_id=formal_result_id,
+        formal_result=formal_result,
         official_csv=source,
         official_spec=official_spec,
         training_csv=split.training_csv,
         fraction=0.25,
         salt="test-v1",
-        coefficients=coefficients,
+        fractions=fractions,
         run=execution,
         store=store,
     )
     assert scenario.training == training
     assert scenario.holdout == execution.result
     assert scenario.execution_id == execution.execution.run_id
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_FORMAL_COEFFICIENT_MISSING"):
+        empirical_scenario_coefficients(
+            model,
+            formal_result.model_copy(update={"key_outputs": {"beta": 1.0}}),
+            fractions,
+        )
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_FORMAL_RESULT_NOT_BOUND"):
+        empirical_scenario_coefficients(
+            model,
+            formal_result.model_copy(update={"model_digest": "0" * 64}),
+            fractions,
+        )
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_PERTURBATION_INVALID"):
+        empirical_scenario_coefficients(model, formal_result, {"unknown": 0.1})
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_PERTURBATION_INEFFECTIVE"):
+        empirical_scenario_coefficients(model, formal_result, {"beta": 0.0})
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_PERTURBATION_INEFFECTIVE"):
+        empirical_scenario_coefficients(
+            model,
+            formal_result.model_copy(update={"key_outputs": {"beta": 0.0, "intercept": -0.5}}),
+            {"beta": 0.1},
+        )
     with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_FORMAL_RESULT_NOT_BOUND"):
         audit_isolated_empirical_scenario(
             model=model,
-            formal_result_id=uuid4(),
+            formal_result=formal_result.model_copy(update={"result_id": uuid4()}),
             official_csv=source,
             official_spec=official_spec,
             training_csv=split.training_csv,
             fraction=0.25,
             salt="test-v1",
-            coefficients=coefficients,
+            fractions=fractions,
             run=execution,
             store=store,
         )
     with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_PREDICTOR_NOT_BOUND"):
         audit_isolated_empirical_scenario(
             model=model,
-            formal_result_id=formal_result_id,
+            formal_result=formal_result,
             official_csv=source,
             official_spec=official_spec,
             training_csv=split.training_csv,
             fraction=0.25,
             salt="test-v1",
-            coefficients={"beta": 3.0, "intercept": -0.5},
+            fractions={"beta": 0.5},
+            run=execution,
+            store=store,
+        )
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_PREDICTOR_NOT_BOUND"):
+        audit_isolated_empirical_scenario(
+            model=model,
+            formal_result=formal_result.model_copy(
+                update={"key_outputs": {"beta": 0.75, "intercept": -0.5}}
+            ),
+            official_csv=source,
+            official_spec=official_spec,
+            training_csv=split.training_csv,
+            fraction=0.25,
+            salt="test-v1",
+            fractions=fractions,
             run=execution,
             store=store,
         )
