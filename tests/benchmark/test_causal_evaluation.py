@@ -44,6 +44,7 @@ from mathmodel_ai.schemas.program import (
     GeneratedSourceFile,
     generated_program_hash,
 )
+from mathmodel_ai.schemas.results import ResultRecord
 from mathmodel_ai.schemas.solver import SolverName, SolverStatus
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec, iter_causal_binary_points
 from mathmodel_ai.verification.causal_holdout import SWING_PROTOCOL, CausalHoldoutResult
@@ -422,6 +423,146 @@ def test_empirical_audit_binds_formal_coefficients_loss_and_sealed_forecasts(
     bad = replace(result, predictions=(predictions[0] + 0.1, *predictions[1:]))
     with pytest.raises(QualityGateError, match="EMPIRICAL_HELDOUT_PREDICTION_MISMATCH"):
         evaluator._audit_empirical_risk(**{**kwargs, "result": bad})
+
+
+@pytest.mark.sandbox
+@pytest.mark.skipif(not _image_available(), reason="Docker image unavailable")
+def test_empirical_scenario_is_persisted_and_reaudited_from_database(tmp_path: Path) -> None:
+    evaluator, bundle, mathematical, state, _ = _setup(tmp_path, include_predictor=True)
+    assert bundle.causal_policy is not None and bundle.causal_split is not None
+    policy, split = bundle.causal_policy, bundle.causal_split
+    risk = EmpiricalBinaryRiskDefinition(
+        training_dataset_id=uuid4(),
+        training_sha256=split.training_sha256,
+        group_column=policy.group_column,
+        condition_column=policy.condition_column,
+        outcome_column=policy.outcome_column,
+        positive_value=policy.positive_value,
+        negative_value=policy.negative_value,
+        history_window=policy.history_window,
+        reference_condition="1",
+        source_refs=["EVID-fact-1"],
+        logit=MathExpression(
+            kind=ExpressionKind.MULTIPLY,
+            operands=[
+                MathExpression.symbol_ref("x"),
+                MathExpression.symbol_ref("row_condition_delta"),
+            ],
+        ),
+    )
+    model = mathematical.model_stage.model.model_copy(
+        update={"objective": None, "empirical_binary_risk": risk}
+    )
+    digest = mathematical_model_digest(model)
+    program = mathematical.solve_stage.execution.program
+    program.model_digest = digest
+    formal_execution = mathematical.solve_stage.execution.execution.record
+    formal_execution.model_digest = digest
+    formal_solver_run = mathematical.solve_stage.solver_run
+    formal_solver_run.model_digest = digest
+    result = ResultRecord(
+        result_id=formal_solver_run.result_ref,
+        project_id=model.project_id,
+        problem_id=model.problem_id,
+        model_id=model.model_id,
+        model_version=model.version,
+        model_digest=digest,
+        solver_run_id=formal_solver_run.solver_run_id,
+        execution_record_id=formal_execution.run_id,
+        solver=SolverName.SCIPY,
+        status=SolverStatus.OPTIMAL,
+        key_outputs={"x": 1.0, "y": 9.0},
+        evidence_refs=[
+            f"model:{model.model_id}:v{model.version}",
+            f"solver_run:{formal_solver_run.solver_run_id}",
+            f"execution:{formal_execution.run_id}",
+        ],
+    )
+    formal = evaluator._mathematics.get_result_context.return_value
+    formal.model = model
+    formal.result = result
+    formal.program = program
+    formal.execution = formal_execution
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(engine, expire_on_commit=False)
+    dataset = DatasetRecord(
+        dataset_id=risk.training_dataset_id,
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_file_id=state.registered_files[0].file_id,
+        name="data.csv",
+        row_count=split.training_rows,
+        column_count=4,
+        columns=["match", "server", "winner", "after"],
+    )
+    with factory() as session:
+        session.add(Project(id=state.project_id, name="empirical fixture"))
+        session.add(
+            Problem(
+                id=state.problem_id,
+                project_id=state.project_id,
+                title="fixture",
+                raw_problem="fixture",
+            )
+        )
+        session.add(DataRepository._file_model(state.registered_files[0]))
+        session.add(DataRepository._dataset_model(dataset))
+        session.commit()
+    repository = DataRepository(factory)
+    code = ArtifactRecord(
+        artifact_id=formal_execution.code_artifact_id,
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        execution_run_id=formal_execution.run_id,
+        kind=ArtifactKind.GENERATED_CODE,
+        name="solve.py",
+        mime_type="text/x-python",
+        size_bytes=14,
+        sha256=formal_execution.code_hash,
+        storage_key="fixture/solve.py",
+    )
+    repository.persist_auxiliary_execution(formal_execution, [code])
+    evaluator._repository = repository
+    fractions = {"x": 0.1}
+    audited = evaluator.evaluate_empirical_scenario(
+        bundle=bundle,
+        project_id=state.project_id,
+        formal_result_id=result.result_id,
+        fractions=fractions,
+    )
+    assert audited.formal_result_id == result.result_id
+    assert audited.execution_id != formal_execution.run_id
+    assert audited.training.row_count == split.training_rows
+    assert len(audited.holdout.predictions) == split.heldout_rows
+    assert len(repository.list_executions(state.project_id)) == 2
+    assert (
+        evaluator.audit_persisted_empirical_scenario(
+            bundle=bundle,
+            project_id=state.project_id,
+            formal_result_id=result.result_id,
+            fractions=fractions,
+            execution_id=audited.execution_id,
+        )
+        == audited
+    )
+    with pytest.raises(QualityGateError, match="EMPIRICAL_SCENARIO_AUDIT_FAILED"):
+        evaluator.audit_persisted_empirical_scenario(
+            bundle=bundle,
+            project_id=state.project_id,
+            formal_result_id=result.result_id,
+            fractions={"x": 0.2},
+            execution_id=audited.execution_id,
+        )
+    formal_solver_run.result_ref = uuid4()
+    with pytest.raises(QualityGateError, match="EMPIRICAL_SCENARIO_FORMAL_RESULT_NOT_BOUND"):
+        evaluator.audit_persisted_empirical_scenario(
+            bundle=bundle,
+            project_id=state.project_id,
+            formal_result_id=result.result_id,
+            fractions=fractions,
+            execution_id=audited.execution_id,
+        )
 
 
 @pytest.mark.sandbox

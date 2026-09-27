@@ -6,6 +6,11 @@ import math
 from pathlib import Path
 from uuid import UUID
 
+from mathmodel_ai.benchmark.empirical_scenarios import (
+    AuditedEmpiricalScenario,
+    audit_isolated_empirical_scenario,
+    empirical_scenario_coefficients,
+)
 from mathmodel_ai.benchmark.manifests import BlindSolveBundle
 from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.data.repository import DataRepository
@@ -20,11 +25,13 @@ from mathmodel_ai.sandbox.causal_holdout import (
     run_isolated_causal_holdout,
     verify_recorded_causal_holdout,
 )
+from mathmodel_ai.sandbox.empirical_predictor import empirical_predictor_source
 from mathmodel_ai.schemas.benchmark import CausalScienceCheck
 from mathmodel_ai.schemas.execution import ExecutionOrigin, ExecutionStatus, SandboxLimits
 from mathmodel_ai.schemas.mathematical import MathematicalModel
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.program import GeneratedProgramStatus
+from mathmodel_ai.schemas.results import ResultRecord
 from mathmodel_ai.schemas.solver import GeneratedResultPayload
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec
 from mathmodel_ai.verification.causal_holdout import (
@@ -79,6 +86,209 @@ class CausalBenchmarkEvaluator:
             solve=mathematical.solve_stage,
             state=state,
         )
+
+    def evaluate_empirical_scenario(
+        self,
+        *,
+        bundle: BlindSolveBundle,
+        project_id: UUID,
+        formal_result_id: UUID,
+        fractions: dict[str, float],
+    ) -> AuditedEmpiricalScenario:
+        """Persist one real fixed-coefficient run, then audit the stored evidence."""
+        model, formal_result, source, _, spec = self._empirical_scenario_context(
+            bundle, project_id, formal_result_id
+        )
+        risk = model.empirical_binary_risk
+        assert risk is not None
+        coefficients = empirical_scenario_coefficients(model, formal_result, fractions)
+        policy = bundle.causal_policy
+        assert policy is not None
+        run = run_isolated_causal_holdout(
+            source,
+            spec,
+            empirical_predictor_source(risk, coefficients),
+            fraction=policy.fraction,
+            salt=policy.salt,
+            store=self._store,
+            root=self._root,
+            image=self._image,
+            limits=self._limits,
+            project_id=project_id,
+            problem_id=model.problem_id,
+            execution_origin=ExecutionOrigin.DETERMINISTIC_SOLVER_ADAPTER,
+            model_digest=mathematical_model_digest(model),
+            formal_result_id=formal_result_id,
+            science_policy_sha256=sha256_json(policy),
+        )
+        self._repository.persist_auxiliary_execution(run.execution, list(run.artifacts))
+        if run.execution.status is not ExecutionStatus.SUCCEEDED or run.result is None:
+            raise QualityGateError(
+                "EMPIRICAL_SCENARIO_EXECUTION_FAILED: " + (run.execution.error or "unknown")[:300]
+            )
+        audited = self.audit_persisted_empirical_scenario(
+            bundle=bundle,
+            project_id=project_id,
+            formal_result_id=formal_result_id,
+            fractions=fractions,
+            execution_id=run.execution.run_id,
+        )
+        if audited.holdout != run.result:
+            raise QualityGateError("EMPIRICAL_SCENARIO_TRACE_RECOMPUTATION_MISMATCH")
+        return audited
+
+    def audit_persisted_empirical_scenario(
+        self,
+        *,
+        bundle: BlindSolveBundle,
+        project_id: UUID,
+        formal_result_id: UUID,
+        fractions: dict[str, float],
+        execution_id: UUID,
+    ) -> AuditedEmpiricalScenario:
+        """Re-read a stored scenario without trusting an in-memory run result."""
+        model, formal_result, source, training, spec = self._empirical_scenario_context(
+            bundle, project_id, formal_result_id
+        )
+        policy = bundle.causal_policy
+        assert policy is not None
+        executions = [
+            item
+            for item in self._repository.list_executions(project_id)
+            if item.run_id == execution_id
+        ]
+        artifacts = [
+            item
+            for item in self._repository.list_artifacts(project_id)
+            if item.execution_run_id == execution_id
+        ]
+        named = {item.name: item for item in artifacts}
+        if (
+            len(executions) != 1
+            or len(artifacts) != 3
+            or set(named)
+            != {
+                "predictor.py",
+                "causal_driver.py",
+                "causal-holdout.json",
+            }
+        ):
+            raise QualityGateError("EMPIRICAL_SCENARIO_PERSISTED_EVIDENCE_MISSING")
+        execution = executions[0]
+        if execution.environment.get("science_policy_sha256") != sha256_json(policy):
+            raise QualityGateError("EMPIRICAL_SCENARIO_SCIENCE_POLICY_MISMATCH")
+        run = IsolatedCausalHoldout(
+            result=None,
+            execution=execution,
+            artifacts=(
+                named["predictor.py"],
+                named["causal_driver.py"],
+                named["causal-holdout.json"],
+            ),
+        )
+        try:
+            return audit_isolated_empirical_scenario(
+                model=model,
+                formal_result=formal_result,
+                official_csv=source,
+                official_spec=spec,
+                training_csv=training,
+                fraction=policy.fraction,
+                salt=policy.salt,
+                fractions=fractions,
+                run=run,
+                store=self._store,
+            )
+        except ValueError as exc:
+            raise QualityGateError(f"EMPIRICAL_SCENARIO_AUDIT_FAILED:{exc}") from exc
+
+    def _empirical_scenario_context(
+        self,
+        bundle: BlindSolveBundle,
+        project_id: UUID,
+        formal_result_id: UUID,
+    ) -> tuple[MathematicalModel, ResultRecord, bytes, bytes, CausalBinarySpec]:
+        policy = bundle.causal_policy
+        split = bundle.causal_split
+        if policy is None or split is None:
+            raise QualityGateError("EMPIRICAL_SCENARIO_POLICY_MISSING")
+        source = next(
+            (
+                item.content
+                for item in bundle.artifacts
+                if item.resource.resource_id == policy.resource_id
+            ),
+            None,
+        )
+        if (
+            source is None
+            or hashlib.sha256(source).hexdigest() != split.source_sha256
+            or policy.source_sha256 != split.source_sha256
+        ):
+            raise QualityGateError("EMPIRICAL_SCENARIO_SOURCE_MISMATCH")
+        resource = next(
+            item.resource
+            for item in bundle.artifacts
+            if item.resource.resource_id == policy.resource_id
+        )
+        registered = [
+            item
+            for item in self._repository.list_files(project_id)
+            if item.original_name == resource.local_filename
+            and item.sha256 == split.training_sha256
+        ]
+        if len(registered) != 1:
+            raise QualityGateError("EMPIRICAL_SCENARIO_TRAINING_NOT_BOUND")
+        training = self._store.read_bytes(registered[0].storage_key, max_bytes=16 * 1024 * 1024)
+        if training != split.training_csv:
+            raise QualityGateError("EMPIRICAL_SCENARIO_TRAINING_BYTES_MISMATCH")
+        formal = self._mathematics.get_result_context(project_id, formal_result_id)
+        model = formal.model
+        result = formal.result
+        digest = mathematical_model_digest(model)
+        risk = model.empirical_binary_risk
+        if (
+            not formal.evidence.valid
+            or model.project_id != project_id
+            or result.result_id != formal_result_id
+            or result.model_digest != digest
+            or result.solver_run_id != formal.solver_run.solver_run_id
+            or result.execution_record_id != formal.execution.run_id
+            or formal.execution.is_mock
+            or formal.execution.status is not ExecutionStatus.SUCCEEDED
+            or formal.execution.exit_code != 0
+            or formal.execution.model_digest != digest
+            or formal.program is None
+            or formal.program.is_mock
+            or formal.program.status is not GeneratedProgramStatus.EXECUTED
+            or formal.program.execution_origin is not ExecutionOrigin.GENERATED_PROGRAM
+            or formal.program.model_digest != digest
+            or formal.execution.generated_program_id != formal.program.program_id
+            or formal.solver_run.result_ref != formal_result_id
+            or formal.solver_run.execution_ref != formal.execution.run_id
+            or formal.solver_run.model_digest != digest
+            or formal.solver_run.generated_program_id != formal.program.program_id
+            or risk is None
+        ):
+            raise QualityGateError("EMPIRICAL_SCENARIO_FORMAL_RESULT_NOT_BOUND")
+        datasets = [
+            item
+            for item in self._repository.list_datasets(project_id)
+            if item.dataset_id == risk.training_dataset_id
+            and item.source_file_id == registered[0].file_id
+        ]
+        if len(datasets) != 1 or risk.training_sha256 != split.training_sha256:
+            raise QualityGateError("EMPIRICAL_SCENARIO_TRAINING_DATASET_NOT_BOUND")
+        spec = CausalBinarySpec(
+            source_sha256=policy.source_sha256,
+            group_column=policy.group_column,
+            condition_column=policy.condition_column,
+            outcome_column=policy.outcome_column,
+            positive_value=policy.positive_value,
+            negative_value=policy.negative_value,
+            history_window=policy.history_window,
+        )
+        return model, result, source, training, spec
 
     def evaluate_solve(
         self,
