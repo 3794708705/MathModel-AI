@@ -25,6 +25,7 @@ from mathmodel_ai.schemas.execution import ExecutionOrigin
 from mathmodel_ai.schemas.mathematical import EMPIRICAL_ROW_SYMBOLS, MathematicalModel
 from mathmodel_ai.schemas.results import ResultRecord
 from mathmodel_ai.schemas.solver import SolverStatus
+from mathmodel_ai.schemas.verification import ValidationCheckStatus
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec
 from mathmodel_ai.verification.causal_holdout import CausalHoldoutResult
 from mathmodel_ai.verification.empirical_binary import (
@@ -32,6 +33,7 @@ from mathmodel_ai.verification.empirical_binary import (
     audit_empirical_binary_claim,
     evaluate_empirical_binary_risk,
 )
+from mathmodel_ai.verification.validation import IndependentValidator
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,13 @@ def empirical_scenario_coefficients(
         for symbol, value in coefficients.items()
     ):
         raise ValueError("EMPIRICAL_SCENARIO_PERTURBATION_INEFFECTIVE")
+    validator = IndependentValidator()
+    if any(
+        validator.check_variable(variable, coefficients).status is not ValidationCheckStatus.PASS
+        for variable in model.decision_variables
+        if variable.symbol in fractions
+    ):
+        raise ValueError("EMPIRICAL_SCENARIO_PERTURBATION_OUT_OF_DOMAIN")
     return coefficients
 
 

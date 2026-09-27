@@ -282,7 +282,8 @@ official group split and training loss, rereads execution artifacts, and
 rejects altered coefficients or a different formal-result binding. Scenario
 coefficients are now derived from the formal result's decision values and
 declared perturbation fractions; model parameters remain fixed. A zero-valued
-coefficient cannot be changed by a relative fraction and is rejected. This
+coefficient cannot be changed by a relative fraction and is rejected. Changed
+coefficients must also satisfy their declared variable domain and bounds. This
 component does not yet persist a Phase 5 sensitivity/robustness report or
 authorize those gates to pass; fitting and re-optimization are not claimed.
 A second training-only reference reconstructs a pre-outcome rolling mean of condition-adjusted

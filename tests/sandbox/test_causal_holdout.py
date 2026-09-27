@@ -338,6 +338,22 @@ def test_empirical_fixed_coefficient_scenario_isolated_and_independently_replaye
             formal_result.model_copy(update={"key_outputs": {"beta": 0.0, "intercept": -0.5}}),
             {"beta": 0.1},
         )
+    bounded_model = model.model_copy(
+        update={
+            "decision_variables": [
+                model.decision_variables[0].model_copy(update={"upper_bound": 1.5}),
+                model.decision_variables[1],
+            ]
+        }
+    )
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_PERTURBATION_OUT_OF_DOMAIN"):
+        empirical_scenario_coefficients(
+            bounded_model,
+            formal_result.model_copy(
+                update={"model_digest": mathematical_model_digest(bounded_model)}
+            ),
+            fractions,
+        )
     with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_FORMAL_RESULT_NOT_BOUND"):
         audit_isolated_empirical_scenario(
             model=model,
