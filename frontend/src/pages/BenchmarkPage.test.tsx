@@ -17,7 +17,9 @@ describe("Benchmark", () => {
       throw new Error(`Unhandled ${call.method} ${call.path}`);
     });
     renderPage(<BenchmarkPage />);
-    expect(await screen.findByText("FAIL")).toBeInTheDocument();
+    // The report is fetched only after the run list establishes the selected run.
+    // Allow that second query to settle under CI load before inspecting its evidence.
+    expect(await screen.findByText("FAIL", {}, { timeout: 5_000 })).toBeInTheDocument();
     expect(screen.getByText("BLOCKED_ENVIRONMENT")).toBeInTheDocument();
     expect(screen.getByText("P0 · LIVE_PROVIDER")).toBeInTheDocument();
     expect(screen.getByText("P1 · SOLVER")).toBeInTheDocument();
