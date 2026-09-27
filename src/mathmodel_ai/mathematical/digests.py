@@ -51,16 +51,21 @@ def _semantic_value(value: Any) -> Any:
 def mathematical_model_digest(model: MathematicalModel) -> str:
     """Hash the executable mathematical meaning, excluding identity/audit prose."""
 
+    excluded = {
+        "model_id",
+        "project_id",
+        "problem_id",
+        "version",
+        "source_selected_model_id",
+        "status",
+    }
+    # The optional row-risk contract was added after persisted model digests
+    # already existed. Absence must not retroactively rehash those records.
+    if model.empirical_binary_risk is None:
+        excluded.add("empirical_binary_risk")
     payload = model.model_dump(
         mode="json",
-        exclude={
-            "model_id",
-            "project_id",
-            "problem_id",
-            "version",
-            "source_selected_model_id",
-            "status",
-        },
+        exclude=excluded,
     )
     encoded = json.dumps(
         _semantic_value(payload),

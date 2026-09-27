@@ -237,6 +237,8 @@ def parse_raw_output(data: bytes) -> RawMetricOutput:
             reported["objective"] = generated.objective
         return RawMetricOutput(
             variables=generated.variable_values,
+            predictions=generated.predictions,
+            series=generated.series,
             reported=reported,
         )
     return RawMetricOutput.model_validate(payload)

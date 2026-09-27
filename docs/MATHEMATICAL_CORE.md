@@ -21,6 +21,10 @@ Objectives, constraints, and equations use a bounded recursive `MathExpression`
 tree with constant, symbol, add, subtract, multiply, divide, power, and negate
 nodes. Deterministic code walks this tree for reference discovery, evaluation,
 linearization, unit composition, feasibility checking, and solver translation.
+The deterministic SciPy nonlinear runtime resolves uniquely defined, acyclic
+derived scalar equations at each candidate point before evaluating objectives
+and constraints, then reports those derived values with the decision values for
+independent verification. Undefined or non-finite values remain failures.
 There is no `eval`, regex reconstruction from LaTeX, or general-purpose CAS.
 LaTeX remains explanatory equation metadata, not executable truth.
 
@@ -63,8 +67,15 @@ understanding/profiles, and user guidance. It performs one
 the complete machine contract. Deterministic code then binds project/problem,
 the repository-assigned stable `model_id`, next version, selected candidate ID,
 and `READY` status. The minimum route is `FLAGSHIP_XHIGH`, and its `AgentRun`
-records prompt version `4.3.0`, provider/model/reasoning, usage, latency, state
+records the current prompt version, provider/model/reasoning, usage, latency, state
 versions, retries, and Mock status.
+
+When a DATA parameter declares an exact, supported binding to a deterministic
+registered profile but leaves its scalar value empty, trusted construction fills
+the value from that profile before the MODEL gate and records the materialization
+in limitations. A provided but incorrect numeric value is never silently fixed:
+the original bound-scalar gate rejects it. Unknown transforms, stale source-file
+identity, and ambiguous profiles likewise remain unmaterialized and rejected.
 
 Every accepted revision also receives a canonical SHA-256 `model_digest` over
 its executable mathematical representation. Database identity, revision number,
@@ -80,6 +91,15 @@ SOLVE is blocked unless deterministic checks confirm:
 - the selected candidate exists and matches the model;
 - target subproblems and data bindings resolve;
 - decision variables and required optimization objective exist;
+- a scalar optimization objective without time-indexed state is not mislabeled
+  `TIME_SERIES`, which would leave later independent parameter experiments
+  without a compatible deterministic solver;
+- any decision-independent scalar hard constraint provable from sourced
+  parameters and defining equations is feasible before code generation;
+- a literal squared calibration residual does not reuse the same DATA target
+  symbol in its predictor branch (including a uniquely defined derived
+  objective); this is only a narrow structural leakage proof, not a substitute
+  for full causal or holdout review;
 - symbol, parameter-source, and equation registries are valid;
 - objective/constraint equation references exist;
 - no explicit dimensional failure exists;

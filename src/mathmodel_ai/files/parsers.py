@@ -1,4 +1,3 @@
-import csv
 import io
 import json
 from dataclasses import dataclass, field
@@ -17,6 +16,7 @@ from pypdf import PdfReader
 from pypdf import __version__ as pypdf_version
 
 from mathmodel_ai.core.errors import FileParseError
+from mathmodel_ai.files.validation import csv_delimiter
 from mathmodel_ai.schemas.files import ArtifactKind, FileKind, ImageMetadata, TextExtraction
 
 
@@ -80,10 +80,10 @@ class ParserRegistry:
     def _parse_csv(self, path: Path, *, name: str) -> ParserOutput:
         text = self._decoded_text(path)
         try:
-            dialect = csv.Sniffer().sniff(text[:64_000], delimiters=",;\t|")
+            delimiter = csv_delimiter(text)
             frame = pl.read_csv(
                 io.StringIO(text),
-                separator=dialect.delimiter,
+                separator=delimiter,
                 try_parse_dates=True,
                 infer_schema_length=10_000,
                 null_values=["", "NA", "N/A", "null", "NULL"],

@@ -1,3 +1,4 @@
+import hashlib
 import io
 import os
 import stat
@@ -11,8 +12,9 @@ import pytest
 from mathmodel_ai.core.errors import SandboxError
 from mathmodel_ai.data.quality_gates import execution_quality_gate
 from mathmodel_ai.files.storage import LocalFileStore
-from mathmodel_ai.sandbox.executor import SandboxExecutor, SecretMount
+from mathmodel_ai.sandbox.executor import SandboxExecutor, SecretMount, sandbox_input_manifest
 from mathmodel_ai.schemas.execution import ExecutionStatus, SandboxLimits
+from mathmodel_ai.schemas.files import FileKind, RegisteredFile
 from mathmodel_ai.schemas.quality import QualityGateStatus
 
 
@@ -26,6 +28,54 @@ def limits(*, timeout: float = 2) -> SandboxLimits:
         max_artifacts=5,
         max_artifact_bytes=4096,
     )
+
+
+def test_registered_input_manifest_matches_sandbox_mount_and_checks_digest(tmp_path: Path) -> None:
+    store = LocalFileStore(tmp_path / "store")
+    project_id, problem_id, file_id = uuid4(), uuid4(), uuid4()
+    content = b"value\n42\n"
+    stored = store.store_artifact(
+        content, project_id=project_id, artifact_id=uuid4(), filename="fixture.csv"
+    )
+    registered = RegisteredFile(
+        file_id=file_id,
+        project_id=project_id,
+        problem_id=problem_id,
+        original_name="observations.csv",
+        safe_name="observations.csv",
+        extension=".csv",
+        kind=FileKind.CSV,
+        detected_mime_type="text/csv",
+        size_bytes=len(content),
+        sha256=hashlib.sha256(content).hexdigest(),
+        storage_key=stored.storage_key,
+    )
+    manifest = sandbox_input_manifest([registered])
+    assert manifest == [
+        {
+            "original_name": "observations.csv",
+            "path": f"/workspace/inputs/0001-{file_id.hex}.csv",
+            "sha256": registered.sha256,
+        }
+    ]
+    executor = SandboxExecutor(
+        store=store,
+        root=tmp_path / "runs",
+        image="sandbox:test",
+        limits=limits(),
+        runner=SuccessfulRunner(),
+    )
+    outcome = executor.execute(
+        "print('ok')", project_id=project_id, problem_id=problem_id, input_files=[registered]
+    )
+    assert outcome.record.environment["input_file_count"] == "1"
+    with pytest.raises(SandboxError, match="does not match its stored digest"):
+        executor.execute(
+            "print('ok')",
+            project_id=project_id,
+            problem_id=problem_id,
+            input_files=[registered.model_copy(update={"sha256": "a" * 64})],
+        )
 
 
 class SuccessfulRunner:

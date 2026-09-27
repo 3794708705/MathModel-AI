@@ -79,13 +79,14 @@ enabled provider/model
 credential configured
 provider health READY and outside cooldown
 non-Mock live identity
-minimum quality tier
 current required capabilities
 context and trust policy
 ```
 
 Only eligible models are scored for quality fit, trust, cost sensitivity, and
-preference. Explicit model preference never overrides a hard filter. An Agent
+preference. Quality tier is advisory, never a hard minimum; even critical
+agents may use a lower-tier model if its live probe proves required capabilities.
+Explicit model preference never overrides a hard filter. An Agent
 policy restricts fallback to its configured ordered model list and records the
 reason when a backup is used. Routing preview performs this calculation without
 calling a provider.

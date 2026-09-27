@@ -9,8 +9,10 @@ from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.schemas.execution import ExecutionOrigin, ExecutionStatus
 from mathmodel_ai.schemas.mathematical import MathematicalModel, ParameterDefinition
 from mathmodel_ai.schemas.program import GeneratedProgramStatus, GeneratedSourceFile
+from mathmodel_ai.schemas.solver import SolverName
 from mathmodel_ai.schemas.verification import ExperimentRun, ParameterPerturbation
 from mathmodel_ai.solvers.base import SolverExecution
+from mathmodel_ai.verification.scalar_response import evaluate_scalar_responses
 from mathmodel_ai.verification.validation import IndependentValidator
 
 
@@ -175,6 +177,32 @@ class ExperimentIntegrityVerifier:
                 mathematical_model_digest(payload_model),
                 scenario_digest,
             )
+        if record.solver is SolverName.SCALAR_RESPONSE:
+            payload = self._payload_data(program.entrypoint, program.files, errors)
+            if payload is None or payload.get("backend") != "scalar_response":
+                errors.append("RESPONSE_BACKEND_MISMATCH")
+            else:
+                options = payload.get("options")
+                fixed = options.get("initial_point") if isinstance(options, dict) else None
+                if fixed != record.fixed_decision_values:
+                    errors.append("RESPONSE_FIXED_POINT_MISMATCH")
+            try:
+                expected = evaluate_scalar_responses(scenario, record.fixed_decision_values)
+            except ValueError as exc:
+                errors.append(f"RESPONSE_NOT_EVALUABLE:{exc}")
+            else:
+                expected_values = {**record.fixed_decision_values, **expected}
+                if set(solver_result.variable_values) != set(expected_values):
+                    errors.append("RESPONSE_OUTPUT_SET_MISMATCH")
+                for symbol, value in expected_values.items():
+                    self._require_float_equal(
+                        errors,
+                        f"RESPONSE_OUTPUT_MISMATCH:{symbol}",
+                        solver_result.variable_values.get(symbol),
+                        value,
+                    )
+                if record.objective_value is not None or solver_result.objective_value is not None:
+                    errors.append("RESPONSE_OBJECTIVE_FABRICATED")
         return ExperimentIntegrityAudit(valid=not errors, errors=list(dict.fromkeys(errors)))
 
     @staticmethod
@@ -220,6 +248,21 @@ class ExperimentIntegrityVerifier:
         files: list[GeneratedSourceFile],
         errors: list[str],
     ) -> MathematicalModel | None:
+        payload = ExperimentIntegrityVerifier._payload_data(entrypoint, files, errors)
+        if payload is None:
+            return None
+        try:
+            return MathematicalModel.model_validate(payload["model"])
+        except (KeyError, TypeError, ValueError):
+            errors.append("DETERMINISTIC_PAYLOAD_INVALID")
+            return None
+
+    @staticmethod
+    def _payload_data(
+        entrypoint: str,
+        files: list[GeneratedSourceFile],
+        errors: list[str],
+    ) -> dict[str, object] | None:
         source = next((item.content for item in files if item.path == entrypoint), None)
         if source is None:
             errors.append("EXECUTED_ENTRYPOINT_MISSING")
@@ -255,8 +298,10 @@ class ExperimentIntegrityVerifier:
             return None
         try:
             payload = json.loads(payload_text)
-            return MathematicalModel.model_validate(payload["model"])
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            if not isinstance(payload, dict):
+                raise ValueError("payload must be an object")
+            return payload
+        except (TypeError, ValueError, json.JSONDecodeError):
             errors.append("DETERMINISTIC_PAYLOAD_INVALID")
             return None
 

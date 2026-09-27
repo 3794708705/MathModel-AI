@@ -361,6 +361,38 @@ def test_renderer_produces_tex_and_verified_bibtex(tmp_path: Path) -> None:
         BibTeXRenderer().render(CitationRegistry([unverified]))
 
 
+def test_renderer_breaks_long_tables_across_pages_and_renders_repeats_as_refs(
+    tmp_path: Path,
+) -> None:
+    evidence, _, _, _, table, _ = _assets(tmp_path)
+    claim = numeric_claim(evidence)
+    long_table = table.model_copy(
+        update={"rows": [[f"symbol_{index}", "A descriptive meaning"] for index in range(20)]}
+    )
+    blocks = [
+        PaperBlock(
+            block_id=f"BLOCK-table-{index}",
+            block_type=PaperBlockType.TABLE,
+            table_ref=table.table_id,
+        )
+        for index in range(2)
+    ]
+    paper = paper_ir(evidence, claim, blocks=blocks, table_refs=[table.table_id])
+    rendered = LaTeXRenderer().render(
+        paper=paper,
+        claims=[claim],
+        equations=EquationRegistry.from_model(lp_model()),
+        figures=FigureRegistry([]),
+        tables=TableRegistry([long_table]),
+        citations=CitationRegistry([]),
+    )
+    assert rendered.tex.count(r"\begin{longtable}") == 1
+    assert rendered.tex.count(r"\caption{Verified result.}") == 1
+    assert rendered.tex.count(r"Table~\ref{TAB-001}") == 1
+    assert r"\endfirsthead" in rendered.tex
+    assert r"\endhead" in rendered.tex
+
+
 def test_renderer_handles_structured_prose_lists_and_nonanonymous_profile() -> None:
     evidence = result_evidence()
     claim = numeric_claim(evidence)
@@ -573,6 +605,39 @@ async def test_crossref_adapter_rejects_malformed_or_missing_records() -> None:
     assert await source.resolve("missing", uuid4()) is None
     assert CrossrefLiteratureSource._record({"title": ["Incomplete"]}, uuid4()) is None
     await source.aclose()
+
+
+@pytest.mark.asyncio
+async def test_crossref_adapter_retries_bounded_rate_limit(monkeypatch) -> None:
+    calls = 0
+    delays = []
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(429, headers={"Retry-After": "3"})
+        return httpx.Response(200, json={"message": {"items": []}})
+
+    async def record_delay(seconds: float) -> None:
+        delays.append(seconds)
+
+    monkeypatch.setattr("mathmodel_ai.paper.literature.asyncio.sleep", record_delay)
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    source = CrossrefLiteratureSource(client=client)
+    records = await source.search(
+        LiteratureSearchNeed(
+            need_id="LITNEED-rate",
+            need_type=LiteratureNeedType.THEORY,
+            query="population dynamics",
+            purpose="rate limit regression",
+        ),
+        uuid4(),
+    )
+    assert records == []
+    assert calls == 2
+    assert delays == [3.0]
+    await client.aclose()
 
 
 def test_crossref_books_use_retrieved_publisher_and_published_year() -> None:

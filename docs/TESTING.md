@@ -56,7 +56,11 @@ canonicalization, feasibility/objective recomputation, immutable model digests,
 and content-integrity evidence. Tamper regression covers objective, status, key
 outputs, reciprocal result reference, model version/digest, program/executed
 hashes, exit code, and Mock execution; every case must restore to valid. Tests
-marked `solver` use the Phase 4 image and run real SciPy
+also cover objectives defined by uniquely determined scalar equations: generated
+and independent checks recompute those values from decision variables, accept a
+matching result, and reject a reported derived value or objective that disagrees.
+Missing or ambiguous defining equations remain unevaluable. Tests marked
+`solver` use the Phase 4 image and run real SciPy
 LP, MILP, NLP, infeasible, unbounded, and OR-Tools CP-SAT cases. The complete E2E
 uses Mock only for structured reasoning/MathModeler fixtures; its SciPy/HiGHS
 numerical result and `ExecutionRecord` are real and `is_mock=false`.

@@ -4,6 +4,8 @@
 >
 > **当前结论：Provider/模型注册与路由模块已经 `READY`，Phase 1–7 的工程主链已经实现并通过其约束范围内的测试；真实竞赛 Benchmark 和整个项目仍为 `NOT_READY`。本项目目前是研究与工程原型，不是“自动获奖器”，也不能替代参赛者、指导教师、评审人员或领域专家。**
 
+> **WIP 分支说明：**本分支公开尚未完成的 Case A/C 科学验证工作与一份 C 题中文独立复算稿，不表示自动 Benchmark 或正式竞赛提交通过；失败运行记录保留在本地 `var/`，不随仓库发布。
+
 ## 中文项目简介
 
 MathModel AI 想解决的不是“让大模型一次生成一篇看起来像论文的答案”，而是把数学建模过程拆成可检查、可复算、可追责的工程链路：从题目理解、数据处理、模型选择、数学表达、求解和验证，到敏感性/鲁棒性分析、红队审查、论文证据绑定、PDF 生成和最终提交包冻结。系统要求重要结论能够回溯到确切的题目版本、数据、模型、方程、程序、求解记录、验证记录和文件哈希。
@@ -39,11 +41,12 @@ MathModel AI 想解决的不是“让大模型一次生成一篇看起来像论�
 | Phase 8.1 Provider Registry | **`READY`** | Provider/Model 注册、只写密钥、能力 Probe、端点信任、Agent 独立路由和历史身份绑定已通过验收。|
 | Phase 8.2 Web 控制台 | **可运行** | React 控制台可管理 Provider、模型、路由、项目、Benchmark 历史和系统状态；业务规则仍以后端为准。|
 | 真实 DeepSeek 接入 | **协议与 Provider smoke 已通过** | 证明真实 Provider 调用和生成程序链路可工作，不代表整个竞赛流程已通过。|
-| COMAP MCM 2024 Case A | **部分运行，最终 `NOT_READY`** | 已保留 8 次真实 Provider 调用和 2 次真实 Docker 生成执行；获得 FEASIBLE 结果并通过 SOLVE gate，但动态/场景独立验证仍 `NOT_EVALUABLE`，因此没有 verified result、论文、PDF 或提交包。|
-| COMAP MCM 2024 Case B/C | **尚未恢复正式运行** | 官方资源和结构检查已完成，但不能据此声称完成了真实建模。|
+| COMAP MCM 2024 Case A | **科学链局部通过，整体 `NOT_READY`** | 新的真实求解与独立复算证据已落盘；Paper v5 达到 `READY_FOR_FINAL_JURY`，但最终评审、完整 AI 使用报告、真实队伍控制号和正式提交仍未通过。历史失败尝试没有被改写。|
+| COMAP MCM 2024 Case C | **真实运行，验证 `FAIL`** | 使用官方题面、官方逐分数据和真实 DeepSeek Flash 多轮诊断；最新自动运行仍缺数据派生结果和留出验证，不能称为 verified result。另有[中文独立复算稿](output/pdf/mcm2024c_chinese_independent_study.pdf)及[复现说明](analysis/mcm2024c/README.md)，明确不是自动流水线 PASS 或正式提交。|
+| COMAP MCM 2024 Case B | **未运行** | 不以其他案例或结构检查结果代替真实运行证据。|
 | 全项目竞赛就绪 | **`NOT_READY`** | 在真实多案例、独立评估、论文与提交包门全部通过前，不应宣称可无人值守参赛。|
 
-最近一次已确认的 GitHub Linux CI（提交 `854194e`）结果为：后端 639 tests passed、8 个环境条件 skip、86.82% coverage，静态检查、数据库迁移和三个沙箱镜像构建均通过。见 [成功运行记录](https://github.com/3794708705/MathModel-AI/actions/runs/35696926010)。该次运行尚未包含前端检查；当前工作流另设前端任务，检查接口类型同步、ESLint、组件测试和 production build。测试通过只证明软件契约，不等于真实建模质量通过。详细边界见 [最终验收状态](docs/FINAL_PROJECT_ACCEPTANCE.md)。
+本 WIP 分支的[已完成 CI 运行](https://github.com/3794708705/MathModel-AI/actions/runs/35964571140)通过了后端、前端、数据库迁移与三个沙箱镜像构建，包含新加入的逐分数组契约。当前本地后端全量为 695 通过、12 条件跳过，ruff 与 strict mypy 通过。测试通过只证明软件契约，不等于真实建模质量通过。C 题中文独立复算稿现为 23 页，仍不是自动流水线 PASS。详细边界见 [当前目标](GOAL.md)。
 
 ## 哪里可以运行
 

@@ -24,6 +24,7 @@ from mathmodel_ai.schemas.independent_verification import (
 )
 from mathmodel_ai.verification.independent_repository import IndependentVerificationRepository
 from mathmodel_ai.verification.metric_recompute import content_digest, recompute
+from mathmodel_ai.verification.observation_source import verify_registered_csv_observations
 from mathmodel_ai.verification.replay_integrity import audit_replay
 from mathmodel_ai.verification.scenario_replay import ScenarioReplayer, parse_raw_output
 
@@ -88,11 +89,16 @@ class IndependentVerificationService:
         if len(candidates) != 1:
             raise ValueError("FORMAL_RAW_OUTPUT_ARTIFACT_IS_NOT_UNIQUE")
         observation = None
-        if policy.observation_sha256 is not None:
+        observation_digest = (
+            policy.csv_observation.source_csv_sha256
+            if policy.csv_observation is not None
+            else policy.observation_sha256
+        )
+        if observation_digest is not None:
             matches = [
                 item
                 for item in self._data.list_files(attempt.project_id)
-                if item.sha256 == policy.observation_sha256
+                if item.sha256 == observation_digest
             ]
             if len(matches) != 1:
                 raise ValueError("REVIEWED_OBSERVATION_FILE_IS_NOT_UNIQUE")
@@ -105,6 +111,7 @@ class IndependentVerificationService:
             source_sha256=candidates[0].sha256,
             observation_file_id=observation.file_id if observation else None,
             observation_sha256=observation.sha256 if observation else None,
+            csv_observation=policy.csv_observation,
             metrics=policy.metrics,
             scenarios=policy.scenarios,
             scientific_scope=policy.scientific_scope,
@@ -120,6 +127,7 @@ class IndependentVerificationService:
             plan.metrics != policy.metrics
             or plan.scenarios != policy.scenarios
             or plan.scientific_scope != policy.scientific_scope
+            or not policy.matches_observation(plan)
         ):
             raise ValueError("PLAN_DOES_NOT_COVER_EXACT_REVIEWED_REQUIREMENTS")
 
@@ -191,7 +199,19 @@ class IndependentVerificationService:
                 or hashlib.sha256(data).hexdigest() != plan.observation_sha256
             ):
                 raise ValueError("OBSERVATION_FILE_HASH_MISMATCH")
-            observations = ObservationData.model_validate_json(data).observations
+            if plan.csv_observation is not None:
+                if file.extension != ".csv":
+                    raise ValueError("REVIEWED_OBSERVATION_SOURCE_NOT_CSV")
+                observations = verify_registered_csv_observations(
+                    plan.csv_observation, self._data.list_files(attempt.project_id), self._store
+                )
+            else:
+                observation_data = ObservationData.model_validate_json(data)
+                observations = observation_data.observations
+                if observation_data.source_csv_sha256 is not None:
+                    observations = verify_registered_csv_observations(
+                        observation_data, self._data.list_files(attempt.project_id), self._store
+                    )
         return context, raw, observations
 
     def recompute(self, attempt_id: UUID) -> IndependentVerificationView:

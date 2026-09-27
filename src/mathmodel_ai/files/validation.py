@@ -55,6 +55,34 @@ _SPECS: dict[str, FileTypeSpec] = {
 }
 
 
+def csv_delimiter(text: str) -> str:
+    """Select a delimiter only when strict CSV parsing gives a consistent table."""
+    candidates: list[tuple[int, str]] = []
+    for delimiter in (",", ";", "\t", "|"):
+        try:
+            rows = [
+                row
+                for row in csv.reader(
+                    io.StringIO(text, newline=""), delimiter=delimiter, strict=True
+                )
+                if row
+            ]
+        except csv.Error:
+            continue
+        if not rows or len(rows[0]) < 2:
+            continue
+        width = len(rows[0])
+        if all(len(row) == width for row in rows):
+            candidates.append((width, delimiter))
+    if not candidates:
+        raise ValueError("CSV has no consistent multi-column delimiter")
+    maximum = max(width for width, _ in candidates)
+    winners = [delimiter for width, delimiter in candidates if width == maximum]
+    if len(winners) != 1:
+        raise ValueError("CSV delimiter is ambiguous")
+    return winners[0]
+
+
 class FileValidator:
     def __init__(
         self,
@@ -199,11 +227,12 @@ class FileValidator:
         except UnicodeError as exc:
             raise FileValidationError("text decoding failed") from exc
         if require_csv:
-            sample = text[:64_000]
             try:
-                dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
-                rows = list(csv.reader(io.StringIO(sample), dialect))
-            except csv.Error as exc:
+                delimiter = csv_delimiter(text)
+                rows = list(
+                    csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, strict=True)
+                )
+            except (csv.Error, ValueError) as exc:
                 raise FileValidationError("CSV dialect could not be validated") from exc
             if not rows or max((len(row) for row in rows), default=0) < 1:
                 raise FileValidationError("CSV contains no readable rows")

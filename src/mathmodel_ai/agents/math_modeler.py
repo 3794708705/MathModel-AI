@@ -1,7 +1,13 @@
 import json
+import re
 
 from mathmodel_ai.agents.base import AgentExecution, BaseAgent
 from mathmodel_ai.core.errors import QualityGateError
+from mathmodel_ai.mathematical.expressions import referenced_symbols
+from mathmodel_ai.mathematical.normalization import (
+    canonicalize_scalar_optimization_family,
+    materialize_data_bound_scalars,
+)
 from mathmodel_ai.mathematical.quality_gates import model_quality_gate
 from mathmodel_ai.providers.base import BaseModelProvider
 from mathmodel_ai.providers.factory import ProviderRegistry
@@ -10,13 +16,139 @@ from mathmodel_ai.reasoning.prompts import PromptRegistry
 from mathmodel_ai.routing.router import ModelRouter
 from mathmodel_ai.routing.schemas import RouteDecision
 from mathmodel_ai.schemas.mathematical import (
+    ConstraintRelation,
+    ExpressionKind,
     MathematicalModel,
     MathematicalModelDraft,
     MathematicalModelStatus,
+    MathExpression,
     MathModelerInput,
+    VariableDomain,
 )
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.quality import QualityGateStatus
+
+_VALIDATE_STAGE_CONTRACTS = frozenset(
+    {
+        "recompute variable bounds",
+        "recompute every constraint",
+        "recompute variable bounds and constraints",
+        "recalculate objective metric",
+        "verify evidence trace",
+    }
+)
+
+
+def _single_residual_with_multiple_free_decisions(model: MathematicalModel) -> bool:
+    """A single scalar residual cannot identify multiple free causal coefficients."""
+    if model.objective is None:
+        return False
+    definitions: dict[str, MathExpression] = {}
+    for variable in model.derived_variables:
+        matches = [
+            equation.rhs
+            for equation in model.equations
+            if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol == variable.symbol
+        ]
+        if len(matches) == 1:
+            definitions[variable.symbol] = matches[0]
+    objective = next(
+        (
+            equation.rhs
+            for equation in model.equations
+            if equation.equation_id == model.objective.equation_ref
+        ),
+        model.objective.expression,
+    )
+    residual: MathExpression | None = None
+    if (
+        objective.kind is ExpressionKind.MULTIPLY
+        and len(objective.operands) == 2
+        and objective.operands[0] == objective.operands[1]
+    ):
+        residual = objective.operands[0]
+    elif (
+        objective.kind is ExpressionKind.POWER
+        and len(objective.operands) == 2
+        and objective.operands[1].kind is ExpressionKind.CONSTANT
+        and objective.operands[1].value == 2
+    ):
+        residual = objective.operands[0]
+    if residual is None or residual.kind is not ExpressionKind.SUBTRACT:
+        return False
+    free = {
+        item.symbol
+        for item in model.decision_variables
+        if not item.index_sets
+        and item.domain in {VariableDomain.CONTINUOUS, VariableDomain.NONNEGATIVE_CONTINUOUS}
+        and (
+            item.lower_bound is None
+            or item.upper_bound is None
+            or item.lower_bound < item.upper_bound
+        )
+    }
+    if len(free) < 2:
+        return False
+
+    def dependencies(expression: MathExpression, visited: frozenset[str] = frozenset()) -> set[str]:
+        result: set[str] = set()
+        for symbol in referenced_symbols(expression):
+            if symbol in free:
+                result.add(symbol)
+            elif symbol in definitions and symbol not in visited:
+                result.update(dependencies(definitions[symbol], visited | {symbol}))
+        return result
+
+    # Independent equality constraints may identify additional coefficients;
+    # inequality probability bounds alone cannot supply missing observations.
+    if any(
+        item.relation is ConstraintRelation.EQ
+        and (dependencies(item.expression) or dependencies(item.rhs))
+        for item in [*model.constraints, *model.initial_conditions, *model.boundary_conditions]
+    ):
+        return False
+    return len(set().union(*(dependencies(item) for item in residual.operands))) >= 2
+
+
+def reject_unverifiable_causal_requirements(model: MathematicalModel, guidance: list[str]) -> None:
+    """Fail before solving when a causal model declares unverifiable checks."""
+    protocol = next(
+        (item for item in guidance if item.startswith("CAUSAL_HOLDOUT_PROTOCOL:")), None
+    )
+    if protocol is None:
+        return
+    allowed = set(re.findall(r"causal_science:[a-z_]+", protocol))
+    allowed.update(_VALIDATE_STAGE_CONTRACTS)
+    unknown = [
+        requirement
+        for requirement in model.validation_requirements
+        if " ".join(requirement.casefold().split()) not in allowed
+    ]
+    if unknown:
+        raise QualityGateError(
+            "MODEL_GATE_FAIL:UNVERIFIABLE_VALIDATION_REQUIREMENT: "
+            + " | ".join(item[:180] for item in unknown)
+        )
+    if _single_residual_with_multiple_free_decisions(model):
+        raise QualityGateError("MODEL_GATE_FAIL:CAUSAL_SINGLE_RESIDUAL_UNDERIDENTIFIED")
+    # Automatic causal runs have no pre-reviewed perturbation replay. An
+    # objective-free, stateless model therefore enters the formal scalar
+    # response experiment path, which must recompute every declared response.
+    if model.objective is None and not model.state_variables:
+        if not model.derived_variables or any(
+            item.index_sets for item in [*model.decision_variables, *model.derived_variables]
+        ):
+            raise QualityGateError("MODEL_GATE_FAIL:CAUSAL_SCALAR_RESPONSE_UNSUPPORTED_STRUCTURE")
+        definitions = {item.symbol: 0 for item in model.derived_variables}
+        for equation in model.equations:
+            if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol in definitions:
+                assert equation.lhs.symbol is not None
+                definitions[equation.lhs.symbol] += 1
+        incomplete = sorted(symbol for symbol, count in definitions.items() if count != 1)
+        if incomplete:
+            raise QualityGateError(
+                "MODEL_GATE_FAIL:CAUSAL_SCALAR_RESPONSE_INCOMPLETE:" + ",".join(incomplete)
+            )
 
 
 class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):
@@ -49,7 +181,7 @@ class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):
     ) -> MathModelerInput:
         if not previous_errors:
             return input_data
-        feedback = previous_errors[-1][:4096]
+        feedback = " | ".join(dict.fromkeys(error[:1200] for error in previous_errors[-3:]))
         return input_data.model_copy(
             update={
                 "user_guidance": [
@@ -120,6 +252,9 @@ class MathModeler(BaseAgent[MathModelerInput, MathematicalModel]):
             source_selected_model_id=input_data.selected_model.candidate_id,
             status=MathematicalModelStatus.READY,
         )
+        model = canonicalize_scalar_optimization_family(model)
+        model = materialize_data_bound_scalars(model, state)
+        reject_unverifiable_causal_requirements(model, input_data.user_guidance)
         return AgentExecution(
             output=model,
             response=response.response,

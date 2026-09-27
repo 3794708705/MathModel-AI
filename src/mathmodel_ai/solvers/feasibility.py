@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import math
+
 from mathmodel_ai.mathematical.expressions import (
     ExpressionError,
     evaluate_expression,
+    referenced_symbols,
     scalar_parameter_values,
 )
 from mathmodel_ai.schemas.mathematical import (
     ConstraintRelation,
+    ExpressionKind,
     MathematicalModel,
     VariableDomain,
 )
@@ -25,12 +29,48 @@ def check_feasibility(
             tolerance=tolerance,
             message="no candidate variable values were available for feasibility checking",
         )
+    derived = {item.symbol: item for item in model.derived_variables if not item.index_sets}
     values = {
         **scalar_parameter_values([*model.parameters, *model.constants]),
-        **variable_values,
+        **{symbol: value for symbol, value in variable_values.items() if symbol not in derived},
     }
     bound_violations: list[str] = []
     max_violation = 0.0
+    definitions = {
+        symbol: [
+            equation.rhs
+            for equation in model.equations
+            if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol == symbol
+        ]
+        for symbol in derived
+    }
+    pending = {
+        symbol: expressions[0]
+        for symbol, expressions in definitions.items()
+        if len(expressions) == 1
+    }
+    for _ in range(len(pending)):
+        progressed = False
+        for symbol, expression in list(pending.items()):
+            if not referenced_symbols(expression) <= set(values):
+                continue
+            try:
+                resolved = evaluate_expression(expression, values)
+            except ExpressionError:
+                continue
+            if not math.isfinite(resolved):
+                continue
+            reported = variable_values.get(symbol)
+            if reported is not None and not math.isclose(
+                reported, resolved, rel_tol=tolerance, abs_tol=tolerance
+            ):
+                bound_violations.append(f"{derived[symbol].variable_id}:derived_mismatch")
+                max_violation = max(max_violation, abs(reported - resolved))
+            values[symbol] = resolved
+            del pending[symbol]
+            progressed = True
+        if not progressed:
+            break
     for variable in model.decision_variables:
         if variable.symbol not in variable_values:
             bound_violations.append(f"{variable.variable_id}:missing_value")

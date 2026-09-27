@@ -401,6 +401,7 @@ class PaperRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     competition_profile: CompetitionProfile = Field(default_factory=CompetitionProfile)
+    expected_science_hash: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 class PaperRunResponse(BaseModel):

@@ -134,21 +134,40 @@ class FigureAgent:
         y = [float(item) for item in raw_y]
         if any(not math.isfinite(item) for item in x + y):
             raise ArtifactGenerationError("figure values must be finite")
-        width, height, padding = 900, 540, 60
+        width, height = 900, 540
+        left, top, right, bottom = 110, 48, 865, 445
         image = Image.new("RGB", (width, height), "white")
         draw = ImageDraw.Draw(image)
-        draw.rectangle((padding, padding, width - padding, height - padding), outline="black")
+        draw.rectangle((left, top, right, bottom), outline="black")
         min_x, max_x = min(x), max(x)
         min_y, max_y = min(y), max(y)
-        x_span = max(max_x - min_x, 1.0)
-        y_span = max(max_y - min_y, 1.0)
+        x_span = max_x - min_x or 1.0
+        y_span = max_y - min_y
+        if y_span == 0:
+            y_span = max(abs(min_y) * 0.1, 1e-9)
+        y_min = min_y - 0.05 * y_span
+        y_max = max_y + 0.05 * y_span
         points = [
             (
-                padding + (item_x - min_x) / x_span * (width - 2 * padding),
-                height - padding - (item_y - min_y) / y_span * (height - 2 * padding),
+                left + (item_x - min_x) / x_span * (right - left),
+                bottom - (item_y - y_min) / (y_max - y_min) * (bottom - top),
             )
             for item_x, item_y in zip(x, y, strict=True)
         ]
+        for index in range(5):
+            value = y_min + (y_max - y_min) * index / 4
+            position = bottom - (bottom - top) * index / 4
+            draw.line((left - 5, position, left, position), fill="black", width=2)
+            draw.text((8, position - 6), f"{value:.5g}", fill="black")
+        tick_step = max(1, math.ceil(len(x) / 15))
+        for index, (item_x, _) in enumerate(points):
+            if index % tick_step == 0 or index == len(x) - 1:
+                draw.line((item_x, bottom, item_x, bottom + 5), fill="black", width=2)
+                draw.text((item_x - 7, bottom + 10), f"{x[index]:g}", fill="black")
+        x_label = str(data_payload.get("x_label") or "x")
+        y_label = str(data_payload.get("y_label") or "value")
+        draw.text((left, height - 47), x_label[:100], fill="black")
+        draw.text((left, 15), y_label[:100], fill="black")
         draw.line(points, fill="#1f77b4", width=4)
         for point in points:
             draw.ellipse(

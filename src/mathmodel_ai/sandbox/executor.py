@@ -26,6 +26,19 @@ from mathmodel_ai.schemas.execution import (
 )
 from mathmodel_ai.schemas.files import ArtifactKind, ArtifactRecord, RegisteredFile
 
+
+def sandbox_input_manifest(input_files: Sequence[RegisteredFile]) -> list[dict[str, str]]:
+    """Describe the exact read-only paths used when mounting registered inputs."""
+    return [
+        {
+            "original_name": item.original_name,
+            "path": f"/workspace/inputs/{index:04d}-{item.file_id.hex}{item.extension}",
+            "sha256": item.sha256,
+        }
+        for index, item in enumerate(input_files, start=1)
+    ]
+
+
 CommandRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 
 
@@ -126,10 +139,13 @@ class SandboxExecutor:
                 source_path.write_text(content, encoding="utf-8")
             input_directory = workspace / "inputs"
             input_directory.mkdir()
-            for index, item in enumerate(input_files, start=1):
+            for item, manifest_entry in zip(
+                input_files, sandbox_input_manifest(input_files), strict=True
+            ):
                 data = self._store.read_bytes(item.storage_key)
-                input_name = f"{index:04d}-{item.file_id.hex}{item.extension}"
-                (input_directory / input_name).write_bytes(data)
+                if len(data) != item.size_bytes or hashlib.sha256(data).hexdigest() != item.sha256:
+                    raise SandboxError("registered sandbox input does not match its stored digest")
+                (input_directory / Path(manifest_entry["path"]).name).write_bytes(data)
             self._restrict_workspace(workspace, output)
             code_record = self._store_code_artifact(
                 encoded,

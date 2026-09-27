@@ -1,6 +1,8 @@
 import json
 
 from mathmodel_ai.agents.base import AgentExecution, BaseAgent
+from mathmodel_ai.core.errors import ProviderResponseError
+from mathmodel_ai.data.quality_gates import data_column_reference_errors
 from mathmodel_ai.providers.base import BaseModelProvider
 from mathmodel_ai.providers.factory import ProviderRegistry
 from mathmodel_ai.providers.schemas import GenerationRequest, MediaPart, ModelMessage
@@ -30,6 +32,19 @@ class DataAgent(BaseAgent[DataAgentInput, DataUnderstanding]):
     ) -> None:
         super().__init__(router=router, providers=providers, max_retries=max_retries)
         self._prompts = prompts
+
+    def prepare_attempt_input(
+        self,
+        input_data: DataAgentInput,
+        state: ProblemState,
+        previous_errors: tuple[str, ...],
+    ) -> DataAgentInput:
+        del state
+        if not previous_errors:
+            return input_data
+        return input_data.model_copy(
+            update={"user_guidance": [*input_data.user_guidance, previous_errors[-1]]}
+        )
 
     async def execute(
         self,
@@ -83,8 +98,21 @@ class DataAgent(BaseAgent[DataAgentInput, DataUnderstanding]):
             metadata={"agent": self.name, "prompt_version": prompt.version},
         )
         response = await provider.structured_generate(request, DataUnderstanding)
+        output = response.parsed
+        expected_ids = {profile.dataset_id for profile in input_data.profiles}
+        actual_ids = {dataset.dataset_id for dataset in output.datasets}
+        errors = data_column_reference_errors(input_data.profiles, output)
+        if actual_ids != expected_ids:
+            errors.insert(
+                0,
+                "dataset IDs must exactly match supplied profiles; "
+                f"missing={sorted(map(str, expected_ids - actual_ids))}; "
+                f"unknown={sorted(map(str, actual_ids - expected_ids))}",
+            )
+        if errors:
+            raise ProviderResponseError("DATA profile binding failed: " + "; ".join(errors[:8]))
         return AgentExecution(
-            output=response.parsed,
+            output=output,
             response=response.response,
             prompt_version=prompt.version,
         )

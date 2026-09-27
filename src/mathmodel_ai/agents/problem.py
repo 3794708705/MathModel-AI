@@ -35,6 +35,21 @@ class ProblemAgent(BaseAgent[ProblemAgentInput, ProblemAnalysis]):
         self._prompts = prompts
         self._ambiguity_review_threshold = ambiguity_review_threshold
 
+    def prepare_attempt_input(
+        self,
+        input_data: ProblemAgentInput,
+        state: ProblemState,
+        previous_errors: tuple[str, ...],
+    ) -> ProblemAgentInput:
+        del state
+        if not previous_errors:
+            return input_data
+        return input_data.model_copy(
+            update={
+                "repair_feedback": [*input_data.repair_feedback[:2], previous_errors[-1][:4096]]
+            }
+        )
+
     async def execute(
         self,
         input_data: ProblemAgentInput,
@@ -55,6 +70,7 @@ class ProblemAgent(BaseAgent[ProblemAgentInput, ProblemAnalysis]):
                         title=input_data.title,
                         competition_context=input_data.competition_context or "not provided",
                         user_notes=json.dumps(input_data.optional_user_notes, ensure_ascii=False),
+                        repair_feedback=json.dumps(input_data.repair_feedback, ensure_ascii=False),
                         raw_problem=input_data.raw_problem,
                     ),
                 ),

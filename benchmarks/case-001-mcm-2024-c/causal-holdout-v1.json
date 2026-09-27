@@ -1,0 +1,21 @@
+{
+  "version": "1",
+  "resource_id": "RESOURCE-C-WIMBLEDON",
+  "problem_sha256": "08245640e218391d199f1a240a05f1872b1dcd9e47d8740801966e22bca8e3bf",
+  "source_sha256": "b1788d0ea169b65629b0e9fb0f91d007507b306e404507bbf90bd5f700a3c229",
+  "group_column": "match_id",
+  "condition_column": "server",
+  "outcome_column": "point_victor",
+  "positive_value": "1",
+  "negative_value": "2",
+  "history_window": 8,
+  "fraction": 0.2,
+  "salt": "causal-protocol-v1",
+  "required_scientific_checks": [
+    "heldout_prediction",
+    "calibration_assessment",
+    "match_flow",
+    "randomness_test",
+    "swing_prediction"
+  ]
+}

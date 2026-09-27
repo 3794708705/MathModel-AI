@@ -56,6 +56,18 @@ class IndependentVerificationRepository:
                 raise ValueError("independent plan integrity failure")
             return plan, row.requirements_digest
 
+    def get_by_result(self, result_id: UUID) -> VerificationPlan:
+        """Resolve an immutable reviewed plan without guessing its benchmark attempt."""
+        with session_scope(self._factory) as session:
+            rows = session.scalars(select(Plan).where(Plan.result_id == result_id)).all()
+            if len(rows) != 1:
+                raise ValueError("reviewed result requires exactly one independent plan")
+            attempt_id = rows[0].attempt_id
+        plan, _ = self.get(attempt_id)
+        if plan.result_id != result_id:
+            raise ValueError("independent plan changed result identity")
+        return plan
+
     def claim(self, plan_id: UUID, operation: str) -> UUID | None:
         job_id = uuid4()
         try:

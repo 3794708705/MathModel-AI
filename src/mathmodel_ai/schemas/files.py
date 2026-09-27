@@ -29,6 +29,7 @@ class ArtifactKind(StrEnum):
     PDF_PAGE_IMAGE = "pdf_page_image"
     SANDBOX_OUTPUT = "sandbox_output"
     GENERATED_CODE = "generated_code"
+    VERIFICATION_TRACE = "verification_trace"
 
 
 class RegisteredFile(BaseModel):

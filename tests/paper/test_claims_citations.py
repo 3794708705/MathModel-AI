@@ -2,12 +2,14 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from mathmodel_ai.paper.claims import (
     ClaimEvidenceGraph,
     ClaimEvidenceValidator,
     NumberConsistencyValidator,
     NumericClaimValidator,
+    PaperNumericFormattingPolicy,
     resolve_source_field,
 )
 from mathmodel_ai.paper.hashing import sha256_json
@@ -32,6 +34,7 @@ from mathmodel_ai.schemas.paper import (
     EvidenceVerificationStatus,
     LiteratureNeedType,
     LiteratureSearchNeed,
+    NumericClaimValue,
     ReferenceAccessStatus,
     ReferenceMetadataOrigin,
     ReferenceMetadataStatus,
@@ -368,6 +371,64 @@ def test_comparison_claim_checks_both_deterministic_evidence_fields() -> None:
             )
         )
     assert NumericClaimValidator().validate(claim, graph.evidence_for(claim.claim_id)) == []
+
+
+def test_comparison_claim_parses_typed_value_from_provider_json() -> None:
+    raw = numeric_claim(result_evidence()).model_dump(mode="json")
+    raw["claim_type"] = "COMPARISON"
+    raw["structured_value"] = {
+        "baseline_value": 40,
+        "verified_value": 30,
+        "percentage_change": -25,
+        "direction": "DECREASE",
+        "baseline_source_field": "baseline",
+        "verified_source_field": "verified",
+    }
+    parsed = Claim.model_validate(raw)
+    assert isinstance(parsed.structured_value, ComparisonClaimValue)
+    raw["structured_value"]["percentage_change"] = -20
+    with pytest.raises(ValidationError, match="deterministically calculated"):
+        Claim.model_validate(raw)
+
+
+def test_numeric_text_accepts_proven_synonyms_and_scientific_notation() -> None:
+    evidence = result_evidence()
+    base = numeric_claim(evidence)
+    comparison = ComparisonClaimValue(
+        baseline_value=0.2897727272263358,
+        verified_value=0.4673295454545455,
+        percentage_change=61.27450982974101,
+        direction=ComparisonDirection.INCREASE,
+        baseline_source_field="reviewed_metric_values.fixed_high_resource_J_final",
+        verified_source_field="reviewed_metric_values.adaptive_high_resource_J_final",
+    )
+    claim = base.model_copy(
+        update={
+            "claim_type": ClaimType.COMPARISON,
+            "text": "Adaptive abundance exceeds the comparator by 61.3%.",
+            "structured_value": comparison,
+        }
+    )
+    policy = PaperNumericFormattingPolicy()
+    assert policy.text_matches(claim)
+    assert not policy.text_matches(
+        claim.model_copy(update={"text": "Adaptive abundance falls below the comparator by 61.3%."})
+    )
+
+    numeric = base.model_copy(
+        update={
+            "text": "The residual is 6.757644837709665e-16.",
+            "structured_value": NumericClaimValue(
+                value=6.757644837709665e-16,
+                metric_name="equilibrium residual squared",
+                source_field="reviewed_metric_values.equilibrium_residual_sq",
+            ),
+        }
+    )
+    assert policy.text_matches(numeric)
+    assert not policy.text_matches(
+        numeric.model_copy(update={"text": "The residual is 9.757644837709665e-16."})
+    )
 
 
 def test_unverified_evidence_status_and_claim_status_are_deterministic() -> None:

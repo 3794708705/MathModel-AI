@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import math
 import re
+import sys
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import ValidationError
@@ -10,10 +12,15 @@ from pydantic import ValidationError
 from mathmodel_ai.core.errors import DependencyUnavailableError, SandboxError
 from mathmodel_ai.files.storage import FileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
-from mathmodel_ai.mathematical.expressions import evaluate_expression, scalar_parameter_values
+from mathmodel_ai.mathematical.expressions import (
+    ExpressionError,
+    evaluate_expression,
+    scalar_parameter_values,
+)
 from mathmodel_ai.sandbox.executor import SandboxExecutor
 from mathmodel_ai.schemas.execution import ExecutionStatus
-from mathmodel_ai.schemas.mathematical import MathematicalModel
+from mathmodel_ai.schemas.files import RegisteredFile
+from mathmodel_ai.schemas.mathematical import ExpressionKind, MathematicalModel
 from mathmodel_ai.schemas.program import (
     GeneratedProgram,
     GeneratedProgramStatus,
@@ -56,6 +63,7 @@ class GeneratedProgramExecutor:
         program: GeneratedProgram,
         model: MathematicalModel,
         options: SolverOptions,
+        input_files: Sequence[RegisteredFile] = (),
     ) -> SolverExecution:
         self._validate(program, model)
         entrypoint = self._entrypoint(program)
@@ -71,6 +79,7 @@ class GeneratedProgramExecutor:
             generated_program_id=program.program_id,
             entrypoint=program.entrypoint,
             source_files=supporting,
+            input_files=input_files,
         )
         finalized_files = [
             item.model_copy(
@@ -167,12 +176,18 @@ class GeneratedProgramExecutor:
             raise SandboxError("generated program references a different mathematical model")
         if program.model_digest != mathematical_model_digest(model):
             raise SandboxError("generated program model_digest is not canonical for its model")
-        unavailable = [item for item in program.dependencies if item not in _APPROVED_DEPENDENCIES]
+        unavailable = [
+            item
+            for item in program.dependencies
+            if item not in sys.stdlib_module_names and item not in _APPROVED_DEPENDENCIES
+        ]
         if unavailable:
             raise DependencyUnavailableError(
                 "DEPENDENCY_UNAVAILABLE: " + ", ".join(sorted(unavailable))
             )
         for dependency in program.dependencies:
+            if dependency in sys.stdlib_module_names:
+                continue
             module = _APPROVED_DEPENDENCIES[dependency]
             if not self._sandbox.probe_python_module(module):
                 raise DependencyUnavailableError(f"DEPENDENCY_UNAVAILABLE: {dependency}")
@@ -200,13 +215,48 @@ class GeneratedProgramExecutor:
             return objective is None
         if objective is None:
             return False
+        derived = {item.symbol for item in model.derived_variables if not item.index_sets}
         values = {
             **scalar_parameter_values([*model.parameters, *model.constants]),
-            **variables,
+            **{symbol: value for symbol, value in variables.items() if symbol not in derived},
         }
+        definitions = {
+            symbol: [
+                equation.rhs
+                for equation in model.equations
+                if equation.lhs.kind is ExpressionKind.SYMBOL and equation.lhs.symbol == symbol
+            ]
+            for symbol in derived
+        }
+        pending = {
+            symbol: expressions[0]
+            for symbol, expressions in definitions.items()
+            if len(expressions) == 1
+        }
+        for _ in range(len(pending)):
+            progressed = False
+            for symbol, expression in list(pending.items()):
+                try:
+                    resolved = evaluate_expression(expression, values)
+                except ExpressionError as exc:
+                    if "no numeric value for symbol" in str(exc):
+                        continue
+                    return False
+                if not math.isfinite(resolved):
+                    return False
+                reported = variables.get(symbol)
+                if reported is not None and not math.isclose(
+                    reported, resolved, rel_tol=tolerance, abs_tol=tolerance
+                ):
+                    return False
+                values[symbol] = resolved
+                del pending[symbol]
+                progressed = True
+            if not progressed:
+                break
         try:
             expected = evaluate_expression(model.objective.expression, values)
-        except ValueError:
+        except (ExpressionError, ValueError):
             return False
         return math.isclose(objective, expected, rel_tol=tolerance, abs_tol=tolerance)
 

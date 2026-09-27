@@ -34,6 +34,29 @@ class ModelRepairAgent(BaseAgent[ModelRepairInput, ModelRepairOutput]):
         super().__init__(router=router, providers=providers, max_retries=max_retries)
         self._prompts = prompts
 
+    def prepare_attempt_input(
+        self,
+        input_data: ModelRepairInput,
+        state: ProblemState,
+        previous_errors: tuple[str, ...],
+    ) -> ModelRepairInput:
+        if not previous_errors:
+            return input_data
+        feedback = previous_errors[-1][:4096]
+        return input_data.model_copy(
+            update={
+                "user_guidance": [
+                    *input_data.user_guidance,
+                    (
+                        "AUTOMATED_REPAIR_RETRY_FEEDBACK: The previous complete revised "
+                        "model was rejected. Correct the exact schema/quality error "
+                        "without deleting scientific obligations or inventing evidence: "
+                        f"{feedback}"
+                    ),
+                ]
+            }
+        )
+
     async def execute(
         self,
         input_data: ModelRepairInput,

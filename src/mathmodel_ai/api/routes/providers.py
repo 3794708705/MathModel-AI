@@ -334,9 +334,13 @@ def patch_model(model_id: str, payload: ModelPatchRequest, request: Request) -> 
 
 
 @router.post("/models/{model_id}/probe", response_model=CapabilityProbeResult)
-async def probe_model(model_id: str, request: Request) -> CapabilityProbeResult:
+async def probe_model(
+    model_id: str,
+    request: Request,
+    long_context: bool = Query(default=False),
+) -> CapabilityProbeResult:
     _, probe, _ = _services(request)
-    return await probe.run(model_id)
+    return await probe.run(model_id, probe_long_context=long_context)
 
 
 @router.get("/models/{model_id}/probe", response_model=CapabilityProbeResult | None)

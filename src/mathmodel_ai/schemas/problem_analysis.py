@@ -40,7 +40,9 @@ class EvidenceItem(BaseModel):
     @model_validator(mode="after")
     def proposed_assumptions_are_not_accepted(self) -> "EvidenceItem":
         if self.type is EvidenceType.ASSUMPTION and self.status is not EvidenceStatus.PROPOSED:
-            raise ValueError("ProblemAgent assumptions must remain proposed in Phase 2")
+            raise ValueError(
+                f"ProblemAgent assumption {self.evidence_id} must remain proposed in Phase 2"
+            )
         if (
             self.type in {EvidenceType.FACT, EvidenceType.DATA}
             and self.status is EvidenceStatus.PROPOSED
@@ -265,7 +267,11 @@ class ProblemAnalysis(BaseModel):
         for subproblem in self.subproblems:
             linked = {*subproblem.input_dependencies, *subproblem.output_dependencies}
             if not linked <= subproblem_ids:
-                raise ValueError("subproblem dependency lists contain an unknown id")
+                raise ValueError(
+                    f"subproblem {subproblem.subproblem_id} dependencies contain unknown ids "
+                    f"{sorted(linked - subproblem_ids)}; declared ids are "
+                    f"{sorted(subproblem_ids)}"
+                )
             if not set(subproblem.ambiguity_refs) <= ambiguity_ids:
                 raise ValueError("subproblem ambiguity refs contain an unknown id")
 
@@ -326,3 +332,4 @@ class ProblemAgentInput(BaseModel):
     raw_problem: str = Field(min_length=20)
     competition_context: str | None = None
     optional_user_notes: list[str] = Field(default_factory=list)
+    repair_feedback: list[str] = Field(default_factory=list, max_length=3)

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from io import BytesIO
 from typing import Any, ClassVar
 
+import pymupdf
 from pydantic import ValidationError
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
@@ -34,6 +36,7 @@ from mathmodel_ai.schemas.paper import (
     PaperArtifactKind,
     PaperIR,
     PaperManifest,
+    PaperSectionType,
     PaperValidationIssue,
     PaperValidationSeverity,
     PaperVersion,
@@ -350,6 +353,47 @@ class AssetSemanticIntegrityValidator:
                 )
             if required is EvidenceType.SENSITIVITY:
                 source = by_id[figure.source_evidence_refs[0]]
+                if figure.data_payload.get("reviewed_response") is True:
+                    payload = source.structured_payload
+                    values = payload.get("reviewed_metric_values", {})
+                    replay_ids = payload.get("reviewed_replay_ids", {})
+                    metric_ids = figure.data_payload.get("metric_ids", [])
+                    scenario_ids = figure.data_payload.get("scenario_ids", [])
+                    x = figure.data_payload.get("x", [])
+                    y = figure.data_payload.get("y", [])
+                    execution_ids = figure.source_binding.get("experiment_ids", [])
+                    valid = (
+                        isinstance(values, dict)
+                        and isinstance(replay_ids, dict)
+                        and len(metric_ids)
+                        == len(scenario_ids)
+                        == len(x)
+                        == len(y)
+                        == len(execution_ids)
+                        and len(metric_ids) >= 2
+                        and len(set(metric_ids)) == len(metric_ids)
+                        and len(set(scenario_ids)) == len(scenario_ids)
+                    )
+                    if valid:
+                        try:
+                            valid = all(
+                                x[index] == index + 1
+                                and float(y[index]) == float(values[metric_id])
+                                and str(execution_ids[index])
+                                == str(replay_ids[scenario_ids[index]])
+                                for index, metric_id in enumerate(metric_ids)
+                            )
+                        except (KeyError, TypeError, ValueError):
+                            valid = False
+                    if not valid:
+                        issues.append(
+                            _issue(
+                                "DOCUMENT_INTEGRITY_ERROR",
+                                "reviewed sensitivity figure differs from verified replay values",
+                                figure.figure_id,
+                            )
+                        )
+                    continue
                 experiments = [
                     item
                     for item in source.structured_payload.get("experiments", [])
@@ -515,6 +559,10 @@ class DocumentCompletenessValidator:
     def validate(self, paper: PaperIR) -> list[PaperValidationIssue]:
         issues: list[PaperValidationIssue] = []
         present_sections = {item.section_type for item in paper.sections}
+        if paper.abstract:
+            present_sections.add(PaperSectionType.ABSTRACT)
+        if paper.bibliography:
+            present_sections.add(PaperSectionType.REFERENCES)
         for required in paper.competition_profile.required_sections:
             if required not in present_sections:
                 issues.append(
@@ -719,11 +767,31 @@ class ArtifactIntegrityValidator:
         issues: list[PaperValidationIssue] = []
         if not page_count or page_count != expected_pages:
             issues.append(_issue("DOCUMENT_INTEGRITY_ERROR", "final PDF page count changed"))
-        normalized_pdf = " ".join(text.split())
-        for claim in paper.claims:
-            if claim.importance in {ClaimImportance.CRITICAL, ClaimImportance.MAJOR}:
-                normalized_claim = " ".join(claim.text.split())
-                if normalized_claim not in normalized_pdf:
+        normalized_pdf = _normalize_pdf_claim_text(text)
+        material_claims = [
+            claim
+            for claim in paper.claims
+            if claim.importance in {ClaimImportance.CRITICAL, ClaimImportance.MAJOR}
+        ]
+        missing = [
+            claim
+            for claim in material_claims
+            if _normalize_pdf_claim_text(claim.text) not in normalized_pdf
+        ]
+        if missing:
+            # pypdf can collapse spaces around TeX-escaped identifiers; use an
+            # independent extractor on the same strictly parsed PDF bytes.
+            try:
+                with pymupdf.open(stream=pdf, filetype="pdf") as document:  # type: ignore[no-untyped-call]
+                    alternate = (
+                        _normalize_pdf_claim_text(" ".join(page.get_text() for page in document))
+                        if len(document) == page_count
+                        else ""
+                    )
+            except (RuntimeError, ValueError, TypeError):
+                alternate = ""
+            for claim in missing:
+                if _normalize_pdf_claim_text(claim.text) not in alternate:
                     issues.append(
                         _issue(
                             "DOCUMENT_INTEGRITY_ERROR",
@@ -732,3 +800,18 @@ class ArtifactIntegrityValidator:
                         )
                     )
         return issues
+
+
+def _normalize_pdf_claim_text(value: str) -> str:
+    """Ignore TeX hyphenation/possessive extraction noise, not words or numbers."""
+    value = unicodedata.normalize("NFKC", value)
+    value = value.replace("\u201c", '"').replace("\u201d", '"')
+    # A PDF line break after a date hyphen or numeric minus is layout noise;
+    # retain the sign/hyphen and every following digit exactly.
+    value = re.sub(r"-\s*\n\s*(?=\d)", "-", value)
+    value = re.sub(r"(?<=[A-Za-z])-\s*\n\s*(?=[A-Za-z])", "", value)
+    value = re.sub(r"(?<=[A-Za-z])-(?=[A-Za-z])", "", value)
+    # Some TeX font encodings extract the apostrophe in an English possessive
+    # as two replacement glyphs; this does not alter words or numeric tokens.
+    value = re.sub(r"(?<=[A-Za-z])(?:'|\u2019|\ufffd{1,2})(?=s\b)", "", value)
+    return " ".join(value.split())

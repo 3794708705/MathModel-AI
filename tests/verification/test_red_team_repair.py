@@ -1,4 +1,6 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -7,6 +9,7 @@ from pydantic import ValidationError
 from mathmodel_ai.agents import AgentRunResult, AgentRunStatus
 from mathmodel_ai.core.errors import AgentRunError
 from mathmodel_ai.schemas.problem_state import ProblemState, WorkflowStage, WorkflowStatus
+from mathmodel_ai.schemas.quality import QualityGateResult, QualityGateStatus
 from mathmodel_ai.schemas.verification import (
     ModelRepairOutput,
     RedTeamCategory,
@@ -205,6 +208,58 @@ async def test_three_existing_repair_cycles_force_human_review() -> None:
     assert outcome.state.version == 10
     assert outcome.state.quality_gates[-1].gate == "MODEL_REPAIR"
     assert outcome.state.quality_gates[-1].status.value == "HUMAN_REVIEW"
+
+
+@pytest.mark.asyncio
+async def test_causal_repair_uses_fresh_solver_and_holdout_auditor() -> None:
+    project_id = uuid4()
+    state = ProblemState(
+        schema_version=5,
+        project_id=project_id,
+        problem_id=uuid4(),
+        title="causal repair fixture",
+        raw_problem="fixture",
+        current_stage=WorkflowStage.RED_TEAM,
+    )
+    gate = QualityGateResult(gate="fixture", status=QualityGateStatus.PASS, checks={})
+    repair = SimpleNamespace(model_gate=gate, repair_gate=gate, state=state)
+    solve = SimpleNamespace(gate=gate, state=state)
+    fresh_evidence = object()
+    audited: list[object] = []
+
+    def auditor() -> object:
+        audited.append(fresh_evidence)
+        return fresh_evidence
+
+    async def repair_solver(repaired: object) -> tuple[object, object]:
+        assert repaired is repair
+        return solve, auditor
+
+    verification = SimpleNamespace(
+        red_team=SimpleNamespace(
+            report=SimpleNamespace(critical_count=0),
+            verified_gate=gate,
+            state=state,
+        )
+    )
+    workflow = object.__new__(VerificationWorkflow)
+    workflow._repository = Mock(  # type: ignore[attr-defined]
+        get_red_team=Mock(return_value=SimpleNamespace(model_id=uuid4(), critical_count=1)),
+        repair_cycle_count=Mock(return_value=0),
+    )
+    workflow._reasoning_repository = Mock(load_current=Mock(return_value=state))  # type: ignore[attr-defined]
+    workflow._max_repair_cycles = 1  # type: ignore[attr-defined]
+    workflow.repair = AsyncMock(return_value=repair)  # type: ignore[method-assign]
+    workflow.run = AsyncMock(return_value=verification)  # type: ignore[method-assign]
+
+    outcome = await workflow.repair_until_clear(project_id, repair_solver=repair_solver)  # type: ignore[arg-type]
+
+    assert outcome.resolved is True
+    assert outcome.iterations[0].solve is solve
+    assert outcome.iterations[0].verification is verification
+    assert workflow.run.call_args.kwargs["causal_auditor"] is auditor
+    assert workflow.run.call_args.kwargs["causal_auditor"]() is fresh_evidence
+    assert audited == [fresh_evidence]
 
 
 def test_failed_agent_output_is_audited_before_error() -> None:

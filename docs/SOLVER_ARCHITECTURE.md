@@ -63,7 +63,10 @@ authored by an LLM.
 logic outside deterministic coverage. It receives an accepted immutable model
 and plan and returns typed source files, approved dependencies, entrypoint,
 explanation, and aggregate hash. Dynamic installation is forbidden; unavailable
-packages return `DEPENDENCY_UNAVAILABLE`. Its machine output is only
+third-party packages return `DEPENDENCY_UNAVAILABLE`. Declared Python 3.12
+standard-library modules are not installation dependencies and do not require
+third-party allowlisting; this does not authorize dynamic installs or change the
+sandbox's code-execution restrictions. Its machine output is only
 `/output/result.json`; stdout is never parsed as a numerical result. Host code
 recomputes constraints, bounds, domains, and objective from returned variables.
 An explicit `GENERATED` request cannot silently fall back to a deterministic

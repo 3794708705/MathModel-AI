@@ -49,7 +49,10 @@ The default one-shot endpoint does not freeze unless `freeze_on_pass=true`.
 Split endpoints rerun all gates from the exact paper/profile version; rerunning
 invalidates current readiness before producing a new check or snapshot.
 
-The final package contains only profile-allowed formal PDF/TeX/BibTeX,
+The candidate is assembled from profile-allowed formal artifacts; internal Phase 6
+TeX, BibTeX, figure and table sources remain bound by the paper manifest but are
+not automatically submitted to a one-PDF competition. The final package contains
+only profile-allowed formal PDF/TeX/BibTeX,
 figure/table, optional code/data/README artifacts, plus
 `submission_manifest.json`. Runtime caches, tests, credentials, local paths, and
 internal audit/fixture artifacts are forbidden. Text, PDF text/metadata/

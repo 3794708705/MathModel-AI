@@ -29,7 +29,7 @@ from mathmodel_ai.sandbox.executor import SandboxExecution
 from mathmodel_ai.schemas.execution import ExecutionRecord
 from mathmodel_ai.schemas.files import ArtifactRecord
 from mathmodel_ai.schemas.mathematical import MathematicalModel
-from mathmodel_ai.schemas.problem_state import ProblemState
+from mathmodel_ai.schemas.problem_state import ProblemState, WorkflowStage, WorkflowStatus
 from mathmodel_ai.schemas.program import GeneratedProgram
 from mathmodel_ai.schemas.solver import SolverResult
 from mathmodel_ai.schemas.verification import (
@@ -61,6 +61,24 @@ class VerificationRepository:
             )
             if row is None:
                 raise ResourceNotFoundError(f"project {project_id} was not found")
+            return ProblemState.model_validate(row.state_json)
+
+    def load_accepted_science(self, project_id: UUID) -> ProblemState:
+        """Return the immutable science handoff, not a later paper status revision."""
+        with session_scope(self._session_factory) as session:
+            row = session.scalar(
+                select(ProblemStateRecord)
+                .join(Problem, Problem.id == ProblemStateRecord.problem_id)
+                .where(
+                    Problem.project_id == project_id,
+                    ProblemStateRecord.current_stage == WorkflowStage.RED_TEAM.value,
+                    ProblemStateRecord.status == WorkflowStatus.SUCCEEDED.value,
+                )
+                .order_by(ProblemStateRecord.revision.desc())
+                .limit(1)
+            )
+            if row is None:
+                raise ResourceNotFoundError("accepted scientific state was not found")
             return ProblemState.model_validate(row.state_json)
 
     def persist_validation(self, report: ValidationReport, state: ProblemState) -> None:

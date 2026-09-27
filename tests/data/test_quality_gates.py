@@ -1,12 +1,22 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from pydantic import ValidationError
 
-from mathmodel_ai.data.quality_gates import data_quality_gate, execution_quality_gate
+from mathmodel_ai.agents.data import DataAgent
+from mathmodel_ai.core.errors import ProviderResponseError
+from mathmodel_ai.data.quality_gates import (
+    data_column_reference_errors,
+    data_quality_gate,
+    execution_quality_gate,
+)
 from mathmodel_ai.files.storage import LocalFileStore
+from mathmodel_ai.reasoning.prompts import PromptRegistry
 from mathmodel_ai.schemas.data import (
     ColumnProfile,
+    DataAgentInput,
     DataProfile,
     DataSemanticType,
     DatasetUnderstanding,
@@ -68,6 +78,63 @@ def test_data_gate_rejects_agent_column_or_dataset_invention() -> None:
 
     assert gate.status is QualityGateStatus.RETRY
     assert gate.checks["agent_references_known_columns"] is False
+    assert data_column_reference_errors([profile], invented) == [
+        f"dataset {dataset_id} references unknown columns: invented"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_data_agent_retries_with_exact_invalid_column_feedback() -> None:
+    dataset_id = uuid4()
+    profile = DataProfile(
+        dataset_id=dataset_id,
+        source_file_id=uuid4(),
+        dataset_name="observations",
+        row_count=1,
+        column_count=1,
+        columns=[
+            ColumnProfile(
+                name="observed",
+                source_name="observed",
+                physical_dtype="Int64",
+                semantic_type=DataSemanticType.INTEGER,
+                missing_count=0,
+                missing_rate=0,
+                unique_count=1,
+                unique_rate=1,
+            )
+        ],
+        duplicate_row_count=0,
+        duplicate_row_rate=0,
+        quality_score=100,
+    )
+    input_data = DataAgentInput(raw_problem="Analyze observations", profiles=[profile])
+    invented = DataUnderstanding(
+        datasets=[
+            DatasetUnderstanding(
+                dataset_id=dataset_id,
+                purpose="test",
+                potential_features=["imagined"],
+            )
+        ],
+        confidence=0.5,
+    )
+
+    class Provider:
+        async def structured_generate(self, _request, _schema):
+            return SimpleNamespace(parsed=invented, response=SimpleNamespace())
+
+    agent = DataAgent(router=None, providers=None, prompts=PromptRegistry())
+    with pytest.raises(ProviderResponseError, match="unknown columns: imagined") as exc:
+        await agent.execute(
+            input_data,
+            None,
+            Provider(),
+            SimpleNamespace(selected_model="fixture", selected_reasoning=None),
+        )
+    repaired = agent.prepare_attempt_input(input_data, None, (str(exc.value),))
+    assert "unknown columns: imagined" in repaired.user_guidance[-1]
+    assert input_data.user_guidance == []
 
 
 def test_data_gate_allows_explicit_media_only_evidence_but_not_empty_input() -> None:

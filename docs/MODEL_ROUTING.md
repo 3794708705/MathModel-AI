@@ -40,7 +40,6 @@ Hard filters run before scoring:
 - Referenced credential configured.
 - Provider health exactly READY and not in cooldown.
 - Model is not Mock for a registry/live route.
-- Minimum logical quality tier.
 - Latest current probe has authentication `PASS`.
 - Atomic `PROBED` evidence for every required capability.
 - Structured output, JSON Schema, tools, reasoning, vision, context, and trust
@@ -49,14 +48,15 @@ Hard filters run before scoring:
 User declarations and persisted capability summaries cannot bypass a hard
 requirement. Prompt-JSON fallback is the only partial structured-output path and
 still requires atomically probed text support. Probe evidence becomes stale when
-either provider or model configuration digest changes. Price, quality labels,
-deadline pressure, and retry count are preferences among already eligible
-models; none can weaken correctness filters.
+either provider or model configuration digest changes. Price and quality labels
+are preferences among already eligible models; quality tier is never a hard
+minimum. Deadline pressure and retry count still affect escalation, but none
+of these preferences can weaken correctness filters.
 
 The runtime default is stored as a reserved route-policy row and is not returned
 as an Agent policy. Selecting it in the Web UI never marks it eligible: preview
 and execution continue through the same health, credential, trust, capability,
-quality, and exact-probe hard filters.
+and exact-probe hard filters.
 
 `RouteDecision` binds `TaskProfile.requirements_digest`, provider/model config
 digests, and the exact capability probe ID/digest. `BaseAgent` rejects a decision

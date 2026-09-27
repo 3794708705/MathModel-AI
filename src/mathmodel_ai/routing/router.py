@@ -245,7 +245,7 @@ class ModelRouter:
         for model in candidates:
             try:
                 endpoint = self._registry.get_provider(model.provider_id)
-                reasons, probe = self._hard_rejections(model, endpoint, profile, level)
+                reasons, probe = self._hard_rejections(model, endpoint, profile)
             except Exception:
                 rejected[model.model_id] = ["registry evidence failed integrity validation"]
                 continue
@@ -336,7 +336,6 @@ class ModelRouter:
         model: ModelProfile,
         endpoint: ProviderEndpoint,
         profile: TaskProfile,
-        level: EscalationLevel,
     ) -> tuple[list[str], CapabilityProbeResult | None]:
         registry = self._registry
         if registry is None:  # pragma: no cover - only called from registry routing
@@ -359,8 +358,7 @@ class ModelRouter:
             reasons.append(f"provider health is {endpoint.health_status.value}")
         if endpoint.cooldown_until is not None and endpoint.cooldown_until > datetime.now(UTC):
             reasons.append("provider circuit breaker is in cooldown")
-        if _TIER_RANK[model.quality_tier] < min(level.value, 5):
-            reasons.append("model quality tier is below the task minimum")
+        # Quality tier is a ranking preference, not proof that a model can or cannot do this task.
         required = set(profile.required_capabilities)
         required.add(ModelCapability.STRUCTURED_OUTPUT)
         if profile.multimodal_requirement > 0:

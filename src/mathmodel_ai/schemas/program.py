@@ -120,6 +120,7 @@ class CodeAgentInput(BaseModel):
 
     mathematical_model: MathematicalModel
     algorithm_plan: AlgorithmPlan
+    input_manifest: list[dict[str, str]] = Field(default_factory=list)
     user_guidance: list[str] = Field(default_factory=list)
 
 

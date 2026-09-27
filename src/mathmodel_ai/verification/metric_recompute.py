@@ -38,7 +38,12 @@ def calculator_digest() -> str:
     return sha256_bytes(
         b"".join(
             Path(__file__).with_name(name).read_bytes()
-            for name in ("metric_recompute.py", "evaluator.py", "validation.py")
+            for name in (
+                "metric_recompute.py",
+                "evaluator.py",
+                "validation.py",
+                "observation_source.py",
+            )
         )
     )
 
@@ -53,7 +58,7 @@ def numeric_environment(model: MathematicalModel, raw: RawMetricOutput) -> dict[
         parameters[item.symbol] = float(item.value)
     if set(parameters) & set(raw.variables):
         raise ValueError("output variables cannot override model parameters")
-    return {**parameters, **raw.variables}
+    return IndependentValidator._numeric_environment(model, raw.variables)
 
 
 def constraint_violation(model: MathematicalModel, raw: RawMetricOutput) -> float:
@@ -133,7 +138,14 @@ def calculate(
 ) -> float:
     """Closed registry: no executable strings, dynamic imports, or reported inputs."""
     key = spec.key
-    if key in {MetricKey.MAE, MetricKey.RMSE, MetricKey.R2, MetricKey.MAX_ERROR}:
+    if key in {
+        MetricKey.MAE,
+        MetricKey.RMSE,
+        MetricKey.R2,
+        MetricKey.MAX_ERROR,
+        MetricKey.BRIER,
+        MetricKey.LOG_LOSS,
+    }:
         if not observations or len(observations) != len(raw.predictions):
             raise ValueError(
                 "independent observations and predictions must have equal nonzero size"
@@ -141,12 +153,29 @@ def calculate(
         if not all(math.isfinite(v) and not isinstance(v, bool) for v in observations):
             raise ValueError("observations must be finite numbers")
         errors = [a - b for a, b in zip(observations, raw.predictions, strict=True)]
+        if key in {MetricKey.BRIER, MetricKey.LOG_LOSS} and any(
+            outcome not in (0.0, 1.0) or prediction < 0 or prediction > 1
+            for outcome, prediction in zip(observations, raw.predictions, strict=True)
+        ):
+            raise ValueError("binary scoring requires 0/1 outcomes and probabilities in [0,1]")
         if key is MetricKey.MAE:
             value = math.fsum(abs(e) for e in errors) / len(errors)
         elif key is MetricKey.MAX_ERROR:
             value = max(abs(e) for e in errors)
         elif key is MetricKey.RMSE:
             value = math.hypot(*errors) / math.sqrt(len(errors))
+        elif key is MetricKey.BRIER:
+            value = math.fsum(e * e for e in errors) / len(errors)
+        elif key is MetricKey.LOG_LOSS:
+            if any(
+                (outcome == 1.0 and prediction == 0.0) or (outcome == 0.0 and prediction == 1.0)
+                for outcome, prediction in zip(observations, raw.predictions, strict=True)
+            ):
+                raise ValueError("log loss is infinite for a confidently wrong prediction")
+            value = math.fsum(
+                -math.log(prediction) if outcome == 1.0 else -math.log1p(-prediction)
+                for outcome, prediction in zip(observations, raw.predictions, strict=True)
+            ) / len(observations)
         else:
             if len(observations) < 2:
                 raise ValueError("R2 requires at least two observations")
