@@ -275,6 +275,13 @@ unchecked objective metric without that audit. Sensitivity and robustness
 currently fail closed for these models until their independent, non-Mock
 empirical scenario replay is implemented; this contract alone does not verify
 a benchmark or permit its numbers in a final paper.
+For fixed-coefficient perturbations, a deterministic predictor can now be
+rendered from the typed logit and run through the same networkless, pointwise
+sealed-holdout container. The independent scenario audit reconstructs the
+official group split and training loss, rereads execution artifacts, and
+rejects altered coefficients or a different formal-result binding. This
+component does not yet persist a Phase 5 sensitivity/robustness report or
+authorize those gates to pass; fitting and re-optimization are not claimed.
 A second training-only reference reconstructs a pre-outcome rolling mean of condition-adjusted
 residuals for every row. Its `match_flow` check passes only when the same
 row-aligned series is present in the exact formal `result.json` and agrees

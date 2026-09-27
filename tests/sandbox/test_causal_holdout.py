@@ -3,19 +3,33 @@ import json
 import subprocess
 from dataclasses import replace
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
+from mathmodel_ai.benchmark.causal_inputs import split_causal_csv
+from mathmodel_ai.benchmark.empirical_scenarios import audit_isolated_empirical_scenario
 from mathmodel_ai.files.storage import LocalFileStore
+from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.sandbox.causal_holdout import (
     run_isolated_causal_holdout,
     verify_recorded_causal_holdout,
 )
-from mathmodel_ai.schemas.execution import ExecutionStatus, SandboxLimits
+from mathmodel_ai.sandbox.empirical_predictor import empirical_predictor_source
+from mathmodel_ai.schemas.execution import ExecutionOrigin, ExecutionStatus, SandboxLimits
 from mathmodel_ai.schemas.files import ArtifactKind
+from mathmodel_ai.schemas.mathematical import (
+    EmpiricalBinaryRiskDefinition,
+    ExpressionKind,
+    MathExpression,
+)
 from mathmodel_ai.verification.causal_binary import CausalBinarySpec
 from mathmodel_ai.verification.causal_holdout import assess_binary_calibration
+from mathmodel_ai.verification.empirical_binary import (
+    audit_empirical_binary_claim,
+    evaluate_empirical_binary_risk,
+)
+from tests.mathematical.helpers import lp_model
 
 IMAGE = "mathmodel-ai-sandbox:phase3"
 
@@ -48,7 +62,16 @@ def _source() -> bytes:
     )
 
 
-def _run(tmp_path: Path, code: str):
+def _run(
+    tmp_path: Path,
+    code: str,
+    *,
+    execution_origin: ExecutionOrigin = ExecutionOrigin.USER_CODE,
+    model_digest: str | None = None,
+    formal_result_id: UUID | None = None,
+    project_id: UUID | None = None,
+    problem_id: UUID | None = None,
+):
     source = _source()
     spec = CausalBinarySpec(
         source_sha256=hashlib.sha256(source).hexdigest(),
@@ -77,8 +100,11 @@ def _run(tmp_path: Path, code: str):
             max_artifacts=2,
             max_artifact_bytes=8192,
         ),
-        project_id=uuid4(),
-        problem_id=uuid4(),
+        project_id=project_id or uuid4(),
+        problem_id=problem_id or uuid4(),
+        execution_origin=execution_origin,
+        model_digest=model_digest,
+        formal_result_id=formal_result_id,
     )
     return execution, store
 
@@ -166,6 +192,145 @@ class Predictor:
     assert execution.execution.status is ExecutionStatus.FAILED
     assert execution.execution.error == "HELDOUT_PREDICTION_NOT_A_PROBABILITY"
     assert len(execution.artifacts) == 2
+
+
+def test_empirical_fixed_coefficient_scenario_isolated_and_independently_replayed(
+    tmp_path: Path,
+) -> None:
+    source = _source()
+    official_spec = CausalBinarySpec(
+        source_sha256=hashlib.sha256(source).hexdigest(),
+        group_column="match",
+        condition_column="server",
+        outcome_column="winner",
+        positive_value="1",
+        negative_value="2",
+    )
+    split = split_causal_csv(source, official_spec, fraction=0.25, salt="test-v1")
+    risk = EmpiricalBinaryRiskDefinition(
+        training_dataset_id=uuid4(),
+        training_sha256=split.training_sha256,
+        group_column="match",
+        condition_column="server",
+        outcome_column="winner",
+        positive_value="1",
+        negative_value="2",
+        history_window=official_spec.history_window,
+        reference_condition="1",
+        source_refs=["EVID-test"],
+        logit=MathExpression(
+            kind=ExpressionKind.ADD,
+            operands=[
+                MathExpression(
+                    kind=ExpressionKind.MULTIPLY,
+                    operands=[
+                        MathExpression.symbol_ref("beta"),
+                        MathExpression.symbol_ref("row_condition_delta"),
+                    ],
+                ),
+                MathExpression.symbol_ref("intercept"),
+            ],
+        ),
+    )
+    coefficients = {"beta": 2.0, "intercept": -0.5}
+    code = empirical_predictor_source(risk, coefficients)
+    model = lp_model().model_copy(update={"objective": None, "empirical_binary_risk": risk})
+    formal_result_id = uuid4()
+    execution, store = _run(
+        tmp_path,
+        code,
+        execution_origin=ExecutionOrigin.DETERMINISTIC_SOLVER_ADAPTER,
+        model_digest=mathematical_model_digest(model),
+        formal_result_id=formal_result_id,
+        project_id=model.project_id,
+        problem_id=model.problem_id,
+    )
+    assert execution.execution.status is ExecutionStatus.SUCCEEDED, execution.execution.error
+    assert not execution.execution.is_mock
+    assert execution.execution.execution_origin is ExecutionOrigin.DETERMINISTIC_SOLVER_ADAPTER
+    assert execution.execution.network_disabled
+    assert execution.execution.read_only_root
+    assert execution.result is not None
+    assert verify_recorded_causal_holdout(source, execution, store) == execution.result
+    training = evaluate_empirical_binary_risk(split.training_csv, risk, coefficients)
+    audited = audit_empirical_binary_claim(
+        risk=risk,
+        training_csv=split.training_csv,
+        official_csv=source,
+        official_spec=official_spec,
+        heldout_groups=split.heldout_groups,
+        coefficients=coefficients,
+        reported_training_log_loss=training.mean_log_loss,
+        reported_heldout_predictions=execution.result.predictions,
+    )
+    assert audited == training
+    assert execution.artifacts[0].sha256 == hashlib.sha256(code.encode()).hexdigest()
+    scenario = audit_isolated_empirical_scenario(
+        model=model,
+        formal_result_id=formal_result_id,
+        official_csv=source,
+        official_spec=official_spec,
+        training_csv=split.training_csv,
+        fraction=0.25,
+        salt="test-v1",
+        coefficients=coefficients,
+        run=execution,
+        store=store,
+    )
+    assert scenario.training == training
+    assert scenario.holdout == execution.result
+    assert scenario.execution_id == execution.execution.run_id
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_FORMAL_RESULT_NOT_BOUND"):
+        audit_isolated_empirical_scenario(
+            model=model,
+            formal_result_id=uuid4(),
+            official_csv=source,
+            official_spec=official_spec,
+            training_csv=split.training_csv,
+            fraction=0.25,
+            salt="test-v1",
+            coefficients=coefficients,
+            run=execution,
+            store=store,
+        )
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_PREDICTOR_NOT_BOUND"):
+        audit_isolated_empirical_scenario(
+            model=model,
+            formal_result_id=formal_result_id,
+            official_csv=source,
+            official_spec=official_spec,
+            training_csv=split.training_csv,
+            fraction=0.25,
+            salt="test-v1",
+            coefficients={"beta": 3.0, "intercept": -0.5},
+            run=execution,
+            store=store,
+        )
+
+
+def test_empirical_predictor_rejects_unbound_or_nonfinite_coefficients() -> None:
+    risk = EmpiricalBinaryRiskDefinition(
+        training_dataset_id=uuid4(),
+        training_sha256="a" * 64,
+        group_column="match",
+        condition_column="server",
+        outcome_column="winner",
+        positive_value="1",
+        negative_value="2",
+        history_window=8,
+        reference_condition="1",
+        source_refs=["EVID-test"],
+        logit=MathExpression.symbol_ref("row_condition_delta"),
+    )
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_COEFFICIENTS_INVALID"):
+        empirical_predictor_source(risk, {"beta": float("nan")})
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_COEFFICIENTS_INVALID"):
+        empirical_predictor_source(risk, {"row_condition_delta": 1.0})
+    with pytest.raises(ValueError, match="EMPIRICAL_SCENARIO_COEFFICIENTS_INVALID"):
+        empirical_predictor_source(
+            risk.model_copy(update={"logit": MathExpression.symbol_ref("unknown")}),
+            {},
+        )
 
 
 def test_official_c_csv_stream_isolates_entire_matches(tmp_path: Path) -> None:
