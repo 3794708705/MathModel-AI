@@ -242,6 +242,7 @@ def test_empirical_fixed_coefficient_scenario_isolated_and_independently_replaye
         update={
             "objective": None,
             "empirical_binary_risk": risk,
+            "constraints": [],
             "decision_variables": [
                 variable("beta", domain=VariableDomain.CONTINUOUS, lower=None),
                 variable("intercept", domain=VariableDomain.CONTINUOUS, lower=None),

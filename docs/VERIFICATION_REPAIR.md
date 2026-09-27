@@ -289,7 +289,9 @@ authorize those gates to pass; fitting and re-optimization are not claimed.
 The benchmark evaluator can now start one such non-Mock scenario from the
 persisted formal result, save its execution and all three artifacts, then
 reopen the database and independently replay the source, split, training loss,
-and held-out predictions. This is an execution-level evidence route only:
+held-out predictions, and all formal constraints at the perturbed coefficient
+vector. A constraint-failing run remains recorded but cannot pass the audit.
+This is an execution-level evidence route only:
 Phase 5 still requires a distinct experiment/report contract and terminal
 integrity audit before sensitivity or robustness can pass.
 A second training-only reference reconstructs a pre-outcome rolling mean of condition-adjusted

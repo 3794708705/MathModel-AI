@@ -166,6 +166,11 @@ def audit_isolated_empirical_scenario(
     )
     if audited != training:
         raise ValueError("EMPIRICAL_SCENARIO_TRAINING_RECOMPUTATION_MISMATCH")
+    scenario_values = {**formal_result.key_outputs, **coefficients}
+    scenario_values["training_log_loss"] = training.mean_log_loss
+    feasible, _, failed = IndependentValidator().candidate_is_feasible(model, scenario_values)
+    if not feasible:
+        raise ValueError("EMPIRICAL_SCENARIO_FORMAL_CONSTRAINT_FAILED:" + ",".join(failed))
     return AuditedEmpiricalScenario(
         execution_id=record.run_id,
         formal_result_id=formal_result.result_id,

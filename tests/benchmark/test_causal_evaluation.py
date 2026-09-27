@@ -554,6 +554,14 @@ def test_empirical_scenario_is_persisted_and_reaudited_from_database(tmp_path: P
             fractions={"x": 0.2},
             execution_id=audited.execution_id,
         )
+    with pytest.raises(QualityGateError, match="EMPIRICAL_SCENARIO_FORMAL_CONSTRAINT_FAILED"):
+        evaluator.evaluate_empirical_scenario(
+            bundle=bundle,
+            project_id=state.project_id,
+            formal_result_id=result.result_id,
+            fractions={"x": -0.1},
+        )
+    assert len(repository.list_executions(state.project_id)) == 3
     formal_solver_run.result_ref = uuid4()
     with pytest.raises(QualityGateError, match="EMPIRICAL_SCENARIO_FORMAL_RESULT_NOT_BOUND"):
         evaluator.audit_persisted_empirical_scenario(
