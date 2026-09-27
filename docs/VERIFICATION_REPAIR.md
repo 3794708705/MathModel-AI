@@ -262,6 +262,19 @@ cannot turn one observation into an empirical fit. This structural check is
 conservative: passing it does not establish that a multi-row objective is
 linked to the registered training data or independently replayable; those
 contracts remain required before claiming a verified prediction model.
+The trusted `empirical_binary` evaluator is the first piece of that contract:
+given hash-bound grouped binary training CSV, a pre-outcome row-feature logit
+expression, and scalar coefficients, it independently recomputes every row's
+log loss and Brier score. The feature map excludes current outcomes and
+post-point columns. A versioned optional mathematical-model risk declaration
+binds the exact registered training dataset, coefficient symbols, and formula.
+The causal host re-reads the execution-bound `result.json`, compares its
+reported training loss with every training row, and checks each isolated
+held-out forecast against the same fixed coefficients. VALIDATE records an
+unchecked objective metric without that audit. Sensitivity and robustness
+currently fail closed for these models until their independent, non-Mock
+empirical scenario replay is implemented; this contract alone does not verify
+a benchmark or permit its numbers in a final paper.
 A second training-only reference reconstructs a pre-outcome rolling mean of condition-adjusted
 residuals for every row. Its `match_flow` check passes only when the same
 row-aligned series is present in the exact formal `result.json` and agrees

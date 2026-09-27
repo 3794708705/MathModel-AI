@@ -14,7 +14,9 @@ from mathmodel_ai.mathematical.normalization import deterministic_bound_scalar
 from mathmodel_ai.mathematical.registry import EquationRegistry, SymbolRegistry
 from mathmodel_ai.mathematical.units import UnitChecker
 from mathmodel_ai.schemas.execution import ExecutionRecord, ExecutionStatus
+from mathmodel_ai.schemas.files import FileStatus
 from mathmodel_ai.schemas.mathematical import (
+    EMPIRICAL_ROW_SYMBOLS,
     ConstraintRelation,
     ExpressionKind,
     InterpretationResolutionStatus,
@@ -121,6 +123,7 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         }
     )
     data_bindings_reach_core = _data_bindings_reach_core(model)
+    empirical_risk_valid = _empirical_risk_contract_valid(model, state)
     data_required = any(
         requirement.availability is DataAvailability.PROVIDED
         for subproblem in state.subproblems
@@ -148,6 +151,7 @@ def model_quality_gate(model: MathematicalModel, state: ProblemState) -> Quality
         "data_bindings_resolve": data_bindings_valid and parameter_bindings_valid,
         "required_data_is_bound": not data_required or bool(model.data_bindings),
         "data_bindings_reach_core": data_bindings_reach_core,
+        "empirical_risk_contract_valid": empirical_risk_valid,
         "equation_registry_valid": equations.report.valid,
         "state_relations_sufficient": _state_relations_sufficient(model),
         "scalar_verifier_inputs_available": not unavailable_scalar_inputs,
@@ -457,7 +461,69 @@ def _data_bindings_reach_core(model: MathematicalModel) -> bool:
         for item in bound_parameters
         if item.data_binding is not None and item.symbol in reached
     }
+    risk = model.empirical_binary_risk
+    if risk is not None:
+        used_bindings.update(
+            binding.binding_id
+            for binding in model.data_bindings
+            if binding.dataset_id == risk.training_dataset_id
+            and binding.column in {risk.group_column, risk.condition_column, risk.outcome_column}
+        )
     return set(declared) <= used_bindings
+
+
+def _empirical_risk_contract_valid(model: MathematicalModel, state: ProblemState) -> bool:
+    """Reject disconnected row-risk contracts before any generated code runs."""
+    risk = model.empirical_binary_risk
+    if risk is None:
+        return True
+    if model.objective is not None or not set(risk.source_refs) <= set(model.source_evidence):
+        # A separate scalar objective could optimize a different function.
+        return False
+    datasets = [item for item in state.datasets if item.dataset_id == risk.training_dataset_id]
+    if len(datasets) != 1:
+        return False
+    dataset = datasets[0]
+    files = [
+        item
+        for item in state.registered_files
+        if item.file_id == dataset.source_file_id
+        and item.sha256 == risk.training_sha256
+        and item.status in {FileStatus.VALIDATED, FileStatus.PARSED}
+    ]
+    if len(files) != 1 or not {
+        risk.group_column,
+        risk.condition_column,
+        risk.outcome_column,
+    } <= set(dataset.columns):
+        return False
+    bound_columns = {
+        item.column
+        for item in model.data_bindings
+        if item.dataset_id == risk.training_dataset_id
+        and item.selector is None
+        and item.transform is None
+    }
+    if (
+        not {
+            risk.group_column,
+            risk.condition_column,
+            risk.outcome_column,
+        }
+        <= bound_columns
+    ):
+        return False
+    decisions = {item.symbol for item in model.decision_variables if not item.index_sets}
+    parameters = {
+        item.symbol
+        for item in [*model.parameters, *model.constants]
+        if isinstance(item.value, (int, float)) and not isinstance(item.value, bool)
+    }
+    symbols = referenced_symbols(risk.logit)
+    reserved = decisions | parameters
+    if reserved & EMPIRICAL_ROW_SYMBOLS or "training_log_loss" in reserved:
+        return False
+    return bool(symbols & decisions) and symbols <= (EMPIRICAL_ROW_SYMBOLS | decisions | parameters)
 
 
 def _unavailable_scalar_verifier_inputs(model: MathematicalModel) -> set[str]:

@@ -38,12 +38,14 @@ from mathmodel_ai.schemas.execution import (
     ExecutionStatus,
     SandboxLimits,
 )
+from mathmodel_ai.schemas.files import FileKind, RegisteredFile
 from mathmodel_ai.schemas.mathematical import (
     BaseDimension,
     ConstantDefinition,
     ConstraintDefinition,
     ConstraintRelation,
     DataBinding,
+    EmpiricalBinaryRiskDefinition,
     EquationDefinition,
     ExpressionKind,
     IndexDefinition,
@@ -546,6 +548,103 @@ def test_model_gate_requires_declared_data_to_reach_core_equations() -> None:
     )
     assert (
         "MODEL_GATE_FAIL:data_bindings_reach_core" in model_quality_gate(mismatched, state).errors
+    )
+
+
+def test_empirical_risk_contract_binds_registered_training_rows_and_decisions() -> None:
+    state = selected_state()
+    training_sha = "a" * 64
+    file = RegisteredFile(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        original_name="train.csv",
+        safe_name="train.csv",
+        extension=".csv",
+        kind=FileKind.CSV,
+        detected_mime_type="text/csv",
+        size_bytes=100,
+        sha256=training_sha,
+        storage_key="fixture/train.csv",
+    )
+    dataset = DatasetRecord(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_file_id=file.file_id,
+        name="train.csv",
+        row_count=5,
+        column_count=3,
+        columns=["match", "server", "winner"],
+    )
+    state = state.model_copy(update={"registered_files": [file], "datasets": [dataset]})
+    risk = EmpiricalBinaryRiskDefinition(
+        training_dataset_id=dataset.dataset_id,
+        training_sha256=training_sha,
+        group_column="match",
+        condition_column="server",
+        outcome_column="winner",
+        positive_value="1",
+        negative_value="2",
+        history_window=2,
+        reference_condition="1",
+        source_refs=["EVID-fact-1"],
+        logit=multiply(symbol("x"), symbol("row_condition_delta")),
+    )
+    bindings = [
+        DataBinding(binding_id=f"BIND-{column}", dataset_id=dataset.dataset_id, column=column)
+        for column in dataset.columns
+    ]
+    base = lp_model(
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_selected_model_id="CAND-lp",
+    )
+    model = base.model_copy(
+        update={
+            "model_family": ModelFamily.REGRESSION,
+            "objective": None,
+            "constraints": [],
+            "equations": [],
+            "data_bindings": bindings,
+            "empirical_binary_risk": risk,
+        }
+    )
+    gate = model_quality_gate(model, state)
+    assert gate.checks["empirical_risk_contract_valid"]
+    assert gate.checks["data_bindings_reach_core"]
+    assert mathematical_model_digest(model) != mathematical_model_digest(
+        model.model_copy(update={"empirical_binary_risk": None})
+    )
+    for invalid in (
+        model.model_copy(
+            update={"empirical_binary_risk": risk.model_copy(update={"training_sha256": "b" * 64})}
+        ),
+        model.model_copy(update={"data_bindings": bindings[:-1]}),
+        model.model_copy(
+            update={
+                "data_bindings": [
+                    bindings[0].model_copy(update={"transform": "mean"}),
+                    *bindings[1:],
+                ]
+            }
+        ),
+        model.model_copy(update={"objective": base.objective}),
+        model.model_copy(
+            update={
+                "empirical_binary_risk": risk.model_copy(
+                    update={"logit": multiply(symbol("unknown"), symbol("row_condition_delta"))}
+                )
+            }
+        ),
+    ):
+        assert (
+            "MODEL_GATE_FAIL:empirical_risk_contract_valid"
+            in model_quality_gate(invalid, state).errors
+        )
+
+
+def test_optional_empirical_risk_preserves_legacy_model_digest() -> None:
+    assert mathematical_model_digest(lp_model()) == (
+        "0c0e6c29ebe6b5fe41090a759174b936ac641714f8402496e90ba4245bd4d8cf"
     )
 
 

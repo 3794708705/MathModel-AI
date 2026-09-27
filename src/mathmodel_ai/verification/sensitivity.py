@@ -36,6 +36,14 @@ class SensitivityAnalyzer:
     ) -> tuple[SensitivityReport, list[ExperimentOutcome]]:
         if validation.status is not ValidationStatus.PASS:
             return self._blocked(model, result, validation, config, "validation did not pass"), []
+        if model.empirical_binary_risk is not None:
+            return self._blocked(
+                model,
+                result,
+                validation,
+                config,
+                "empirical risk requires independently replayed scenario executions",
+            ), []
         if result.objective is None:
             if reviewed_evidence is not None:
                 try:

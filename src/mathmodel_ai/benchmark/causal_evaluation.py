@@ -11,6 +11,7 @@ from mathmodel_ai.core.errors import QualityGateError
 from mathmodel_ai.data.repository import DataRepository
 from mathmodel_ai.files.storage import FileStore
 from mathmodel_ai.mathematical.digests import mathematical_model_digest
+from mathmodel_ai.mathematical.expressions import scalar_parameter_values
 from mathmodel_ai.mathematical.repository import MathematicalRepository
 from mathmodel_ai.mathematical.workflow import MathematicalRunOutcome, SolveStageOutcome
 from mathmodel_ai.paper.hashing import sha256_json
@@ -38,6 +39,10 @@ from mathmodel_ai.verification.causal_holdout import (
     assess_imminent_swing,
     assess_match_flow,
     causal_trace_payload,
+)
+from mathmodel_ai.verification.empirical_binary import (
+    EmpiricalRiskResult,
+    audit_empirical_binary_claim,
 )
 
 
@@ -348,7 +353,82 @@ class CausalBenchmarkEvaluator:
             or len(result.predictions) != split.heldout_rows
         ):
             raise QualityGateError("CAUSAL_HOLDOUT_TRACE_SPLIT_MISMATCH")
+        self._audit_empirical_risk(
+            bundle=bundle,
+            project_id=project_id,
+            formal_result_id=formal_result_id,
+            model=formal.model,
+            training_bytes=training_bytes,
+            source=source,
+            official_spec=expected_spec,
+            result=result,
+        )
         return result
+
+    def _audit_empirical_risk(
+        self,
+        *,
+        bundle: BlindSolveBundle,
+        project_id: UUID,
+        formal_result_id: UUID,
+        model: MathematicalModel,
+        training_bytes: bytes,
+        source: bytes,
+        official_spec: CausalBinarySpec,
+        result: CausalHoldoutResult,
+    ) -> EmpiricalRiskResult | None:
+        risk = model.empirical_binary_risk
+        split = bundle.causal_split
+        if risk is None:
+            return None
+        if split is None or risk.training_sha256 != split.training_sha256:
+            raise QualityGateError("CAUSAL_EMPIRICAL_TRAINING_SOURCE_MISMATCH")
+        datasets = [
+            item
+            for item in self._repository.list_datasets(project_id)
+            if item.dataset_id == risk.training_dataset_id
+        ]
+        files = [
+            item
+            for item in self._repository.list_files(project_id)
+            if item.sha256 == risk.training_sha256
+        ]
+        if len(datasets) != 1 or len(files) != 1 or datasets[0].source_file_id != files[0].file_id:
+            raise QualityGateError("CAUSAL_EMPIRICAL_DATASET_NOT_BOUND")
+        formal = self._mathematics.get_result_context(project_id, formal_result_id)
+        parsed = self._formal_payload(project_id, formal_result_id)
+        if parsed is None:
+            raise QualityGateError("CAUSAL_EMPIRICAL_RESULT_ARTIFACT_MISSING")
+        payload, _ = parsed
+        reported = payload.metrics.get("training_log_loss")
+        if isinstance(reported, bool) or not isinstance(reported, (int, float)):
+            raise QualityGateError("CAUSAL_EMPIRICAL_TRAINING_LOSS_MISSING")
+        if (
+            payload.variable_values.get("training_log_loss") != reported
+            or formal.result.key_outputs.get("training_log_loss") != reported
+            or formal.solver_run.result.variable_values.get("training_log_loss") != reported
+        ):
+            raise QualityGateError("CAUSAL_EMPIRICAL_TRAINING_LOSS_NOT_RESULT_BOUND")
+        values = formal.solver_run.result.variable_values
+        if any(item.symbol not in values for item in model.decision_variables):
+            raise QualityGateError("CAUSAL_EMPIRICAL_COEFFICIENTS_MISSING")
+        coefficients = {
+            **scalar_parameter_values([*model.parameters, *model.constants]),
+            **{item.symbol: values[item.symbol] for item in model.decision_variables},
+        }
+        try:
+            return audit_empirical_binary_claim(
+                risk=risk,
+                training_csv=training_bytes,
+                official_csv=source,
+                official_spec=official_spec,
+                heldout_groups=result.heldout_groups,
+                coefficients=coefficients,
+                reported_training_log_loss=float(reported),
+                reported_heldout_predictions=result.predictions,
+            )
+        except ValueError as exc:
+            raise QualityGateError(f"CAUSAL_EMPIRICAL_AUDIT_FAILED:{exc}") from exc
 
     def audit_validation_evidence(
         self,
@@ -405,6 +485,17 @@ class CausalBenchmarkEvaluator:
             negative_value=policy.negative_value,
             history_window=policy.history_window,
         )
+        formal_model = self._mathematics.get_result_context(project_id, formal_result_id).model
+        empirical = self._audit_empirical_risk(
+            bundle=bundle,
+            project_id=project_id,
+            formal_result_id=formal_result_id,
+            model=formal_model,
+            training_bytes=split.training_csv,
+            source=source,
+            official_spec=spec,
+            result=result,
+        )
         claim = (
             self._randomness_claim(project_id, formal_result_id) if randomness_required else None
         )
@@ -434,6 +525,8 @@ class CausalBenchmarkEvaluator:
                 if randomness_required
                 else None
             ),
+            empirical_training_log_loss=(empirical.mean_log_loss if empirical else None),
+            empirical_training_rows=(empirical.row_count if empirical else None),
         )
 
     def _randomness_claim(

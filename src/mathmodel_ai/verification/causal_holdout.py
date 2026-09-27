@@ -316,6 +316,8 @@ class AuditedCausalEvidence:
     match_flow_claim: MatchFlowClaim | None = None
     swing: ImminentSwingAssessment | None = None
     swing_claim: ImminentSwingClaim | None = None
+    empirical_training_log_loss: float | None = None
+    empirical_training_rows: int | None = None
 
 
 def causal_trace_payload(

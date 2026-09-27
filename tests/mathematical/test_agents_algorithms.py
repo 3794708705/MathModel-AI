@@ -224,7 +224,7 @@ async def test_math_modeler_binds_identity_and_audits_xhigh_mock_route() -> None
     assert run.output.model_id == assigned_model_id
     assert run.output.project_id == state.project_id
     assert run.output.source_selected_model_id == "CAND-lp"
-    assert run.prompt_version == "4.6.10"
+    assert run.prompt_version == "4.6.11"
     assert mock.last_request is not None
     assert mock.last_request.max_output_tokens == 65_536
     assert run.routes[0].level is EscalationLevel.FLAGSHIP_XHIGH
@@ -683,9 +683,9 @@ def test_generated_program_rejects_solver_target_larger_than_database_contract()
 
 def test_versioned_prompt_resources_exist() -> None:
     prompts = PromptRegistry()
-    assert prompts.get("math_modeler").version == "4.6.10"
+    assert prompts.get("math_modeler").version == "4.6.11"
     assert "future-stage experiments" in prompts.get("math_modeler").system
-    assert prompts.get("code_agent").version == "4.7.3"
+    assert prompts.get("code_agent").version == "4.7.4"
     assert (
         "must report every MathematicalModel decision variable" in prompts.get("code_agent").system
     )

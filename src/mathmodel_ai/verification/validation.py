@@ -131,6 +131,7 @@ class IndependentValidator:
         swing_valid = self._swing_claim_matches(causal_evidence)
         metrics = [
             *self._metric_checks(model, result, solver_run, values),
+            *self._empirical_risk_metric_checks(model, result, causal_evidence),
             *self._reviewed_metric_checks(reviewed_evidence),
             *self._causal_metric_checks(
                 causal_evidence, bound=causal_bound, calibration_valid=calibration_valid
@@ -533,6 +534,43 @@ class IndependentValidator:
                 )
             )
         return checks
+
+    def _empirical_risk_metric_checks(
+        self,
+        model: MathematicalModel,
+        result: ResultRecord,
+        evidence: AuditedCausalEvidence | None,
+    ) -> list[MetricRecalculation]:
+        risk = model.empirical_binary_risk
+        if risk is None:
+            return []
+        if (
+            evidence is None
+            or evidence.formal_result_id != result.result_id
+            or evidence.training_sha256 != risk.training_sha256
+            or evidence.empirical_training_log_loss is None
+            or evidence.empirical_training_rows is None
+            or evidence.empirical_training_rows <= 0
+        ):
+            return [
+                MetricRecalculation(
+                    metric_id="EMPIRICAL:training_log_loss",
+                    category=ValidationCheckCategory.OBJECTIVE,
+                    reported_value=result.key_outputs.get("training_log_loss"),
+                    absolute_tolerance=self._absolute_tolerance,
+                    relative_tolerance=self._relative_tolerance,
+                    status=ValidationCheckStatus.UNCHECKED,
+                    message="empirical training risk lacks a bound independent audit",
+                )
+            ]
+        return [
+            self._numeric_check(
+                metric_id="EMPIRICAL:training_log_loss",
+                reported=result.key_outputs.get("training_log_loss"),
+                recomputed=evidence.empirical_training_log_loss,
+                label="training row-wise log loss",
+            )
+        ]
 
     def _numeric_check(
         self,

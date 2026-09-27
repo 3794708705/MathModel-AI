@@ -1,4 +1,5 @@
 import json
+import math
 import subprocess
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -22,6 +23,7 @@ from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.mathematical.repository import MathematicalRepository
 from mathmodel_ai.paper.hashing import sha256_json
 from mathmodel_ai.schemas.benchmark import CausalScienceCheck
+from mathmodel_ai.schemas.data import DatasetRecord
 from mathmodel_ai.schemas.execution import (
     ExecutionArtifact,
     ExecutionOrigin,
@@ -30,6 +32,11 @@ from mathmodel_ai.schemas.execution import (
     SandboxLimits,
 )
 from mathmodel_ai.schemas.files import ArtifactKind, ArtifactRecord, FileKind, RegisteredFile
+from mathmodel_ai.schemas.mathematical import (
+    EmpiricalBinaryRiskDefinition,
+    ExpressionKind,
+    MathExpression,
+)
 from mathmodel_ai.schemas.problem_state import ProblemState
 from mathmodel_ai.schemas.program import (
     GeneratedProgram,
@@ -38,7 +45,12 @@ from mathmodel_ai.schemas.program import (
     generated_program_hash,
 )
 from mathmodel_ai.schemas.solver import SolverName, SolverStatus
-from mathmodel_ai.verification.causal_holdout import SWING_PROTOCOL
+from mathmodel_ai.verification.causal_binary import CausalBinarySpec, iter_causal_binary_points
+from mathmodel_ai.verification.causal_holdout import SWING_PROTOCOL, CausalHoldoutResult
+from mathmodel_ai.verification.empirical_binary import (
+    evaluate_empirical_binary_risk,
+    predict_empirical_binary,
+)
 from tests.benchmark.test_causal_inputs import _fixture
 from tests.mathematical.helpers import lp_model
 
@@ -315,6 +327,101 @@ def test_causal_evaluator_rejects_a_result_from_another_solver_run(tmp_path: Pat
     with pytest.raises(QualityGateError, match="CAUSAL_HOLDOUT_FORMAL_RESULT_NOT_BOUND"):
         evaluator.evaluate(bundle=bundle, mathematical=mathematical, state=state)  # type: ignore[arg-type]
     repository.persist_auxiliary_execution.assert_not_called()
+
+
+def test_empirical_audit_binds_formal_coefficients_loss_and_sealed_forecasts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evaluator, bundle, mathematical, state, repository = _setup(tmp_path, include_predictor=True)
+    assert bundle.causal_policy is not None and bundle.causal_split is not None
+    policy, split = bundle.causal_policy, bundle.causal_split
+    source = next(
+        item.content for item in bundle.artifacts if item.resource.resource_id == policy.resource_id
+    )
+    risk = EmpiricalBinaryRiskDefinition(
+        training_dataset_id=uuid4(),
+        training_sha256=split.training_sha256,
+        group_column=policy.group_column,
+        condition_column=policy.condition_column,
+        outcome_column=policy.outcome_column,
+        positive_value=policy.positive_value,
+        negative_value=policy.negative_value,
+        history_window=policy.history_window,
+        reference_condition="1",
+        source_refs=["EVID-fact-1"],
+        logit=MathExpression(
+            kind=ExpressionKind.MULTIPLY,
+            operands=[
+                MathExpression.symbol_ref("x"),
+                MathExpression.symbol_ref("row_condition_delta"),
+            ],
+        ),
+    )
+    model = mathematical.model_stage.model.model_copy(update={"empirical_binary_risk": risk})
+    formal = evaluator._mathematics.get_result_context.return_value
+    formal.model = model
+    dataset = DatasetRecord(
+        dataset_id=risk.training_dataset_id,
+        project_id=state.project_id,
+        problem_id=state.problem_id,
+        source_file_id=state.registered_files[0].file_id,
+        name="data.csv",
+        row_count=split.training_rows,
+        column_count=4,
+        columns=["match", "server", "winner", "after"],
+    )
+    repository.list_datasets.return_value = [dataset]
+    values = {"x": 1.0, "y": 0.0}
+    training_loss = evaluate_empirical_binary_risk(split.training_csv, risk, values).mean_log_loss
+    values["training_log_loss"] = training_loss
+    formal.solver_run.result = SimpleNamespace(variable_values=values)
+    formal.result.key_outputs = values.copy()
+    payload = SimpleNamespace(
+        metrics={"training_log_loss": training_loss}, variable_values=values.copy()
+    )
+    monkeypatch.setattr(evaluator, "_formal_payload", lambda *_: (payload, "a" * 64))
+    official_spec = CausalBinarySpec(
+        source_sha256=policy.source_sha256,
+        group_column=policy.group_column,
+        condition_column=policy.condition_column,
+        outcome_column=policy.outcome_column,
+        positive_value=policy.positive_value,
+        negative_value=policy.negative_value,
+        history_window=policy.history_window,
+    )
+    predictions = tuple(
+        predict_empirical_binary(risk, feature, values)[0]
+        for feature, _ in iter_causal_binary_points(source, official_spec)
+        if feature.group in split.heldout_groups
+    )
+    result = CausalHoldoutResult(
+        heldout_groups=split.heldout_groups,
+        training_groups=split.training_groups,
+        predictions=predictions,
+        observations=tuple(0.0 for _ in predictions),
+        baseline_predictions=tuple(0.5 for _ in predictions),
+        brier=0.0,
+        baseline_brier=0.0,
+    )
+    kwargs = dict(
+        bundle=bundle,
+        project_id=state.project_id,
+        formal_result_id=formal.result.result_id,
+        model=model,
+        training_bytes=split.training_csv,
+        source=source,
+        official_spec=official_spec,
+        result=result,
+    )
+    audited = evaluator._audit_empirical_risk(**kwargs)
+    assert audited is not None and math.isclose(audited.mean_log_loss, training_loss)
+    formal.result.key_outputs["training_log_loss"] += 0.1
+    with pytest.raises(QualityGateError, match="TRAINING_LOSS_NOT_RESULT_BOUND"):
+        evaluator._audit_empirical_risk(**kwargs)
+    formal.result.key_outputs["training_log_loss"] = training_loss
+    bad = replace(result, predictions=(predictions[0] + 0.1, *predictions[1:]))
+    with pytest.raises(QualityGateError, match="EMPIRICAL_HELDOUT_PREDICTION_MISMATCH"):
+        evaluator._audit_empirical_risk(**{**kwargs, "result": bad})
 
 
 @pytest.mark.sandbox

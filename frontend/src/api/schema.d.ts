@@ -2757,6 +2757,42 @@ export interface components {
             stop: number;
         };
         /**
+         * EmpiricalBinaryRiskDefinition
+         * @description Hash-bound pre-outcome binary training loss, separate from a scalar AST objective.
+         */
+        EmpiricalBinaryRiskDefinition: {
+            /** Condition Column */
+            condition_column: string;
+            /** Group Column */
+            group_column: string;
+            /** History Window */
+            history_window: number;
+            logit: components["schemas"]["MathExpression"];
+            /** Negative Value */
+            negative_value: string;
+            /** Outcome Column */
+            outcome_column: string;
+            /** Positive Value */
+            positive_value: string;
+            /**
+             * Protocol
+             * @default grouped-binary-logloss-v1
+             * @constant
+             */
+            protocol: "grouped-binary-logloss-v1";
+            /** Reference Condition */
+            reference_condition: string;
+            /** Source Refs */
+            source_refs: string[];
+            /**
+             * Training Dataset Id
+             * Format: uuid
+             */
+            training_dataset_id: string;
+            /** Training Sha256 */
+            training_sha256: string;
+        };
+        /**
          * EndpointTrustLevel
          * @enum {string}
          */
@@ -3781,6 +3817,7 @@ export interface components {
             derived_variables?: components["schemas"]["VariableDefinition"][];
             /** Description */
             description: string;
+            empirical_binary_risk?: components["schemas"]["EmpiricalBinaryRiskDefinition"] | null;
             /** Equations */
             equations?: components["schemas"]["EquationDefinition"][];
             /** Expected Outputs */

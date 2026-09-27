@@ -51,6 +51,15 @@ class RobustnessAnalyzer:
             return self._blocked(
                 model, result, validation, sensitivity, config, "sensitivity produced no evidence"
             ), []
+        if model.empirical_binary_risk is not None:
+            return self._blocked(
+                model,
+                result,
+                validation,
+                sensitivity,
+                config,
+                "empirical risk requires independently replayed scenario executions",
+            ), []
         if result.objective is None:
             if (
                 reviewed_evidence is not None

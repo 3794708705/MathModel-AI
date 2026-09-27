@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -280,6 +281,55 @@ class ObjectiveDefinition(BaseModel):
     equation_ref: str = Field(pattern=r"^EQ-[A-Za-z0-9_-]+$")
 
 
+EMPIRICAL_ROW_SYMBOLS = frozenset(
+    {
+        "row_intercept",
+        "row_condition_reference",
+        "row_condition_rate",
+        "row_group_rate",
+        "row_recent_rate",
+        "row_condition_delta",
+        "row_recent_delta",
+    }
+)
+
+
+class EmpiricalBinaryRiskDefinition(BaseModel):
+    """Hash-bound pre-outcome binary training loss, separate from a scalar AST objective."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    protocol: Literal["grouped-binary-logloss-v1"] = "grouped-binary-logloss-v1"
+    training_dataset_id: UUID
+    training_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    group_column: str = Field(min_length=1)
+    condition_column: str = Field(min_length=1)
+    outcome_column: str = Field(min_length=1)
+    positive_value: str = Field(min_length=1)
+    negative_value: str = Field(min_length=1)
+    history_window: int = Field(ge=1, le=1000)
+    reference_condition: str = Field(min_length=1)
+    logit: MathExpression
+    source_refs: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_protocol(self) -> EmpiricalBinaryRiskDefinition:
+        if len({self.group_column, self.condition_column, self.outcome_column}) != 3:
+            raise ValueError("empirical risk columns must be distinct")
+        if self.positive_value == self.negative_value:
+            raise ValueError("empirical risk outcome codes must be distinct")
+        pending = [self.logit]
+        symbols: set[str] = set()
+        while pending:
+            expression = pending.pop()
+            if expression.kind is ExpressionKind.SYMBOL and expression.symbol is not None:
+                symbols.add(expression.symbol)
+            pending.extend(expression.operands)
+        if not symbols & EMPIRICAL_ROW_SYMBOLS:
+            raise ValueError("EMPIRICAL_OBJECTIVE_HAS_NO_ROW_FEATURE")
+        return self
+
+
 class ConstraintDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -404,6 +454,7 @@ class MathematicalModelContent(BaseModel):
     parameters: list[ParameterDefinition] = Field(default_factory=list)
     constants: list[ConstantDefinition] = Field(default_factory=list)
     objective: ObjectiveDefinition | None = None
+    empirical_binary_risk: EmpiricalBinaryRiskDefinition | None = None
     constraints: list[ConstraintDefinition] = Field(default_factory=list)
     equations: list[EquationDefinition] = Field(default_factory=list)
     initial_conditions: list[ConstraintDefinition] = Field(default_factory=list)

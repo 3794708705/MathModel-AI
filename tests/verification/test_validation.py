@@ -24,7 +24,12 @@ from mathmodel_ai.schemas.independent_verification import (
     VerificationRequirements,
     VerifiedMetric,
 )
-from mathmodel_ai.schemas.mathematical import ExpressionKind, MathExpression, VariableRole
+from mathmodel_ai.schemas.mathematical import (
+    EmpiricalBinaryRiskDefinition,
+    ExpressionKind,
+    MathExpression,
+    VariableRole,
+)
 from mathmodel_ai.schemas.quality import QualityGateStatus
 from mathmodel_ai.schemas.results import EvidenceChainReport
 from mathmodel_ai.schemas.verification import ValidationCheckStatus, ValidationStatus
@@ -484,6 +489,61 @@ def test_audited_holdout_is_bound_but_does_not_satisfy_unrelated_requirements() 
     )
     assert rejected.status is ValidationStatus.FAIL
     assert "VALIDATION_FAIL:CAUSAL_HOLDOUT_FORMAL_RESULT_MISMATCH" in rejected.errors
+
+
+def test_empirical_training_risk_remains_unchecked_without_exact_host_audit() -> None:
+    model, result, _, _, _, _ = result_bundle()
+    risk = EmpiricalBinaryRiskDefinition(
+        training_dataset_id=uuid4(),
+        training_sha256="a" * 64,
+        group_column="match",
+        condition_column="server",
+        outcome_column="winner",
+        positive_value="1",
+        negative_value="2",
+        history_window=2,
+        reference_condition="1",
+        source_refs=["EVID-fact-1"],
+        logit=MathExpression.symbol_ref("row_condition_delta"),
+    )
+    model = model.model_copy(update={"empirical_binary_risk": risk})
+    result = result.model_copy(update={"key_outputs": {"training_log_loss": 0.5}})
+    validator = IndependentValidator()
+    missing = validator._empirical_risk_metric_checks(model, result, None)
+    assert missing[0].status is ValidationCheckStatus.UNCHECKED
+    causal = AuditedCausalEvidence(
+        formal_result_id=result.result_id,
+        holdout_execution_id=uuid4(),
+        source_sha256="b" * 64,
+        training_sha256=risk.training_sha256,
+        trace_sha256="c" * 64,
+        result=CausalHoldoutResult(
+            heldout_groups=("B",),
+            training_groups=("A",),
+            predictions=(0.5,),
+            observations=(1.0,),
+            baseline_predictions=(0.5,),
+            brier=0.25,
+            baseline_brier=0.25,
+        ),
+        empirical_training_log_loss=0.5,
+        empirical_training_rows=3,
+    )
+    assert validator._empirical_risk_metric_checks(model, result, causal)[0].status is (
+        ValidationCheckStatus.PASS
+    )
+    assert (
+        validator._empirical_risk_metric_checks(
+            model, result, replace(causal, empirical_training_log_loss=0.6)
+        )[0].status
+        is ValidationCheckStatus.FAIL
+    )
+    assert (
+        validator._empirical_risk_metric_checks(
+            model, result, replace(causal, training_sha256="d" * 64)
+        )[0].status
+        is ValidationCheckStatus.UNCHECKED
+    )
 
 
 def test_causal_workflow_stops_after_formal_report_without_reviewed_policy() -> None:

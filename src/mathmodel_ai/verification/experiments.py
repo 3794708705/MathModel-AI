@@ -52,6 +52,21 @@ class ExperimentEngine:
         experiment_type: str,
         fixed_decision_values: dict[str, float],
     ) -> ExperimentOutcome:
+        if model.empirical_binary_risk is not None:
+            return ExperimentOutcome(
+                record=ExperimentRun(
+                    experiment_type=experiment_type,
+                    base_model_digest=mathematical_model_digest(model),
+                    scenario_model_digest=mathematical_model_digest(
+                        self.perturb_model(model, perturbations)
+                    ),
+                    perturbations=perturbations,
+                    fixed_decision_values=fixed_decision_values,
+                    status=ExperimentStatus.FAIL,
+                    error="EMPIRICAL_RISK_SCENARIO_REPLAY_REQUIRED",
+                ),
+                execution=None,
+            )
         scenario = self.perturb_model(model, perturbations)
         base_digest = mathematical_model_digest(model)
         scenario_digest = mathematical_model_digest(scenario)
@@ -145,6 +160,20 @@ class ExperimentEngine:
         experiment_type: str,
         baseline_objective: float,
     ) -> ExperimentOutcome:
+        if model.empirical_binary_risk is not None:
+            return ExperimentOutcome(
+                record=ExperimentRun(
+                    experiment_type=experiment_type,
+                    base_model_digest=mathematical_model_digest(model),
+                    scenario_model_digest=mathematical_model_digest(
+                        self.perturb_model(model, perturbations)
+                    ),
+                    perturbations=perturbations,
+                    status=ExperimentStatus.FAIL,
+                    error="EMPIRICAL_RISK_SCENARIO_REPLAY_REQUIRED",
+                ),
+                execution=None,
+            )
         scenario = self.perturb_model(model, perturbations)
         base_digest = mathematical_model_digest(model)
         scenario_digest = mathematical_model_digest(scenario)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -12,14 +13,20 @@ from mathmodel_ai.mathematical.digests import mathematical_model_digest
 from mathmodel_ai.sandbox.executor import SandboxExecutor
 from mathmodel_ai.schemas.execution import SandboxLimits
 from mathmodel_ai.schemas.mathematical import (
+    EmpiricalBinaryRiskDefinition,
     EquationDefinition,
+    ExpressionKind,
+    MathExpression,
     ParameterDefinition,
     ParameterSourceType,
     VariableRole,
 )
 from mathmodel_ai.schemas.model_selection import ModelFamily
-from mathmodel_ai.schemas.solver import SolverName
+from mathmodel_ai.schemas.solver import SolverName, SolverOptions
 from mathmodel_ai.schemas.verification import (
+    ExperimentReportStatus,
+    ExperimentStatus,
+    ParameterPerturbation,
     RedTeamReport,
     RobustnessConfig,
     SensitivityConfig,
@@ -84,6 +91,107 @@ def test_independent_scalar_response_fails_closed_on_missing_definition() -> Non
         evaluate_scalar_responses(model.model_copy(update={"equations": []}), {"x": 2.0})
     with pytest.raises(ValueError, match="fixed point"):
         evaluate_scalar_responses(model, {"x": 2.0, "other": 0.0})
+
+
+def _empirical_model():
+    return _model().model_copy(
+        update={
+            "empirical_binary_risk": EmpiricalBinaryRiskDefinition(
+                training_dataset_id=uuid4(),
+                training_sha256="a" * 64,
+                group_column="match",
+                condition_column="server",
+                outcome_column="winner",
+                positive_value="1",
+                negative_value="2",
+                history_window=2,
+                reference_condition="1",
+                source_refs=["EVID-fact-1"],
+                logit=MathExpression(
+                    kind=ExpressionKind.MULTIPLY,
+                    operands=[
+                        MathExpression.symbol_ref("x"),
+                        MathExpression.symbol_ref("row_condition_delta"),
+                    ],
+                ),
+            )
+        }
+    )
+
+
+def test_empirical_risk_cannot_pass_unreplayed_scenario_experiments() -> None:
+    model = _empirical_model()
+    engine = ExperimentEngine(
+        algorithm_selector=AlgorithmSelector(),
+        solver_router=SolverRouter([]),
+        validator=IndependentValidator(),
+    )
+    response = engine.execute_response(
+        model=model,
+        perturbations=[
+            ParameterPerturbation(
+                parameter_id="PAR-rate",
+                symbol="rate",
+                source_ref="EVID-fact-1",
+                baseline_value=3.0,
+                fraction=0.1,
+                perturbed_value=3.3,
+            )
+        ],
+        options=SolverOptions(),
+        experiment_type="SENSITIVITY",
+        fixed_decision_values={"x": 1.0},
+    )
+    assert response.execution is None
+    assert response.record.status is ExperimentStatus.FAIL
+    assert response.record.error == "EMPIRICAL_RISK_SCENARIO_REPLAY_REQUIRED"
+
+
+def test_empirical_risk_cannot_pass_reviewed_sensitivity_or_robustness() -> None:
+    model = _empirical_model()
+    engine = ExperimentEngine(
+        algorithm_selector=AlgorithmSelector(),
+        solver_router=SolverRouter([]),
+        validator=IndependentValidator(),
+    )
+    _, base_result, validation, _ = valid_report()
+    result = base_result.model_copy(
+        update={
+            "model_id": model.model_id,
+            "model_digest": mathematical_model_digest(model),
+            "objective": None,
+        }
+    )
+    reviewed = Mock()
+    sensitivity, outcomes = SensitivityAnalyzer(engine).analyze(
+        model=model,
+        result=result,
+        validation=validation,
+        config=SensitivityConfig(),
+        reviewed_evidence=reviewed,
+    )
+    assert sensitivity.status is ExperimentReportStatus.BLOCKED
+    assert outcomes == []
+    assert "independently replayed" in sensitivity.errors[0]
+
+    reviewed.report.report_id = uuid4()
+    purported_pass = sensitivity.model_copy(
+        update={
+            "status": ExperimentReportStatus.PASS,
+            "reviewed_report_id": reviewed.report.report_id,
+        }
+    )
+    robustness, outcomes = RobustnessAnalyzer(engine).analyze(
+        model=model,
+        result=result,
+        validation=validation,
+        sensitivity=purported_pass,
+        config=RobustnessConfig(),
+        reviewed_evidence=reviewed,
+    )
+    assert robustness.status is ExperimentReportStatus.BLOCKED
+    assert outcomes == []
+    assert "independently replayed" in robustness.errors[0]
 
 
 @pytest.mark.solver
