@@ -255,6 +255,13 @@ explicit `sort=False` before execution. For these causal cases, the modeler
 also rejects validation requirements lacking an exact current-stage contract
 before solving; downstream sensitivity and scenario obligations remain in the
 later experiment stages and limitations, not as fictitious VALIDATE passes.
+For an automatic causal case, a lone squared scalar residual involving two or
+more free continuous decisions and no decision-dependent equality is rejected
+before solving as underidentified. Bounds and inequality probability guards
+cannot turn one observation into an empirical fit. This structural check is
+conservative: passing it does not establish that a multi-row objective is
+linked to the registered training data or independently replayable; those
+contracts remain required before claiming a verified prediction model.
 A second training-only reference reconstructs a pre-outcome rolling mean of condition-adjusted
 residuals for every row. Its `match_flow` check passes only when the same
 row-aligned series is present in the exact formal `result.json` and agrees

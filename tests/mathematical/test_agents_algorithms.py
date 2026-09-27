@@ -22,6 +22,7 @@ from mathmodel_ai.reasoning.prompts import PromptRegistry
 from mathmodel_ai.routing.router import ModelRouter
 from mathmodel_ai.routing.schemas import EscalationLevel, TaskProfile, TaskType
 from mathmodel_ai.schemas.mathematical import (
+    ConstraintRelation,
     ConvexityStatus,
     DataBinding,
     MathematicalModel,
@@ -33,7 +34,18 @@ from mathmodel_ai.schemas.mathematical import (
 from mathmodel_ai.schemas.model_selection import ModelFamily
 from mathmodel_ai.schemas.program import CodeAgentInput, GeneratedProgramDraft, GeneratedSourceFile
 from mathmodel_ai.schemas.solver import AlgorithmFamily, SolverFamily
-from tests.mathematical.helpers import lp_model, milp_model, nlp_model, selected_state, symbol
+from tests.mathematical.helpers import (
+    add,
+    constant,
+    lp_model,
+    milp_model,
+    multiply,
+    nlp_model,
+    power,
+    selected_state,
+    subtract,
+    symbol,
+)
 
 
 class RecordingMockProvider(MockProvider):
@@ -212,7 +224,7 @@ async def test_math_modeler_binds_identity_and_audits_xhigh_mock_route() -> None
     assert run.output.model_id == assigned_model_id
     assert run.output.project_id == state.project_id
     assert run.output.source_selected_model_id == "CAND-lp"
-    assert run.prompt_version == "4.6.9"
+    assert run.prompt_version == "4.6.10"
     assert mock.last_request is not None
     assert mock.last_request.max_output_tokens == 65_536
     assert run.routes[0].level is EscalationLevel.FLAGSHIP_XHIGH
@@ -510,6 +522,56 @@ def test_causal_modeler_rejects_incomplete_formal_response_before_solving() -> N
     reject_unverifiable_causal_requirements(defined, guidance)
 
 
+def test_causal_modeler_rejects_one_residual_for_multiple_free_coefficients() -> None:
+    base = nlp_model()
+    residual = subtract(add(symbol("x"), symbol("y")), constant(1))
+    objective = power(residual, 2)
+    model = base.model_copy(
+        update={
+            "objective": base.objective.model_copy(update={"expression": objective}),
+            "equations": [
+                base.equations[0].model_copy(update={"lhs": objective, "rhs": objective})
+            ],
+            "constraints": [],
+            "validation_requirements": [],
+        }
+    )
+    guidance = ["CAUSAL_HOLDOUT_PROTOCOL: require causal_science:heldout_prediction"]
+
+    with pytest.raises(QualityGateError, match="CAUSAL_SINGLE_RESIDUAL_UNDERIDENTIFIED"):
+        reject_unverifiable_causal_requirements(model, guidance)
+    reject_unverifiable_causal_requirements(model, [])
+
+    two_observations = add(objective, power(subtract(symbol("x"), constant(2)), 2))
+    identified = model.model_copy(
+        update={
+            "objective": model.objective.model_copy(update={"expression": two_observations}),
+            "equations": [
+                model.equations[0].model_copy(
+                    update={"lhs": two_observations, "rhs": two_observations}
+                )
+            ],
+        }
+    )
+    reject_unverifiable_causal_requirements(identified, guidance)
+
+    # The same residual can identify both variables if an independent equality
+    # provides the second relation; inequality bounds do not.
+    equality = base.constraints[0].model_copy(update={"relation": ConstraintRelation.EQ})
+    reject_unverifiable_causal_requirements(
+        model.model_copy(update={"constraints": [equality]}), guidance
+    )
+    product = multiply(residual, residual)
+    product_model = model.model_copy(
+        update={
+            "objective": model.objective.model_copy(update={"expression": product}),
+            "equations": [model.equations[0].model_copy(update={"rhs": product})],
+        }
+    )
+    with pytest.raises(QualityGateError, match="CAUSAL_SINGLE_RESIDUAL_UNDERIDENTIFIED"):
+        reject_unverifiable_causal_requirements(product_model, guidance)
+
+
 def test_code_agent_rejects_csv_row_loop_that_ignores_values() -> None:
     ignored = GeneratedProgramDraft(
         entrypoint="solve.py",
@@ -621,7 +683,7 @@ def test_generated_program_rejects_solver_target_larger_than_database_contract()
 
 def test_versioned_prompt_resources_exist() -> None:
     prompts = PromptRegistry()
-    assert prompts.get("math_modeler").version == "4.6.9"
+    assert prompts.get("math_modeler").version == "4.6.10"
     assert "future-stage experiments" in prompts.get("math_modeler").system
     assert prompts.get("code_agent").version == "4.7.3"
     assert (
