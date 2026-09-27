@@ -286,6 +286,12 @@ coefficient cannot be changed by a relative fraction and is rejected. Changed
 coefficients must also satisfy their declared variable domain and bounds. This
 component does not yet persist a Phase 5 sensitivity/robustness report or
 authorize those gates to pass; fitting and re-optimization are not claimed.
+The benchmark evaluator can now start one such non-Mock scenario from the
+persisted formal result, save its execution and all three artifacts, then
+reopen the database and independently replay the source, split, training loss,
+and held-out predictions. This is an execution-level evidence route only:
+Phase 5 still requires a distinct experiment/report contract and terminal
+integrity audit before sensitivity or robustness can pass.
 A second training-only reference reconstructs a pre-outcome rolling mean of condition-adjusted
 residuals for every row. Its `match_flow` check passes only when the same
 row-aligned series is present in the exact formal `result.json` and agrees
